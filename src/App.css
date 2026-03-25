@@ -1,0 +1,345 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@200;400;600;700&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+
+/* ── App Layout Shell ───────────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0 16px;
+  z-index: 100;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+  min-height: 100vh;
+}
+
+/* Mobile: hide sidebar, show bottom nav */
+@media (max-width: 767px) {
+  .app-sidebar {
+    display: none;
+  }
+  .app-content {
+    padding: 16px 16px 72px;
+  }
+}
+
+/* ── Bottom Navigation (mobile only) ───────────────────── */
+.app-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .app-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 200;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(13, 15, 26, 0.9);
+  }
+}
+
+/* ── Page background ────────────────────────────────────── */
+body.dark-theme {
+  background-color: #0d0f1a;
+  color: #e8e8e8;
+}
+
+body:not(.dark-theme) {
+  background-color: #f0f2f5;
+}
+
+body.dark-theme .app-content {
+  background: radial-gradient(
+      ellipse at 20% 20%,
+      rgba(37, 41, 80, 0.5) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 80% 80%,
+      rgba(55, 25, 75, 0.25) 0%,
+      transparent 55%
+    );
+}
+
+/* ── Glassmorphism utilities ─────────────────────────────── */
+.glass-card {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.glass-sidebar {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(13, 15, 26, 0.85) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+.glass-overlay-card {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(13, 15, 26, 0.78) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Light theme glass overrides */
+body:not(.dark-theme) .glass-sidebar {
+  background: rgba(240, 242, 245, 0.92) !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+}
+
+body:not(.dark-theme) .glass-overlay-card {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body:not(.dark-theme) .glass-card {
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+body:not(.dark-theme) .app-bottom-nav {
+  background: rgba(240, 242, 245, 0.94);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* ── Hero Banner ─────────────────────────────────────────── */
+.hero-banner {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.hero-gradient-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgba(13, 15, 26, 0.92) 0%,
+    rgba(13, 15, 26, 0.55) 50%,
+    rgba(13, 15, 26, 0.15) 100%
+  );
+}
+
+.hero-content {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  bottom: 0;
+  padding: 40px 48px;
+  max-width: 60%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.hero-title {
+  color: #fff !important;
+  font-size: clamp(1.4rem, 2.8vw, 2.2rem) !important;
+  margin-bottom: 8px !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  line-height: 1.2 !important;
+}
+
+.hero-overview {
+  color: rgba(255, 255, 255, 0.82) !important;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 16px !important;
+}
+
+@media (max-width: 767px) {
+  .hero-banner {
+    height: 280px;
+    border-radius: 12px;
+  }
+  .hero-content {
+    max-width: 100%;
+    padding: 20px;
+  }
+}
+
+/* ── Detail Page ─────────────────────────────────────────── */
+.detail-backdrop-hero {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+.detail-backdrop-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.detail-backdrop-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 25%,
+    rgba(13, 15, 26, 0.88) 100%
+  );
+}
+
+.detail-glass-card {
+  margin: -60px auto 24px;
+  padding: 28px 32px;
+  max-width: 1200px;
+  position: relative;
+  z-index: 2;
+}
+
+/* Cast horizontal scroll */
+.cast-scroll-container {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.cast-scroll-item {
+  flex: 0 0 120px;
+}
+
+.cast-card-img-lg {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+}
+
+@media (max-width: 767px) {
+  .detail-backdrop-hero {
+    height: 200px;
+  }
+  .detail-glass-card {
+    margin: -30px 0 16px;
+    padding: 16px;
+  }
+}
+
+/* ── Movie / TV card poster ─────────────────────────────────── */
+.movie-poster-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px 8px 0 0;
+}
+
+/* ── Overlay (trailer viewer) ───────────────────────────────── */
+.overlay-content {
+  position: relative;
+  top: 10%;
+  width: 100%;
+  text-align: center;
+  margin-top: 30px;
+}
+
+.overlay-content h1 {
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+.embed-frame {
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  border: none;
+  margin: 0 auto 16px;
+  display: block;
+}
+
+/* ── Cast / credit cards ────────────────────────────────────── */
+.cast-card-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* ── Recommendation / similar card ─────────────────────────── */
+.rec-card-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* ── Backdrop / gallery image ───────────────────────────────── */
+.backdrop-img {
+  width: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* ── Person page profile ────────────────────────────────────── */
+.person-profile-img {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0f1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #373b69;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f5c518;
+}
