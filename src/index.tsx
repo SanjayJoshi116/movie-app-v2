@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AppProvider } from "./context/AppContext";
+import { ListsProvider } from "./context/ListsContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import App from "./App";
@@ -16,7 +17,9 @@ root.render(
     <ErrorBoundary>
       <BrowserRouter>
         <AppProvider>
-          <App />
+          <ListsProvider>
+            <App />
+          </ListsProvider>
         </AppProvider>
       </BrowserRouter>
     </ErrorBoundary>

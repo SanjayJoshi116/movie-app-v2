@@ -3,12 +3,14 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image,
+  Statistic, Card, Space, Divider, Image, Modal, Checkbox,
 } from "antd";
 import {
-  BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled,
+  BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useListsContext } from "../context/useListsContext";
+import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
 import type { TMDBMovieDetail, TMDBProvider, TMDBProviderRegion } from "../types";
 
@@ -72,11 +74,16 @@ function WatchProviders({ providers }: { providers: Record<string, TMDBProviderR
 const MovieDetails = ({ movie }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { from?: string; page?: number } | null;
+  const locationState = location.state as { from?: string; page?: number; scrollY?: number; loadedPages?: number } | null;
   const from = locationState?.from;
   const savedPage = locationState?.page;
+  const savedScrollY = locationState?.scrollY;
+  const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
+  const { lists, addToList, isInList } = useListsContext();
+  const { showSuccess } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showListModal, setShowListModal] = useState(false);
 
   const {
     id, title, overview, release_date, poster_path, backdrop_path, genres, runtime,
@@ -113,7 +120,7 @@ const MovieDetails = ({ movie }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { page: savedPage, isReturn: true } }) : navigate(-1)}
+          onClick={() => from ? navigate(from, { state: { page: savedPage, scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
           style={{ marginBottom: 16 }}
         >
           Back
@@ -133,7 +140,10 @@ const MovieDetails = ({ movie }: Props) => {
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <Typography.Title level={2} style={{ margin: 0 }}>{title}</Typography.Title>
                 <motion.button
-                  onClick={() => toggleWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average })}
+                  onClick={() => {
+                    toggleWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                    showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
+                  }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
                   aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}
@@ -142,7 +152,10 @@ const MovieDetails = ({ movie }: Props) => {
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
                 <motion.button
-                  onClick={() => toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average })}
+                  onClick={() => {
+                    toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                    showSuccess(watched ? "Removed from watched" : "Marked as watched");
+                  }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
@@ -157,6 +170,11 @@ const MovieDetails = ({ movie }: Props) => {
                 >
                   {myRating ? `${myRating.userRating}/10` : "Rate"}
                 </Button>
+                {lists.length > 0 && (
+                  <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
+                    Add to List
+                  </Button>
+                )}
               </div>
 
               <Typography.Paragraph style={{ fontSize: 15, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
@@ -205,10 +223,48 @@ const MovieDetails = ({ movie }: Props) => {
         <RatingModal
           title={title}
           existing={myRating}
-          onSave={(r, rev) => setRating(id, "movie", title, r, rev)}
+          onSave={(r, rev) => {
+            setRating(id, "movie", title, r, rev);
+            showSuccess(`Rated ${title} ${r}/10`);
+          }}
           onClose={() => setShowRatingModal(false)}
         />
       )}
+
+      <Modal
+        title="Add to List"
+        open={showListModal}
+        onCancel={() => setShowListModal(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+          {lists.map((list) => {
+            const inList = isInList(list.id, id, "movie");
+            return (
+              <div
+                key={list.id}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}
+              >
+                <div>
+                  <Typography.Text strong>{list.name}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    {list.items.length} item{list.items.length !== 1 ? "s" : ""}
+                  </Typography.Text>
+                </div>
+                <Checkbox
+                  checked={inList}
+                  onChange={() => {
+                    if (!inList) {
+                      addToList(list.id, { id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess(`Added to "${list.name}"`);
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
+        </Space>
+      </Modal>
 
       {/* Sections below the glass card */}
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>

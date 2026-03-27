@@ -1,9 +1,10 @@
 import React from "react";
 import { Row, Col, Card, Tag, Button, Empty, Tooltip } from "antd";
-import { EyeOutlined, EyeFilled } from "@ant-design/icons";
+import { EyeOutlined, EyeFilled, SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import type { TMDBTVSummary } from "../types";
 import { useAppContext } from "../context/useAppContext";
+import { useToast } from "../hooks/useToast";
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 
@@ -16,13 +17,33 @@ function getRatingColor(vote: number): string {
 interface Props {
   tvShows: TMDBTVSummary[];
   onKnowMore: (id: number) => void;
+  searchTerm?: string;
+  hasFilters?: boolean;
 }
 
-const TVShows = ({ tvShows, onKnowMore }: Props) => {
+const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
   const { isWatched, toggleWatched } = useAppContext();
+  const { showSuccess } = useToast();
 
   if (tvShows.length === 0) {
-    return <Empty description="No results found" style={{ padding: "48px 0" }} />;
+    let icon = <InboxOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+    let description = "No TV shows found.";
+
+    if (searchTerm) {
+      icon = <SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      description = `No results for "${searchTerm}". Try a different search.`;
+    } else if (hasFilters) {
+      icon = <FilterOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      description = "No TV shows match your filters. Try adjusting them.";
+    }
+
+    return (
+      <Empty
+        image={icon}
+        description={description}
+        style={{ padding: "48px 0" }}
+      />
+    );
   }
 
   return (
@@ -74,7 +95,9 @@ const TVShows = ({ tvShows, onKnowMore }: Props) => {
                             icon={isWatched(tvShow.id, "tv") ? <EyeFilled style={{ color: "#52c41a" }} /> : <EyeOutlined />}
                             onClick={(e) => {
                               e.stopPropagation();
+                              const alreadyWatched = isWatched(tvShow.id, "tv");
                               toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
+                              showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
                             }}
                             aria-label={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}
                           />

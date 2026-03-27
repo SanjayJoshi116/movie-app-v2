@@ -4,6 +4,7 @@ import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled } from "@ant-design/icons";
 import type { TMDBMovieSummary } from "../types";
 import { useAppContext } from "../context/useAppContext";
+import { useToast } from "../hooks/useToast";
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 
@@ -21,6 +22,7 @@ interface Props {
 const Movie = ({ movie, onKnowMore }: Props) => {
   const { title, poster_path, vote_average } = movie;
   const { isWatched, toggleWatched } = useAppContext();
+  const { showSuccess } = useToast();
 
   return (
     <motion.div
@@ -63,7 +65,9 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     icon={isWatched(movie.id, "movie") ? <EyeFilled style={{ color: "#52c41a" }} /> : <EyeOutlined />}
                     onClick={(e) => {
                       e.stopPropagation();
+                      const alreadyWatched = isWatched(movie.id, "movie");
                       toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
                     }}
                     aria-label={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}
                   />

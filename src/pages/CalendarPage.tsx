@@ -1,0 +1,236 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty } from "antd";
+import { CalendarOutlined, StarFilled } from "@ant-design/icons";
+import { discoverMovies, discoverTV } from "../api/tmdb";
+import SkeletonCard from "../components/SkeletonCard";
+import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
+
+const IMG_URL = "https://image.tmdb.org/t/p/w500";
+
+const pageVariants = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -16 },
+};
+
+type MediaFilter = "both" | "movies" | "tv";
+
+interface CalendarItem {
+  id: number;
+  type: "movie" | "tv";
+  title: string;
+  posterPath: string | null;
+  releaseDate: string;
+  voteAverage: number;
+}
+
+interface DateGroup {
+  date: string;
+  label: string;
+  items: CalendarItem[];
+}
+
+function formatDateLabel(dateStr: string): string {
+  // Add time to avoid timezone offset issues
+  const date = new Date(dateStr + "T12:00:00");
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function groupByDate(items: CalendarItem[]): DateGroup[] {
+  const map = new Map<string, CalendarItem[]>();
+  for (const item of items) {
+    if (!map.has(item.releaseDate)) map.set(item.releaseDate, []);
+    map.get(item.releaseDate)!.push(item);
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, dateItems]) => ({
+      date,
+      label: formatDateLabel(date),
+      items: dateItems,
+    }));
+}
+
+function getRatingColor(vote: number): string {
+  if (vote >= 8) return "#52c41a";
+  if (vote >= 5) return "#faad14";
+  return "#ff4d4f";
+}
+
+function CalendarPage() {
+  const navigate = useNavigate();
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("both");
+  const [groups, setGroups] = useState<DateGroup[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchCalendar = useCallback(async (filter: MediaFilter) => {
+    setLoading(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const future = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const movieParams = {
+        "primary_release_date.gte": today,
+        "primary_release_date.lte": future,
+        sort_by: "primary_release_date.asc",
+        page: 1,
+      };
+      const tvParams = {
+        "first_air_date.gte": today,
+        "first_air_date.lte": future,
+        sort_by: "first_air_date.asc",
+        page: 1,
+      };
+
+      const allItems: CalendarItem[] = [];
+
+      if (filter === "movies" || filter === "both") {
+        const res = await discoverMovies(movieParams);
+        for (const m of res.data.results as TMDBMovieSummary[]) {
+          if (m.release_date) {
+            allItems.push({
+              id: m.id,
+              type: "movie",
+              title: m.title,
+              posterPath: m.poster_path,
+              releaseDate: m.release_date,
+              voteAverage: m.vote_average,
+            });
+          }
+        }
+      }
+
+      if (filter === "tv" || filter === "both") {
+        const res = await discoverTV(tvParams);
+        for (const t of res.data.results as TMDBTVSummary[]) {
+          const date = (t as any).first_air_date;
+          if (date) {
+            allItems.push({
+              id: t.id,
+              type: "tv",
+              title: t.name,
+              posterPath: t.poster_path,
+              releaseDate: date,
+              voteAverage: t.vote_average,
+            });
+          }
+        }
+      }
+
+      setGroups(groupByDate(allItems));
+    } catch (err) {
+      console.error("Error fetching calendar:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCalendar(mediaFilter);
+  }, [mediaFilter, fetchCalendar]);
+
+  return (
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={{ duration: 0.2 }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <CalendarOutlined style={{ fontSize: 24, color: "#f5c518" }} />
+        <Typography.Title level={2} style={{ margin: 0 }}>
+          Release Calendar
+        </Typography.Title>
+      </div>
+      <Typography.Text type="secondary" style={{ display: "block", marginBottom: 20 }}>
+        Upcoming releases in the next 60 days
+      </Typography.Text>
+
+      <Radio.Group
+        value={mediaFilter}
+        onChange={(e) => setMediaFilter(e.target.value)}
+        style={{ marginBottom: 24 }}
+        buttonStyle="solid"
+      >
+        <Radio.Button value="both">All</Radio.Button>
+        <Radio.Button value="movies">Movies</Radio.Button>
+        <Radio.Button value="tv">TV Shows</Radio.Button>
+      </Radio.Group>
+
+      {loading ? (
+        <SkeletonCard count={12} />
+      ) : groups.length === 0 ? (
+        <Empty
+          image={<CalendarOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+          description="No upcoming releases in the next 60 days."
+          style={{ padding: "60px 0" }}
+        />
+      ) : (
+        groups.map((group) => (
+          <div key={group.date}>
+            <Divider orientation="left">
+              <Typography.Text strong style={{ fontSize: 14 }}>{group.label}</Typography.Text>
+            </Divider>
+            <Row gutter={[12, 16]} style={{ marginBottom: 8 }}>
+              {group.items.map((item) => (
+                <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4} xl={4}>
+                  <motion.div
+                    whileHover={{ scale: 1.04, y: -4 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/calendar" } })}
+                  >
+                    <Card
+                      hoverable
+                      className="glass-card"
+                      cover={
+                        <img
+                          src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/500x750?text=No+Image"}
+                          alt={item.title}
+                          loading="lazy"
+                          className="movie-poster-img"
+                        />
+                      }
+                      bodyStyle={{ padding: "10px 12px" }}
+                      style={{ height: "100%" }}
+                    >
+                      <Typography.Text
+                        strong
+                        style={{ fontSize: 12, display: "block", marginBottom: 4 }}
+                        ellipsis={{ tooltip: item.title }}
+                      >
+                        {item.title}
+                      </Typography.Text>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0, fontSize: 10 }}>
+                          {item.type === "movie" ? "Movie" : "TV"}
+                        </Tag>
+                        {item.voteAverage > 0 && (
+                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: 10 }}>
+                            <StarFilled style={{ marginRight: 2 }} />
+                            {item.voteAverage.toFixed(1)}
+                          </Tag>
+                        )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                </Col>
+              ))}
+            </Row>
+          </div>
+        ))
+      )}
+    </motion.div>
+  );
+}
+
+export default CalendarPage;

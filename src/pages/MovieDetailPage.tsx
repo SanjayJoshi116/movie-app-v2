@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Spin, Result, Button } from "antd";
+import { Skeleton, Result, Button, Row, Col } from "antd";
 import axios from "axios";
 import MovieDetails from "../components/MovieDetails";
 import {
@@ -83,8 +83,18 @@ function MovieDetailPage() {
 
   if (loading)
     return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spin size="large" />
+      <div>
+        <Skeleton.Image active style={{ width: "100%", height: 340, borderRadius: 0, display: "block" }} />
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
+          <Row gutter={[24, 24]}>
+            <Col xs={24} sm={8} md={6}>
+              <Skeleton.Image active style={{ width: "100%", height: 280, borderRadius: 12 }} />
+            </Col>
+            <Col xs={24} sm={16} md={18}>
+              <Skeleton active paragraph={{ rows: 8 }} />
+            </Col>
+          </Row>
+        </div>
       </div>
     );
   if (error)

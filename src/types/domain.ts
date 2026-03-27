@@ -56,3 +56,11 @@ export interface Genre {
   id: number;
   name: string;
 }
+
+export interface UserList {
+  id: string;
+  name: string;
+  description: string;
+  items: WatchlistEntry[];
+  createdAt: string;
+}

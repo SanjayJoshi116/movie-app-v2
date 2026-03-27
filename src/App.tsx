@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { ConfigProvider } from "antd";
+import { ConfigProvider, App as AntApp } from "antd";
 import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
 import { FilterPanel } from "./components/layout/FilterPanel";
@@ -15,6 +15,8 @@ import WatchlistPage from "./pages/WatchlistPage";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import WatchedPage from "./pages/WatchedPage";
 import AnimePage from "./pages/AnimePage";
+import CalendarPage from "./pages/CalendarPage";
+import ListsPage from "./pages/ListsPage";
 import { useAppContext } from "./context/useAppContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
@@ -50,6 +52,7 @@ function AppInner() {
 
   return (
     <ConfigProvider theme={theme === "dark" ? darkThemeConfig : lightThemeConfig}>
+      <AntApp>
       <div className="app-shell">
         <Sidebar
           isBrowsePage={isBrowsePage}
@@ -106,6 +109,8 @@ function AppInner() {
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />
               <Route path="/watched" element={<ErrorBoundary><WatchedPage /></ErrorBoundary>} />
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
+              <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
+              <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />
               <Route path="*" element={<Navigate to="/movies" replace />} />
             </Routes>
           </AnimatePresence>
@@ -113,6 +118,7 @@ function AppInner() {
 
         <BottomNav />
       </div>
+      </AntApp>
     </ConfigProvider>
   );
 }

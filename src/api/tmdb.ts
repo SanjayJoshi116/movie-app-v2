@@ -177,6 +177,14 @@ export const searchPeople = (
 ): Promise<AxiosResponse<TMDBPaginatedResponse<TMDBPersonSummary>>> =>
   api.get("/search/person", { params: { query, page } });
 
+// ─── Genres ───────────────────────────────────────────────────────────────────
+
+export const fetchMovieGenres = (): Promise<AxiosResponse<{ genres: Array<{ id: number; name: string }> }>> =>
+  api.get("/genre/movie/list");
+
+export const fetchTVGenres = (): Promise<AxiosResponse<{ genres: Array<{ id: number; name: string }> }>> =>
+  api.get("/genre/tv/list");
+
 // ─── Trending ─────────────────────────────────────────────────────────────────
 
 export const fetchTrending = (

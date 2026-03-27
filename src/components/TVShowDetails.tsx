@@ -3,14 +3,45 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image, Spin,
+  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox,
 } from "antd";
 import {
-  BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled,
+  BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useListsContext } from "../context/useListsContext";
+import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
-import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
+import type { TMDBTVDetail, TMDBProvider, TMDBProviderRegion } from "../types";
+
+function WatchProviders({ providers }: { providers: Record<string, TMDBProviderRegion> }) {
+  const us = providers["US"];
+  if (!us) return <Typography.Text type="secondary">No watch provider info available for your region.</Typography.Text>;
+
+  const renderSection = (title: string, list: TMDBProvider[]) => (
+    <div key={title} style={{ marginBottom: 12 }}>
+      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{title}</Typography.Text>
+      <Space wrap>
+        {list.map((p) => (
+          <img
+            key={p.provider_id}
+            src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
+            alt={p.provider_name}
+            title={p.provider_name}
+            style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }}
+          />
+        ))}
+      </Space>
+    </div>
+  );
+
+  return (
+    <>
+      {us.flatrate && renderSection("Streaming", us.flatrate)}
+      {us.rent && renderSection("Rent", us.rent)}
+    </>
+  );
+}
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
@@ -29,11 +60,16 @@ interface Props {
 const TVShowDetails = ({ tvShow }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { from?: string; page?: number } | null;
+  const locationState = location.state as { from?: string; page?: number; scrollY?: number; loadedPages?: number } | null;
   const from = locationState?.from;
   const savedPage = locationState?.page;
+  const savedScrollY = locationState?.scrollY;
+  const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched } = useAppContext();
+  const { lists, addToList, isInList } = useListsContext();
+  const { showSuccess } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showListModal, setShowListModal] = useState(false);
 
   if (!tvShow) return <Spin size="large" style={{ display: "block", margin: "80px auto" }} />;
 
@@ -72,7 +108,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { page: savedPage, isReturn: true } }) : navigate(-1)}
+          onClick={() => from ? navigate(from, { state: { page: savedPage, scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
           style={{ marginBottom: 16 }}
         >
           Back
@@ -91,7 +127,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <Typography.Title level={2} style={{ margin: 0 }}>{name}</Typography.Title>
                 <motion.button
-                  onClick={() => toggleWatchlist({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average })}
+                  onClick={() => {
+                    toggleWatchlist({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                    showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
+                  }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
                   aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}
@@ -100,7 +139,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
                 <motion.button
-                  onClick={() => toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average })}
+                  onClick={() => {
+                    toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                    showSuccess(watched ? "Removed from watched" : "Marked as watched");
+                  }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
@@ -115,6 +157,11 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 >
                   {myRating ? `${myRating.userRating}/10` : "Rate"}
                 </Button>
+                {lists.length > 0 && (
+                  <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
+                    Add to List
+                  </Button>
+                )}
               </div>
 
               <Typography.Paragraph style={{ fontSize: 15, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
@@ -175,13 +222,59 @@ const TVShowDetails = ({ tvShow }: Props) => {
         <RatingModal
           title={name}
           existing={myRating}
-          onSave={(r, rev) => setRating(id, "tv", name, r, rev)}
+          onSave={(r, rev) => {
+            setRating(id, "tv", name, r, rev);
+            showSuccess(`Rated ${name} ${r}/10`);
+          }}
           onClose={() => setShowRatingModal(false)}
         />
       )}
 
+      <Modal
+        title="Add to List"
+        open={showListModal}
+        onCancel={() => setShowListModal(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+          {lists.map((list) => {
+            const inList = isInList(list.id, id, "tv");
+            return (
+              <div
+                key={list.id}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}
+              >
+                <div>
+                  <Typography.Text strong>{list.name}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    {list.items.length} item{list.items.length !== 1 ? "s" : ""}
+                  </Typography.Text>
+                </div>
+                <Checkbox
+                  checked={inList}
+                  onChange={() => {
+                    if (!inList) {
+                      addToList(list.id, { id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess(`Added to "${list.name}"`);
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
+        </Space>
+      </Modal>
+
       {/* Sections below the glass card */}
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        {/* Watch Providers */}
+        {tvShow.watchProviders && (
+          <>
+            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Where to Watch</Typography.Title></Divider>
+            <WatchProviders providers={tvShow.watchProviders} />
+          </>
+        )}
+
         {/* Cast - horizontal scroll */}
         {castList.length > 0 && (
           <>

@@ -6,6 +6,7 @@ import type {
   RatingsMap,
   WatchedEntry,
   WatchedInput,
+  UserList,
 } from "./domain";
 
 export interface AppContextType {
@@ -49,4 +50,13 @@ export interface AppContextType {
   ): void;
   getRating(id: number, type: string): RatingEntry | null;
   removeRating(id: number, type: string): void;
+}
+
+export interface ListsContextType {
+  lists: UserList[];
+  createList(name: string, description: string): void;
+  deleteList(id: string): void;
+  addToList(listId: string, entry: WatchlistInput): void;
+  removeFromList(listId: string, itemId: number, type: string): void;
+  isInList(listId: string, id: number, type: string): boolean;
 }

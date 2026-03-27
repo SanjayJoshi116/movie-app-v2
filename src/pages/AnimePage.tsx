@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Spin, Space, Button, Alert, Radio } from "antd";
+import { Space, Button, Alert, Radio } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
-import Pagination from "../components/Pagination";
+import SkeletonCard from "../components/SkeletonCard";
+import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import {
   discoverMovies,
   discoverTV,
@@ -54,18 +55,21 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   const navigate = useNavigate();
   const location = useLocation();
 
-  const locationState = location.state as { page?: number; isReturn?: boolean } | null;
-  const restoredPage   = locationState?.page ?? 1;
-  const isReturning    = locationState?.isReturn ?? false;
-  const firstFetchPage = useRef(restoredPage);
-  const isReturningRef = useRef(isReturning);
+  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
+  const isReturning = locationState?.isReturn ?? false;
+  const savedScrollY = locationState?.scrollY ?? 0;
+  const savedLoadedPages = locationState?.loadedPages ?? 1;
 
   const [animeTab, setAnimeTab] = useState<"tv" | "movies">("tv");
   const [activeCategory, setActiveCategory] = useState("anime-tv-popular");
-  const [items, setItems] = useState<TMDBMovieSummary[] | TMDBTVSummary[]>([]);
-  const [currentPage, setCurrentPage] = useState(restoredPage);
-  const [totalPages, setTotalPages] = useState(1);
+  const [allItems, setAllItems] = useState<TMDBMovieSummary[] | TMDBTVSummary[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const didRestoreRef = useRef(false);
+  const isRestoringRef = useRef(isReturning);
 
   useEffect(() => {
     if (!isReturning) {
@@ -76,75 +80,138 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   useEffect(() => {
     setActiveCategory(animeTab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
-    if (!isReturningRef.current) setCurrentPage(1);
-    isReturningRef.current = false;
+    if (!isRestoringRef.current) {
+      setAllItems([]);
+      setCurrentPage(1);
+      setHasMore(true);
+    }
+    isRestoringRef.current = false;
     onMediaTypeChange(animeTab);
-  }, [animeTab, onMediaTypeChange]);
+  }, [animeTab, onMediaTypeChange]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchData = useCallback(
-    async (page = 1) => {
-      setLoading(true);
-      try {
-        const isTV = animeTab === "tv";
-        const genreString = selectedGenres.join(",");
-        const baseParams: Record<string, string | number> = {
-          page,
-          with_keywords: ANIME_KEYWORD,
-          ...(genreString && { with_genres: genreString }),
+  const fetchPage = useCallback(
+    async (page: number): Promise<{ results: TMDBMovieSummary[] | TMDBTVSummary[]; totalPages: number }> => {
+      const isTV = animeTab === "tv";
+      const genreString = selectedGenres.join(",");
+      const baseParams: Record<string, string | number> = {
+        page,
+        with_keywords: ANIME_KEYWORD,
+        ...(genreString && { with_genres: genreString }),
+      };
+
+      const hasFilters =
+        externalFilters !== null &&
+        Object.values(externalFilters).some((v) => v !== "");
+
+      let response;
+
+      if (searchTerm) {
+        response = isTV
+          ? await searchTV(searchTerm, page)
+          : await searchMovies(searchTerm, page);
+      } else if (hasFilters && externalFilters) {
+        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy);
+        const params = { ...baseParams, ...filterParams };
+        response = isTV ? await discoverTV(params) : await discoverMovies(params);
+      } else {
+        const extraParams: Record<string, string | number> = activeCategory.includes("top-rated")
+          ? { "vote_count.gte": 50 }
+          : {};
+        const params = {
+          ...baseParams,
+          sort_by: SORT_MAP[activeCategory] ?? "popularity.desc",
+          ...extraParams,
         };
-
-        const hasFilters =
-          externalFilters !== null &&
-          Object.values(externalFilters).some((v) => v !== "");
-
-        let response;
-
-        if (searchTerm) {
-          response = isTV
-            ? await searchTV(searchTerm, page)
-            : await searchMovies(searchTerm, page);
-        } else if (hasFilters && externalFilters) {
-          const filterParams = filtersToTMDBParams(externalFilters, externalSortBy);
-          const params = { ...baseParams, ...filterParams };
-          response = isTV ? await discoverTV(params) : await discoverMovies(params);
-        } else {
-          const extraParams: Record<string, string | number> = activeCategory.includes("top-rated")
-            ? { "vote_count.gte": 50 }
-            : {};
-          const params = {
-            ...baseParams,
-            sort_by: SORT_MAP[activeCategory] ?? "popularity.desc",
-            ...extraParams,
-          };
-          response = isTV ? await discoverTV(params) : await discoverMovies(params);
-        }
-
-        setItems((response.data.results as TMDBMovieSummary[] | TMDBTVSummary[]).slice(0, 18));
-        setCurrentPage(response.data.page);
-        setTotalPages(response.data.total_pages);
-      } catch (err) {
-        console.error("Error fetching anime data:", err);
-      } finally {
-        setLoading(false);
+        response = isTV ? await discoverTV(params) : await discoverMovies(params);
       }
+
+      return {
+        results: response.data.results as TMDBMovieSummary[] | TMDBTVSummary[],
+        totalPages: response.data.total_pages,
+      };
     },
     [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy]
   );
 
   useEffect(() => {
-    const page = firstFetchPage.current;
-    firstFetchPage.current = 1;
-    fetchData(page);
-  }, [fetchData]);
+    let cancelled = false;
 
-  const handlePageChange = (page: number) => {
-    if (page > 0 && page <= totalPages) fetchData(page);
-  };
+    const load = async () => {
+      if (isRestoringRef.current && savedLoadedPages > 1) {
+        setLoading(true);
+        try {
+          const pages = Array.from({ length: savedLoadedPages }, (_, i) => i + 1);
+          const results: (TMDBMovieSummary | TMDBTVSummary)[] = [];
+          let totalPages = 1;
+          for (const p of pages) {
+            const { results: r, totalPages: tp } = await fetchPage(p);
+            results.push(...r);
+            totalPages = tp;
+          }
+          if (!cancelled) {
+            setAllItems(results as TMDBMovieSummary[] | TMDBTVSummary[]);
+            setCurrentPage(savedLoadedPages);
+            setHasMore(savedLoadedPages < totalPages);
+          }
+        } catch (err) {
+          console.error("Error restoring anime pages:", err);
+        } finally {
+          if (!cancelled) setLoading(false);
+          isRestoringRef.current = false;
+        }
+      } else {
+        setLoading(true);
+        try {
+          const { results, totalPages } = await fetchPage(1);
+          if (!cancelled) {
+            setAllItems(results as TMDBMovieSummary[] | TMDBTVSummary[]);
+            setCurrentPage(1);
+            setHasMore(1 < totalPages);
+          }
+        } catch (err) {
+          console.error("Error fetching anime data:", err);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [fetchPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
+    if (isReturning && savedScrollY > 0 && !didRestoreRef.current && allItems.length > 0) {
+      didRestoreRef.current = true;
+      window.scrollTo(0, savedScrollY);
+    }
+  }, [allItems, isReturning, savedScrollY]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = currentPage + 1;
+      const { results, totalPages } = await fetchPage(nextPage);
+      setAllItems((prev) => [...prev, ...results] as TMDBMovieSummary[] | TMDBTVSummary[]);
+      setCurrentPage(nextPage);
+      setHasMore(nextPage < totalPages);
+    } catch (err) {
+      console.error("Error loading more anime:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [fetchPage, currentPage, hasMore, loadingMore]);
+
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading);
 
   const handleKnowMore = (id: number) => {
-    navigate(animeTab === "movies" ? `/movie/${id}` : `/tv/${id}`, { state: { from: location.pathname, page: currentPage } });
+    navigate(animeTab === "movies" ? `/movie/${id}` : `/tv/${id}`, {
+      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false },
+    });
   };
 
+  const hasFilters = externalFilters !== null && Object.values(externalFilters).some((v) => v !== "");
   const categories = animeTab === "tv" ? ANIME_TV_CATEGORIES : ANIME_MOVIE_CATEGORIES;
 
   return (
@@ -188,26 +255,28 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       </Space>
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <Spin size="large" />
-        </div>
+        <SkeletonCard count={18} />
       ) : animeTab === "tv" ? (
         <TVShows
-          tvShows={items as TMDBTVSummary[]}
+          tvShows={allItems as TMDBTVSummary[]}
           onKnowMore={handleKnowMore}
+          searchTerm={searchTerm}
+          hasFilters={hasFilters}
         />
       ) : (
         <Movies
-          movies={items as TMDBMovieSummary[]}
+          movies={allItems as TMDBMovieSummary[]}
           onKnowMore={handleKnowMore}
+          searchTerm={searchTerm}
+          hasFilters={hasFilters}
         />
       )}
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={handlePageChange}
-      />
+      {/* Infinite scroll sentinel */}
+      <div ref={sentinelRef} style={{ height: 1 }} />
+
+      {/* Loading more indicator */}
+      {loadingMore && <SkeletonCard count={6} />}
     </motion.div>
   );
 }

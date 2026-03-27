@@ -1,11 +1,15 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Card, Button, Tag, Typography, Empty, Space, Popconfirm,
 } from "antd";
-import { StarFilled, DeleteOutlined, EyeFilled } from "@ant-design/icons";
+import { StarFilled, DeleteOutlined, EyeFilled, EyeOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useToast } from "../hooks/useToast";
+import StreamingBadges from "../components/StreamingBadges";
+import { fetchMovieProviders, fetchTVWatchProviders } from "../api/tmdb";
+import type { TMDBProviderRegion } from "../types";
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -18,6 +22,26 @@ const IMG_URL = "https://image.tmdb.org/t/p/w500";
 function WatchedPage() {
   const navigate = useNavigate();
   const { watchedList, removeFromWatched } = useAppContext();
+  const { showSuccess } = useToast();
+  const [providersMap, setProvidersMap] = useState<Record<string, TMDBProviderRegion>>({});
+
+  useEffect(() => {
+    if (watchedList.length === 0) return;
+    Promise.allSettled(
+      watchedList.map((item) =>
+        (item.type === "movie" ? fetchMovieProviders(item.id) : fetchTVWatchProviders(item.id))
+          .then((res) => ({ key: `${item.type}-${item.id}`, region: res.data.results?.["US"] }))
+      )
+    ).then((results) => {
+      const map: Record<string, TMDBProviderRegion> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value.region) {
+          map[r.value.key] = r.value.region;
+        }
+      }
+      setProvidersMap(map);
+    });
+  }, [watchedList]);
 
   const movies = watchedList.filter((w) => w.type === "movie");
   const tvShows = watchedList.filter((w) => w.type === "tv");
@@ -46,9 +70,12 @@ function WatchedPage() {
 
       {watchedList.length === 0 ? (
         <Empty
+          image={<EyeOutlined style={{ fontSize: 48, color: "#52c41a" }} />}
           description="Nothing marked as watched yet. Browse movies and TV shows and click the eye icon."
           style={{ padding: "60px 0" }}
-        />
+        >
+          <Button type="primary" onClick={() => navigate("/movies")}>Browse Movies</Button>
+        </Empty>
       ) : (
         <Row gutter={[16, 20]}>
           {[...watchedList]
@@ -77,7 +104,7 @@ function WatchedPage() {
                     <Popconfirm
                       key="remove"
                       title="Remove from watched?"
-                      onConfirm={() => removeFromWatched(item.id, item.type)}
+                      onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Removed from watched"); }}
                       okText="Remove"
                       cancelText="Cancel"
                     >
@@ -105,6 +132,8 @@ function WatchedPage() {
                       </Tag>
                     )}
                   </Space>
+
+                  <StreamingBadges providers={providersMap[`${item.type}-${item.id}`]} />
 
                   <Typography.Text
                     type="secondary"

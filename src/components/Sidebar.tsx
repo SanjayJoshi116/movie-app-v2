@@ -13,6 +13,8 @@ import {
   BulbOutlined,
   EyeOutlined,
   FireOutlined,
+  CalendarOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
@@ -72,6 +74,16 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       key: "/recommendations",
       icon: <BulbOutlined />,
       label: "For You",
+    },
+    {
+      key: "/calendar",
+      icon: <CalendarOutlined />,
+      label: "Calendar",
+    },
+    {
+      key: "/lists",
+      icon: <UnorderedListOutlined />,
+      label: "My Lists",
     },
   ];
 

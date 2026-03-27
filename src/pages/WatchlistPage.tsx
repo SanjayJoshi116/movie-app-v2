@@ -1,13 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Card, Button, Tag, Typography, Empty, Space, Popconfirm,
 } from "antd";
-import { StarFilled, DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import WatchlistStats from "../components/watchlist/WatchlistStats";
+import StreamingBadges from "../components/StreamingBadges";
+import { fetchMovieProviders, fetchTVWatchProviders } from "../api/tmdb";
+import type { TMDBProviderRegion } from "../types";
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -26,7 +30,27 @@ interface RatingTarget {
 function WatchlistPage() {
   const navigate = useNavigate();
   const { watchlist, removeFromWatchlist, getRating, setRating, allRatings } = useAppContext();
+  const { showSuccess } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
+  const [providersMap, setProvidersMap] = useState<Record<string, TMDBProviderRegion>>({});
+
+  useEffect(() => {
+    if (watchlist.length === 0) return;
+    Promise.allSettled(
+      watchlist.map((item) =>
+        (item.type === "movie" ? fetchMovieProviders(item.id) : fetchTVWatchProviders(item.id))
+          .then((res) => ({ key: `${item.type}-${item.id}`, region: res.data.results?.["US"] }))
+      )
+    ).then((results) => {
+      const map: Record<string, TMDBProviderRegion> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value.region) {
+          map[r.value.key] = r.value.region;
+        }
+      }
+      setProvidersMap(map);
+    });
+  }, [watchlist]);
 
   return (
     <motion.div
@@ -46,9 +70,12 @@ function WatchlistPage() {
 
       {watchlist.length === 0 ? (
         <Empty
+          image={<BookOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
           description="Your watchlist is empty. Browse movies and TV shows to add them."
           style={{ padding: "60px 0" }}
-        />
+        >
+          <Button type="primary" onClick={() => navigate("/movies")}>Browse Movies</Button>
+        </Empty>
       ) : (
         <Row gutter={[16, 20]}>
           {watchlist.map((item) => {
@@ -88,7 +115,7 @@ function WatchlistPage() {
                     <Popconfirm
                       key="remove"
                       title="Remove from watchlist?"
-                      onConfirm={() => removeFromWatchlist(item.id, item.type)}
+                      onConfirm={() => { removeFromWatchlist(item.id, item.type); showSuccess("Removed from watchlist"); }}
                       okText="Remove"
                       cancelText="Cancel"
                     >
@@ -119,6 +146,8 @@ function WatchlistPage() {
                     )}
                   </Space>
 
+                  <StreamingBadges providers={providersMap[`${item.type}-${item.id}`]} />
+
                   {rating?.review && (
                     <Typography.Paragraph
                       ellipsis={{ rows: 2 }}
@@ -138,9 +167,10 @@ function WatchlistPage() {
         <RatingModal
           title={ratingTarget.title}
           existing={getRating(ratingTarget.id, ratingTarget.type)}
-          onSave={(r, review) =>
-            setRating(ratingTarget.id, ratingTarget.type, ratingTarget.title, r, review)
-          }
+          onSave={(r, review) => {
+            setRating(ratingTarget.id, ratingTarget.type, ratingTarget.title, r, review);
+            showSuccess("Rating saved");
+          }}
           onClose={() => setRatingTarget(null)}
         />
       )}
