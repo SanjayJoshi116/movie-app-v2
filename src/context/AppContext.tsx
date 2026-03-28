@@ -10,6 +10,7 @@ export const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [includeAdult, setIncludeAdult] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [theme, setTheme] = useLocalStorage<Theme>("cinedb_theme", "dark");
 
@@ -38,10 +39,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearGenres = () => setSelectedGenres([]);
   const clearSearch = () => setSearchTerm("");
 
+  const isDataLoading = watchlist.isLoading || ratings.isLoading || watched.isLoading;
+
   const value: AppContextType = {
     searchTerm,
     setSearchTerm,
     clearSearch,
+    includeAdult,
+    setIncludeAdult,
     selectedGenres,
     toggleGenre,
     clearGenres,
@@ -62,6 +67,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRating: ratings.set,
     getRating: ratings.get,
     removeRating: ratings.remove,
+    isDataLoading,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

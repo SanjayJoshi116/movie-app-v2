@@ -51,7 +51,7 @@ interface Props {
 }
 
 function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props) {
-  const { searchTerm, setSearchTerm, selectedGenres, clearGenres } = useAppContext();
+  const { searchTerm, setSearchTerm, selectedGenres, clearGenres, isWatched, includeAdult } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -107,8 +107,8 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       if (searchTerm) {
         response = isTV
-          ? await searchTV(searchTerm, page)
-          : await searchMovies(searchTerm, page);
+          ? await searchTV(searchTerm, page, includeAdult)
+          : await searchMovies(searchTerm, page, includeAdult);
       } else if (hasFilters && externalFilters) {
         const filterParams = filtersToTMDBParams(externalFilters, externalSortBy);
         const params = { ...baseParams, ...filterParams };
@@ -130,7 +130,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         totalPages: response.data.total_pages,
       };
     },
-    [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy]
+    [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy, includeAdult]
   );
 
   useEffect(() => {
@@ -213,6 +213,10 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   const hasFilters = externalFilters !== null && Object.values(externalFilters).some((v) => v !== "");
   const categories = animeTab === "tv" ? ANIME_TV_CATEGORIES : ANIME_MOVIE_CATEGORIES;
+  const animeMediaType = animeTab === "tv" ? "tv" : "movie";
+  const visibleItems = searchTerm
+    ? allItems
+    : allItems.filter((item) => !isWatched(item.id, animeMediaType));
 
   return (
     <motion.div
@@ -258,14 +262,14 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         <SkeletonCard count={18} />
       ) : animeTab === "tv" ? (
         <TVShows
-          tvShows={allItems as TMDBTVSummary[]}
+          tvShows={visibleItems as TMDBTVSummary[]}
           onKnowMore={handleKnowMore}
           searchTerm={searchTerm}
           hasFilters={hasFilters}
         />
       ) : (
         <Movies
-          movies={allItems as TMDBMovieSummary[]}
+          movies={visibleItems as TMDBMovieSummary[]}
           onKnowMore={handleKnowMore}
           searchTerm={searchTerm}
           hasFilters={hasFilters}

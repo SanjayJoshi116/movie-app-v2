@@ -10,6 +10,9 @@ import {
   fetchMovieDetails,
   fetchTVDetails,
   discoverMovies,
+  discoverTV,
+  fetchTrending,
+  fetchPersonCombinedCredits,
   fetchMovieGenres,
   fetchTVGenres,
 } from "../api/tmdb";
@@ -43,6 +46,17 @@ const pageVariants = {
   exit: { opacity: 0, y: -16 },
 };
 
+// Interleave two arrays (movie, tv, movie, tv...)
+function interleave(a: RecItem[], b: RecItem[]): RecItem[] {
+  const result: RecItem[] = [];
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (i < a.length) result.push(a[i]!);
+    if (i < b.length) result.push(b[i]!);
+  }
+  return result;
+}
+
 function RecommendationsPage() {
   const navigate = useNavigate();
   const { watchedList, allRatings } = useAppContext();
@@ -54,7 +68,6 @@ function RecommendationsPage() {
 
     const watchedIds = new Set(watchedList.map((w) => `${w.type}-${w.id}`));
 
-    // Deduplicate helper
     const seen = new Set<string>();
     const filterNew = (items: RecItem[]): RecItem[] =>
       items.filter((item) => {
@@ -67,7 +80,7 @@ function RecommendationsPage() {
     setLoading(true);
 
     const run = async () => {
-      // Sort watched: rated items first (higher rating first), then by recency
+      // Sort watched: highest-rated first, then most recent
       const sorted = [...watchedList].sort((a, b) => {
         const ra = allRatings[`${a.type}-${a.id}`]?.userRating ?? 0;
         const rb = allRatings[`${b.type}-${b.id}`]?.userRating ?? 0;
@@ -75,61 +88,129 @@ function RecommendationsPage() {
         return b.watchedAt.localeCompare(a.watchedAt);
       });
 
-      const top8 = sorted.slice(0, 8);
-      const becauseSource = sorted.slice(0, 3);
+      // Cast analysis: random sample of 20 from full watched list
+      const shuffled = [...watchedList].sort(() => Math.random() - 0.5);
+      const castSample = shuffled.slice(0, 20);
 
-      // --- Fetch genre name maps ---
+      // "Because you watched X": 5 seeds — mix of top-rated and most-recent
+      const byRating = sorted.slice(0, 3);
+      const byRecency = [...watchedList]
+        .sort((a, b) => b.watchedAt.localeCompare(a.watchedAt))
+        .filter((item) => !byRating.some((r) => r.id === item.id && r.type === item.type))
+        .slice(0, 2);
+      const becauseSource = [...byRating, ...byRecency];
+
+      // --- Genre name maps ---
       const [movieGenresRes, tvGenresRes] = await Promise.allSettled([
         fetchMovieGenres(),
         fetchTVGenres(),
       ]);
       const genreNameMap = new Map<number, string>();
-      if (movieGenresRes.status === "fulfilled") {
+      if (movieGenresRes.status === "fulfilled")
         for (const g of movieGenresRes.value.data.genres) genreNameMap.set(g.id, g.name);
-      }
-      if (tvGenresRes.status === "fulfilled") {
+      if (tvGenresRes.status === "fulfilled")
         for (const g of tvGenresRes.value.data.genres) genreNameMap.set(g.id, g.name);
-      }
 
-      // --- Analyze top genres from watched items ---
-      const genreCount = new Map<number, number>();
+      // --- Fetch details for all watched items (genres) + cast sample (cast) ---
+      type DetailInfo = { genres: number[]; cast: { id: number; name: string }[] };
       const detailResults = await Promise.allSettled(
-        top8.map((item) =>
+        sorted.map((item): Promise<DetailInfo> =>
           item.type === "movie"
-            ? fetchMovieDetails(item.id).then((r) => r.data.genres?.map((g) => g.id) ?? [])
-            : fetchTVDetails(item.id).then((r) => r.data.genres?.map((g) => g.id) ?? [])
+            ? fetchMovieDetails(item.id).then((r) => ({
+                genres: r.data.genres?.map((g: { id: number }) => g.id) ?? [],
+                cast: r.data.credits?.cast?.slice(0, 3).map((c: { id: number; name: string }) => ({ id: c.id, name: c.name })) ?? [],
+              }))
+            : fetchTVDetails(item.id).then((r) => ({
+                genres: r.data.genres?.map((g: { id: number }) => g.id) ?? [],
+                cast: [],
+              }))
         )
       );
 
-      for (const result of detailResults) {
-        if (result.status !== "fulfilled") continue;
-        for (const gId of result.value) {
+      // Build genre frequency map
+      const genreCount = new Map<number, number>();
+      // Build genre frequency map for highly-rated items (user rating >= 7)
+      const lovedGenreCount = new Map<number, number>();
+      // Collect cast frequency
+      const castCount = new Map<number, { name: string; count: number }>();
+
+      // Build cast frequency map from the random sample only
+      const castSampleIds = new Set(castSample.map((w) => `${w.type}-${w.id}`));
+
+      detailResults.forEach((result, idx) => {
+        if (result.status !== "fulfilled") return;
+        const { genres, cast } = result.value;
+        const item = sorted[idx]!;
+        const userRating = allRatings[`${item.type}-${item.id}`]?.userRating ?? 0;
+
+        // Genre analysis: use all watched items
+        for (const gId of genres) {
           genreCount.set(gId, (genreCount.get(gId) ?? 0) + 1);
+          if (userRating >= 7)
+            lovedGenreCount.set(gId, (lovedGenreCount.get(gId) ?? 0) + 1);
         }
+
+        // Cast analysis: only for the random sample
+        if (castSampleIds.has(`${item.type}-${item.id}`)) {
+          for (const c of cast) {
+            const existing = castCount.get(c.id);
+            castCount.set(c.id, { name: c.name, count: (existing?.count ?? 0) + 1 });
+          }
+        }
+      });
+
+      const topGenres = [...genreCount.entries()].sort(([, a], [, b]) => b - a).slice(0, 3).map(([id]) => id);
+      const topLovedGenres = [...lovedGenreCount.entries()].sort(([, a], [, b]) => b - a).slice(0, 2).map(([id]) => id);
+      const topActors = [...castCount.entries()].sort(([, a], [, b]) => b.count - a.count).slice(0, 3);
+
+      // ── 1. "More like what you love" ─────────────────────────────────────────
+      let lovedSection: RecSection | null = null;
+      if (topLovedGenres.length > 0) {
+        const lovedResults = await Promise.allSettled(
+          topLovedGenres.map((gId) =>
+            Promise.all([
+              discoverMovies({ with_genres: gId, sort_by: "vote_average.desc", "vote_count.gte": 100, page: 1 })
+                .then((r) => (r.data.results as TMDBMovieSummary[]).map((m): RecItem => ({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average }))),
+              discoverTV({ with_genres: gId, sort_by: "vote_average.desc", "vote_count.gte": 50, page: 1 })
+                .then((r) => (r.data.results as TMDBTVSummary[]).map((t): RecItem => ({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average }))),
+            ]).then(([mov, tv]) => interleave(mov, tv))
+          )
+        );
+        const lovedItems = filterNew(
+          lovedResults.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+        ).slice(0, 12);
+        if (lovedItems.length > 0)
+          lovedSection = { key: "loved", label: "More like what you love", items: lovedItems };
       }
 
-      const topGenres = [...genreCount.entries()]
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 3)
-        .map(([id]) => id);
+      // ── 2. Trending This Week ────────────────────────────────────────────────
+      let trendingSection: RecSection | null = null;
+      const trendingRes = await fetchTrending("all", "week").catch(() => null);
+      if (trendingRes) {
+        const trendingItems = filterNew(
+          (trendingRes.data.results as Array<TMDBMovieSummary & TMDBTVSummary & { media_type: string }>)
+            .filter((r) => r.media_type === "movie" || r.media_type === "tv")
+            .map((r): RecItem => ({
+              id: r.id,
+              type: r.media_type as "movie" | "tv",
+              title: r.media_type === "movie" ? r.title : r.name,
+              posterPath: r.poster_path,
+              voteAverage: r.vote_average,
+            }))
+        ).slice(0, 12);
+        if (trendingItems.length > 0)
+          trendingSection = { key: "trending", label: "Trending This Week", items: trendingItems };
+      }
 
-      // --- Genre-based discovery sections ---
+      // ── 3. Genre sections (mixed movies + TV) ───────────────────────────────
       const genreSectionResults = await Promise.allSettled(
         topGenres.map((genreId) =>
-          discoverMovies({
-            with_genres: genreId,
-            sort_by: "vote_average.desc",
-            "vote_count.gte": 100,
-            page: 1,
-          }).then((res) =>
-            (res.data.results as TMDBMovieSummary[]).map((m): RecItem => ({
-              id: m.id,
-              type: "movie",
-              title: m.title,
-              posterPath: m.poster_path,
-              voteAverage: m.vote_average,
-            }))
-          )
+          Promise.all([
+            discoverMovies({ with_genres: genreId, sort_by: "vote_average.desc", "vote_count.gte": 100, page: 1 })
+              .then((r) => (r.data.results as TMDBMovieSummary[]).map((m): RecItem => ({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average }))),
+            discoverTV({ with_genres: genreId, sort_by: "vote_average.desc", "vote_count.gte": 50, page: 1 })
+              .then((r) => (r.data.results as TMDBTVSummary[]).map((t): RecItem => ({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average }))),
+          ]).then(([mov, tv]) => interleave(mov, tv))
         )
       );
 
@@ -139,36 +220,19 @@ function RecommendationsPage() {
         const genreId = topGenres[idx] as number;
         const genreName = genreNameMap.get(genreId) ?? `Genre ${genreId}`;
         const items = filterNew(result.value).slice(0, 12);
-        if (items.length > 0) {
-          genreSections.push({
-            key: `genre-${genreId}`,
-            label: `Based on your taste in ${genreName}`,
-            items,
-          });
-        }
+        if (items.length > 0)
+          genreSections.push({ key: `genre-${genreId}`, label: `Based on your taste in ${genreName}`, items });
       });
 
-      // --- "Because you watched X" sections ---
+      // ── 4. "Because you watched X" ───────────────────────────────────────────
       const becauseResults = await Promise.allSettled(
         becauseSource.map((item) =>
           item.type === "movie"
             ? fetchSimilarMovies(item.id).then((res) =>
-                res.data.results.map((m: TMDBMovieSummary): RecItem => ({
-                  id: m.id,
-                  type: "movie",
-                  title: m.title,
-                  posterPath: m.poster_path,
-                  voteAverage: m.vote_average,
-                }))
+                res.data.results.map((m: TMDBMovieSummary): RecItem => ({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average }))
               )
             : fetchTVRecommendations(item.id).then((res) =>
-                res.data.results.map((t: TMDBTVSummary): RecItem => ({
-                  id: t.id,
-                  type: "tv",
-                  title: t.name,
-                  posterPath: t.poster_path,
-                  voteAverage: t.vote_average,
-                }))
+                res.data.results.map((t: TMDBTVSummary): RecItem => ({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average }))
               )
         )
       );
@@ -179,16 +243,65 @@ function RecommendationsPage() {
         const source = becauseSource[idx];
         if (!source) return;
         const items = filterNew(result.value).slice(0, 12);
-        if (items.length > 0) {
-          becauseSections.push({
-            key: `because-${source.id}`,
-            label: `Because you watched ${source.title}`,
-            items,
-          });
-        }
+        if (items.length > 0)
+          becauseSections.push({ key: `because-${source.id}`, label: `Because you watched ${source.title}`, items });
       });
 
-      setSections([...genreSections, ...becauseSections]);
+      // ── 5. Hidden Gems ───────────────────────────────────────────────────────
+      let hiddenGemsSection: RecSection | null = null;
+      const [gemsMovRes, gemsTVRes] = await Promise.allSettled([
+        discoverMovies({ sort_by: "vote_average.desc", "vote_average.gte": 7.5, "vote_count.gte": 50, "vote_count.lte": 1500, page: 1 })
+          .then((r) => (r.data.results as TMDBMovieSummary[]).map((m): RecItem => ({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average }))),
+        discoverTV({ sort_by: "vote_average.desc", "vote_average.gte": 7.5, "vote_count.gte": 50, "vote_count.lte": 1500, page: 1 })
+          .then((r) => (r.data.results as TMDBTVSummary[]).map((t): RecItem => ({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average }))),
+      ]);
+      const gemsItems = filterNew(
+        interleave(
+          gemsMovRes.status === "fulfilled" ? gemsMovRes.value : [],
+          gemsTVRes.status === "fulfilled" ? gemsTVRes.value : [],
+        )
+      ).slice(0, 12);
+      if (gemsItems.length > 0)
+        hiddenGemsSection = { key: "hidden-gems", label: "Hidden Gems", items: gemsItems };
+
+      // ── 6. "Because you like [Actor]" ────────────────────────────────────────
+      const actorSectionResults = await Promise.allSettled(
+        topActors.map(([actorId, { name }]) =>
+          fetchPersonCombinedCredits(actorId).then((res) => {
+            const credits = (res.data.cast ?? []) as Array<{ id: number; media_type: string; title?: string; name?: string; poster_path?: string | null; vote_average?: number }>;
+            const items: RecItem[] = credits
+              .filter((c) => (c.media_type === "movie" || c.media_type === "tv") && (c.vote_average ?? 0) >= 6)
+              .map((c): RecItem => ({
+                id: c.id,
+                type: c.media_type as "movie" | "tv",
+                title: c.media_type === "movie" ? (c.title ?? "") : (c.name ?? ""),
+                posterPath: c.poster_path ?? null,
+                voteAverage: c.vote_average ?? 0,
+              }))
+              .sort((a, b) => b.voteAverage - a.voteAverage);
+            return { name, items };
+          })
+        )
+      );
+
+      const actorSections: RecSection[] = [];
+      actorSectionResults.forEach((result) => {
+        if (result.status !== "fulfilled") return;
+        const { name, items } = result.value;
+        const filtered = filterNew(items).slice(0, 12);
+        if (filtered.length > 0)
+          actorSections.push({ key: `actor-${name}`, label: `Because you like ${name}`, items: filtered });
+      });
+
+      // ── Assemble final order ─────────────────────────────────────────────────
+      setSections([
+        ...(lovedSection ? [lovedSection] : []),
+        ...(trendingSection ? [trendingSection] : []),
+        ...genreSections,
+        ...becauseSections,
+        ...(hiddenGemsSection ? [hiddenGemsSection] : []),
+        ...actorSections,
+      ]);
     };
 
     run()
@@ -255,6 +368,7 @@ function RecommendationsPage() {
                     <Card
                       hoverable
                       className="glass-card"
+                      onClick={() => navigate(`/${item.type === "movie" ? "movie" : "tv"}/${item.id}`, { state: { from: "/recommendations" } })}
                       cover={
                         <img
                           src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/500x750?text=No+Image"}
@@ -282,7 +396,7 @@ function RecommendationsPage() {
                               size="small"
                               type="primary"
                               ghost
-                              onClick={() => navigate(`/${item.type === "movie" ? "movie" : "tv"}/${item.id}`, { state: { from: "/recommendations" } })}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/${item.type === "movie" ? "movie" : "tv"}/${item.id}`, { state: { from: "/recommendations" } }); }}
                               aria-label={`Details for ${item.title}`}
                             >
                               Details

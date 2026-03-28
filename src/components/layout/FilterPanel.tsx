@@ -9,6 +9,7 @@ import {
   Typography,
   Divider,
   Tag,
+  Switch,
 } from "antd";
 import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
@@ -50,6 +51,7 @@ const DEFAULT_FILTERS: FilterValues = {
   language: "",
   minRuntime: "",
   maxRuntime: "",
+  includeAdult: false,
 };
 
 interface Props {
@@ -206,13 +208,21 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
 
         <Divider style={{ margin: "8px 0 16px" }} />
 
-        <Form.Item label="Sort By" style={{ marginBottom: 0 }}>
+        <Form.Item label="Sort By" style={{ marginBottom: 16 }}>
           <Select
             value={sortBy}
             onChange={(v) => setSortBy(v as SortOption)}
             options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
         </Form.Item>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Typography.Text>Include Adult Content</Typography.Text>
+          <Switch
+            checked={filters.includeAdult}
+            onChange={(v) => setFilters((prev) => ({ ...prev, includeAdult: v }))}
+          />
+        </div>
       </Form>
     </Drawer>
   );

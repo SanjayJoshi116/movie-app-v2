@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Typography, Spin } from "antd";
+import { Row, Col, Card, Tag, Typography } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
-import Pagination from "../components/Pagination";
+import SkeletonCard from "../components/SkeletonCard";
+import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
 
@@ -19,47 +20,100 @@ const pageVariants = {
 function PeoplePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { searchTerm } = useAppContext();
+  const { searchTerm, includeAdult } = useAppContext();
 
-  const locationState = location.state as { page?: number; isReturn?: boolean } | null;
-  const restoredPage = locationState?.page ?? 1;
+  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
   const isReturning = locationState?.isReturn ?? false;
-  const firstFetchPage = useRef(restoredPage);
+  const savedScrollY = locationState?.scrollY ?? 0;
+  const savedLoadedPages = locationState?.loadedPages ?? 1;
 
-  const [people, setPeople] = useState<TMDBPersonSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(restoredPage);
-  const [totalPages, setTotalPages] = useState(1);
+  const [allPeople, setAllPeople] = useState<TMDBPersonSummary[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchData = useCallback(
-    async (page: number) => {
-      setLoading(true);
-      try {
-        const res = searchTerm
-          ? await searchPeople(searchTerm, page)
-          : await fetchPopularPeople(page);
-        setPeople(res.data.results);
-        setCurrentPage(res.data.page);
-        setTotalPages(Math.min(res.data.total_pages, 500));
-      } catch {
-        setPeople([]);
-      } finally {
-        setLoading(false);
-      }
+  const didRestoreRef = useRef(false);
+  const isRestoringRef = useRef(isReturning);
+
+  const fetchPage = useCallback(
+    async (page: number): Promise<{ results: TMDBPersonSummary[]; totalPages: number }> => {
+      const res = searchTerm
+        ? await searchPeople(searchTerm, page, includeAdult)
+        : await fetchPopularPeople(page);
+      return {
+        results: res.data.results,
+        totalPages: Math.min(res.data.total_pages, 500),
+      };
     },
-    [searchTerm],
+    [searchTerm, includeAdult]
   );
 
+  // Initial load / refetch when search term or adult filter changes
   useEffect(() => {
-    if (!isReturning) setCurrentPage(1);
-    const page = firstFetchPage.current;
-    firstFetchPage.current = 1;
-    fetchData(page);
-  }, [searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+    isRestoringRef.current = isReturning;
+    let cancelled = false;
 
-  const handlePageChange = (page: number) => {
-    window.scrollTo(0, 0);
-    fetchData(page);
+    const initialPages = isReturning ? savedLoadedPages : 1;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const pages = await Promise.all(
+          Array.from({ length: initialPages }, (_, i) => fetchPage(i + 1))
+        );
+        if (cancelled) return;
+        const combined = pages.flatMap((p) => p.results);
+        const totalPages = pages[pages.length - 1]?.totalPages ?? 1;
+        setAllPeople(combined);
+        setCurrentPage(initialPages);
+        setHasMore(initialPages < totalPages);
+      } catch {
+        if (!cancelled) setAllPeople([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [fetchPage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore scroll position when returning from a person page
+  useLayoutEffect(() => {
+    if (isReturning && !loading && allPeople.length > 0 && !didRestoreRef.current) {
+      didRestoreRef.current = true;
+      window.scrollTo(0, savedScrollY);
+    }
+  }, [loading, allPeople.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    const nextPage = currentPage + 1;
+    setLoadingMore(true);
+    try {
+      const { results, totalPages } = await fetchPage(nextPage);
+      setAllPeople((prev) => [...prev, ...results]);
+      setCurrentPage(nextPage);
+      setHasMore(nextPage < totalPages);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, currentPage, fetchPage]);
+
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
+
+  const handlePersonClick = (person: TMDBPersonSummary) => {
+    navigate(`/person/${person.id}`, {
+      state: {
+        from: "/people",
+        isReturn: true,
+        scrollY: window.scrollY,
+        loadedPages: currentPage,
+      },
+    });
   };
 
   return (
@@ -75,13 +129,13 @@ function PeoplePage() {
       </Typography.Title>
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spin size="large" />
-        </div>
+        <Row gutter={[16, 20]}>
+          <SkeletonCard count={12} />
+        </Row>
       ) : (
         <>
           <Row gutter={[16, 20]}>
-            {people.map((person) => (
+            {allPeople.map((person) => (
               <Col key={person.id} xs={12} sm={8} md={6} lg={4}>
                 <motion.div
                   whileHover={{ scale: 1.04, y: -4 }}
@@ -90,7 +144,7 @@ function PeoplePage() {
                   <Card
                     hoverable
                     className="glass-card"
-                    onClick={() => navigate(`/person/${person.id}`, { state: { from: '/people', page: currentPage } })}
+                    onClick={() => handlePersonClick(person)}
                     cover={
                       <img
                         src={
@@ -120,11 +174,13 @@ function PeoplePage() {
             ))}
           </Row>
 
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-          />
+          {loadingMore && (
+            <Row gutter={[16, 20]} style={{ marginTop: 16 }}>
+              <SkeletonCard count={6} />
+            </Row>
+          )}
+
+          <div ref={sentinelRef} style={{ height: 1 }} />
         </>
       )}
     </motion.div>

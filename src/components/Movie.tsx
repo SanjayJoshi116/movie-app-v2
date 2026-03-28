@@ -21,7 +21,7 @@ interface Props {
 
 const Movie = ({ movie, onKnowMore }: Props) => {
   const { title, poster_path, vote_average } = movie;
-  const { isWatched, toggleWatched } = useAppContext();
+  const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess } = useToast();
 
   return (
@@ -62,7 +62,8 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                   <Button
                     size="small"
                     type="text"
-                    icon={isWatched(movie.id, "movie") ? <EyeFilled style={{ color: "#52c41a" }} /> : <EyeOutlined />}
+                    icon={isWatched(movie.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
+                    style={{ color: isWatched(movie.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
                       const alreadyWatched = isWatched(movie.id, "movie");

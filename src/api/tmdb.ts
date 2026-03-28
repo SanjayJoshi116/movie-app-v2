@@ -36,8 +36,9 @@ export const fetchMoviesByCategory = (
 export const searchMovies = (
   query: string,
   page = 1,
+  includeAdult = false,
 ): Promise<AxiosResponse<TMDBPaginatedResponse<TMDBMovieSummary>>> =>
-  api.get("/search/movie", { params: { query, page } });
+  api.get("/search/movie", { params: { query, page, include_adult: includeAdult } });
 
 export const fetchMovieDetails = (
   id: number | string,
@@ -98,8 +99,9 @@ export const fetchTVByCategory = (
 export const searchTV = (
   query: string,
   page = 1,
+  includeAdult = false,
 ): Promise<AxiosResponse<TMDBPaginatedResponse<TMDBTVSummary>>> =>
-  api.get("/search/tv", { params: { query, page } });
+  api.get("/search/tv", { params: { query, page, include_adult: includeAdult } });
 
 export const fetchTVDetails = (
   id: number | string,
@@ -174,8 +176,9 @@ export const fetchPopularPeople = (
 export const searchPeople = (
   query: string,
   page = 1,
+  includeAdult = false,
 ): Promise<AxiosResponse<TMDBPaginatedResponse<TMDBPersonSummary>>> =>
-  api.get("/search/person", { params: { query, page } });
+  api.get("/search/person", { params: { query, page, include_adult: includeAdult } });
 
 // ─── Genres ───────────────────────────────────────────────────────────────────
 
@@ -209,5 +212,6 @@ export function filtersToTMDBParams(
   if (filters.language) params["with_original_language"] = filters.language;
   if (filters.minRuntime) params["with_runtime.gte"] = filters.minRuntime;
   if (filters.maxRuntime) params["with_runtime.lte"] = filters.maxRuntime;
+  if (filters.includeAdult) params["include_adult"] = "true";
   return params;
 }

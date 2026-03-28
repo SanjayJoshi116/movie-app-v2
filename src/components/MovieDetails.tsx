@@ -42,22 +42,45 @@ function renderCertifications(certs: ReleaseDateEntry[] | string): string {
   return cert?.certification || "Not Rated";
 }
 
-function WatchProviders({ providers }: { providers: Record<string, TMDBProviderRegion> }) {
+const PROVIDER_SEARCH_URLS: Record<number, (title: string) => string> = {
+  8:    (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`,
+  9:    (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
+  119:  (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
+  337:  (t) => `https://www.disneyplus.com/search/${encodeURIComponent(t)}`,
+  384:  (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,
+  1899: (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,
+  350:  (t) => `https://tv.apple.com/search?term=${encodeURIComponent(t)}`,
+  15:   (t) => `https://www.hulu.com/search?q=${encodeURIComponent(t)}`,
+  386:  (t) => `https://www.peacocktv.com/search?q=${encodeURIComponent(t)}`,
+  531:  (t) => `https://www.paramountplus.com/search/${encodeURIComponent(t)}/`,
+  283:  (t) => `https://www.crunchyroll.com/search?q=${encodeURIComponent(t)}`,
+};
+
+function WatchProviders({ providers, title }: { providers: Record<string, TMDBProviderRegion>; title: string }) {
   const us = providers["US"];
   if (!us) return <Typography.Text type="secondary">No watch provider info available for your region.</Typography.Text>;
 
-  const renderSection = (title: string, list: TMDBProvider[]) => (
-    <div key={title} style={{ marginBottom: 12 }}>
-      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{title}</Typography.Text>
+  const getProviderUrl = (p: TMDBProvider) =>
+    PROVIDER_SEARCH_URLS[p.provider_id]?.(title) ?? us.link ?? "#";
+
+  const renderSection = (sectionTitle: string, list: TMDBProvider[]) => (
+    <div key={sectionTitle} style={{ marginBottom: 12 }}>
+      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{sectionTitle}</Typography.Text>
       <Space wrap>
         {list.map((p) => (
-          <img
+          <a
             key={p.provider_id}
-            src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
-            alt={p.provider_name}
-            title={p.provider_name}
-            style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover" }}
-          />
+            href={getProviderUrl(p)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Watch on ${p.provider_name}`}
+          >
+            <img
+              src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
+              alt={p.provider_name}
+              style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", display: "block" }}
+            />
+          </a>
         ))}
       </Space>
     </div>
@@ -93,7 +116,7 @@ const MovieDetails = ({ movie }: Props) => {
   } = movie;
 
   const cast = credits?.cast ?? [];
-  const { isWatched, toggleWatched } = useAppContext();
+  const { isWatched, toggleWatched, theme } = useAppContext();
   const inWatchlist = isInWatchlist(id, "movie");
   const watched = isWatched(id, "movie");
   const myRating = getRating(id, "movie");
@@ -159,7 +182,7 @@ const MovieDetails = ({ movie }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? "#f5c518" : undefined, fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000", fontSize: "1.5rem" }}
                 >
                   {watched ? <EyeFilled /> : <EyeOutlined />}
                 </motion.button>
@@ -272,7 +295,7 @@ const MovieDetails = ({ movie }: Props) => {
         {watchProviders && (
           <>
             <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Where to Watch</Typography.Title></Divider>
-            <WatchProviders providers={watchProviders} />
+            <WatchProviders providers={watchProviders} title={title} />
           </>
         )}
 

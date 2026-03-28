@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import { ListsProvider } from "./context/ListsContext";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -16,11 +17,13 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <AppProvider>
-          <ListsProvider>
-            <App />
-          </ListsProvider>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <ListsProvider>
+              <App />
+            </ListsProvider>
+          </AppProvider>
+        </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </React.StrictMode>

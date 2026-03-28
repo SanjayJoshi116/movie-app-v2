@@ -15,9 +15,12 @@ import {
   FireOutlined,
   CalendarOutlined,
   UnorderedListOutlined,
+  LoginOutlined,
+  LogoutOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
+import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 
 interface Props {
@@ -30,6 +33,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme, watchlist, watchedList } = useAppContext();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const menuItems: MenuProps["items"] = [
     {
@@ -124,7 +128,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
 
       <Divider style={{ margin: "8px 0" }} />
 
-      {/* Footer: filter + theme */}
+      {/* Footer: filter + theme + auth */}
       <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
         {isBrowsePage && (
           <Button
@@ -150,6 +154,37 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             {theme === "dark" ? "Dark mode" : "Light mode"}
           </Typography.Text>
         </div>
+
+        <Divider style={{ margin: "4px 0" }} />
+
+        {isAuthenticated ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Typography.Text style={{ fontSize: 12, paddingLeft: 4 }} type="secondary">
+              Signed in as <strong>{user?.username}</strong>
+            </Typography.Text>
+            <Button
+              icon={<LogoutOutlined />}
+              type="text"
+              block
+              onClick={() => {
+                logout();
+                navigate("/movies");
+              }}
+              style={{ textAlign: "left" }}
+            >
+              Sign Out
+            </Button>
+          </div>
+        ) : (
+          <Button
+            icon={<LoginOutlined />}
+            type="default"
+            block
+            onClick={() => navigate("/login")}
+          >
+            Sign In
+          </Button>
+        )}
       </div>
     </motion.aside>
   );

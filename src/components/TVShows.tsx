@@ -22,7 +22,7 @@ interface Props {
 }
 
 const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
-  const { isWatched, toggleWatched } = useAppContext();
+  const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess } = useToast();
 
   if (tvShows.length === 0) {
@@ -92,7 +92,8 @@ const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
                           <Button
                             size="small"
                             type="text"
-                            icon={isWatched(tvShow.id, "tv") ? <EyeFilled style={{ color: "#52c41a" }} /> : <EyeOutlined />}
+                            icon={isWatched(tvShow.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
+                            style={{ color: isWatched(tvShow.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                             onClick={(e) => {
                               e.stopPropagation();
                               const alreadyWatched = isWatched(tvShow.id, "tv");

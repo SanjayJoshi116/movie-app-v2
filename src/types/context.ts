@@ -14,6 +14,8 @@ export interface AppContextType {
   searchTerm: string;
   setSearchTerm(t: string): void;
   clearSearch(): void;
+  includeAdult: boolean;
+  setIncludeAdult(v: boolean): void;
 
   // Genre filters
   selectedGenres: number[];
@@ -50,13 +52,17 @@ export interface AppContextType {
   ): void;
   getRating(id: number, type: string): RatingEntry | null;
   removeRating(id: number, type: string): void;
+
+  // Loading
+  isDataLoading: boolean;
 }
 
 export interface ListsContextType {
   lists: UserList[];
+  isLoading: boolean;
   createList(name: string, description: string): void;
-  deleteList(id: string): void;
-  addToList(listId: string, entry: WatchlistInput): void;
-  removeFromList(listId: string, itemId: number, type: string): void;
-  isInList(listId: string, id: number, type: string): boolean;
+  deleteList(id: number): void;
+  addToList(listId: number, entry: WatchlistInput): void;
+  removeFromList(listId: number, itemId: number, type: string): void;
+  isInList(listId: number, id: number, type: string): boolean;
 }

@@ -1,0 +1,85 @@
+from django.contrib.auth.models import User
+from rest_framework import serializers
+from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserListItem
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6)
+
+    class Meta:
+        model = User
+        fields = ("username", "email", "password")
+
+    def create(self, validated_data):
+        return User.objects.create_user(
+            username=validated_data["username"],
+            email=validated_data.get("email", ""),
+            password=validated_data["password"],
+        )
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username", "email")
+
+
+class WatchlistEntrySerializer(serializers.ModelSerializer):
+    mediaId = serializers.IntegerField(source="media_id")
+    mediaType = serializers.CharField(source="media_type")
+    posterPath = serializers.CharField(source="poster_path", allow_null=True)
+    voteAverage = serializers.FloatField(source="vote_average")
+    addedAt = serializers.DateTimeField(source="added_at", read_only=True)
+
+    class Meta:
+        model = WatchlistEntry
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt", "watched")
+        read_only_fields = ("id", "addedAt")
+
+
+class WatchedEntrySerializer(serializers.ModelSerializer):
+    mediaId = serializers.IntegerField(source="media_id")
+    mediaType = serializers.CharField(source="media_type")
+    posterPath = serializers.CharField(source="poster_path", allow_null=True)
+    voteAverage = serializers.FloatField(source="vote_average")
+    watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
+
+    class Meta:
+        model = WatchedEntry
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "watchedAt")
+        read_only_fields = ("id", "watchedAt")
+
+
+class RatingEntrySerializer(serializers.ModelSerializer):
+    mediaId = serializers.IntegerField(source="media_id")
+    mediaType = serializers.CharField(source="media_type")
+    userRating = serializers.FloatField(source="user_rating")
+    ratedAt = serializers.DateTimeField(source="rated_at", read_only=True)
+
+    class Meta:
+        model = RatingEntry
+        fields = ("id", "mediaId", "mediaType", "title", "userRating", "review", "ratedAt")
+        read_only_fields = ("id", "ratedAt")
+
+
+class UserListItemSerializer(serializers.ModelSerializer):
+    mediaId = serializers.IntegerField(source="media_id")
+    mediaType = serializers.CharField(source="media_type")
+    posterPath = serializers.CharField(source="poster_path", allow_null=True)
+    voteAverage = serializers.FloatField(source="vote_average")
+    addedAt = serializers.DateTimeField(source="added_at", read_only=True)
+
+    class Meta:
+        model = UserListItem
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt", "watched")
+        read_only_fields = ("id", "addedAt")
+
+
+class UserListSerializer(serializers.ModelSerializer):
+    items = UserListItemSerializer(many=True, read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = UserList
+        fields = ("id", "name", "description", "items", "createdAt")
+        read_only_fields = ("id", "createdAt")

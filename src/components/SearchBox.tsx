@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Input, Dropdown, Typography } from "antd";
+import { Input, Dropdown, Typography, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAppContext } from "../context/useAppContext";
@@ -12,7 +12,7 @@ type MenuItem = Required<MenuProps>["items"][number];
 const SearchBox = () => {
   const [inputValue, setInputValue] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const { setSearchTerm, searchTerm } = useAppContext();
+  const { setSearchTerm, searchTerm, includeAdult, setIncludeAdult } = useAppContext();
   const { recents, addRecent, clearRecents } = useRecentSearches();
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,6 +57,7 @@ const SearchBox = () => {
   const showDropdown = dropdownOpen && recents.length > 0 && (inputValue === "" || inputValue === searchTerm);
 
   return (
+    <>
     <Dropdown
       open={showDropdown}
       onOpenChange={(visible) => {
@@ -82,6 +83,11 @@ const SearchBox = () => {
         style={{ width: "100%" }}
       />
     </Dropdown>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingLeft: 4 }}>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Adult content</Typography.Text>
+      <Switch size="small" checked={includeAdult} onChange={setIncludeAdult} />
+    </div>
+    </>
   );
 };
 

@@ -43,6 +43,7 @@ export interface FilterValues {
   language: string;
   minRuntime: string;
   maxRuntime: string;
+  includeAdult: boolean;
 }
 
 export type SortOption =
@@ -58,7 +59,7 @@ export interface Genre {
 }
 
 export interface UserList {
-  id: string;
+  id: number;
   name: string;
   description: string;
   items: WatchlistEntry[];

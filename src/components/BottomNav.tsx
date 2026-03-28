@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Badge, Button, Drawer, Space } from "antd";
+import { Badge, Button, Drawer, Space, Divider, Typography } from "antd";
 import {
   VideoCameraOutlined,
   PlaySquareOutlined,
@@ -12,13 +12,17 @@ import {
   BulbOutlined,
   CalendarOutlined,
   UnorderedListOutlined,
+  LoginOutlined,
+  LogoutOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useAuth } from "../context/AuthContext";
 
 const BottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { watchlist, watchedList } = useAppContext();
+  const { user, isAuthenticated, logout } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
 
   const coreItems = [
@@ -122,6 +126,39 @@ const BottomNav = () => {
               </Button>
             );
           })}
+
+          <Divider style={{ margin: "4px 0" }} />
+
+          {isAuthenticated ? (
+            <>
+              <Typography.Text type="secondary" style={{ paddingLeft: 16, fontSize: 12 }}>
+                Signed in as <strong>{user?.username}</strong>
+              </Typography.Text>
+              <Button
+                type="text"
+                icon={<LogoutOutlined />}
+                block
+                style={{ textAlign: "left", height: 44 }}
+                onClick={() => {
+                  setMoreOpen(false);
+                  logout();
+                  navigate("/movies");
+                }}
+              >
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="text"
+              icon={<LoginOutlined />}
+              block
+              style={{ textAlign: "left", height: 44 }}
+              onClick={() => handleMoreNav("/login")}
+            >
+              Sign In
+            </Button>
+          )}
         </Space>
       </Drawer>
     </>
