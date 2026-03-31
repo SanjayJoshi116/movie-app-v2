@@ -193,6 +193,26 @@ export interface TMDBTVSeason {
   air_date: string | null;
 }
 
+export interface TMDBEpisode {
+  id: number;
+  episode_number: number;
+  name: string;
+  overview: string;
+  air_date: string | null;
+  runtime: number | null;
+  still_path: string | null;
+  vote_average: number;
+}
+
+export interface TMDBSeasonDetail {
+  id: number;
+  name: string;
+  season_number: number;
+  episodes: TMDBEpisode[];
+  poster_path: string | null;
+  air_date: string | null;
+}
+
 export interface TMDBNetwork {
   id: number;
   name: string;

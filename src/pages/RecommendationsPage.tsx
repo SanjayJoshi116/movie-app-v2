@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider } from "antd";
 import { StarFilled, BulbOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { fetchPersonalizedRecommendations, type PersonalizedRecSection } from "../api/userApi";
 import {
   fetchSimilarMovies,
   fetchTVRecommendations,
@@ -62,6 +63,8 @@ function RecommendationsPage() {
   const { watchedList, allRatings } = useAppContext();
   const [sections, setSections] = useState<RecSection[]>([]);
   const [loading, setLoading] = useState(false);
+  const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>([]);
+  const [personalizedLoading, setPersonalizedLoading] = useState(false);
 
   useEffect(() => {
     if (watchedList.length === 0) return;
@@ -309,7 +312,19 @@ function RecommendationsPage() {
       .finally(() => setLoading(false));
   }, [watchedList, allRatings]);
 
-  const totalItems = sections.reduce((acc, s) => acc + s.items.length, 0);
+  useEffect(() => {
+    if (watchedList.length === 0) return;
+    setPersonalizedLoading(true);
+    fetchPersonalizedRecommendations()
+      .then((res) => setPersonalizedSections(res.data))
+      .catch((err) => {
+        console.error("Personalized recommendations error:", err?.response?.data ?? err);
+        setPersonalizedSections([]);
+      })
+      .finally(() => setPersonalizedLoading(false));
+  }, [watchedList]);
+
+  const totalItems = sections.reduce((acc, s) => acc + s.items.length, 0) + personalizedSections.reduce((acc, s) => acc + s.items.length, 0);
 
   return (
     <motion.div
@@ -353,8 +368,70 @@ function RecommendationsPage() {
           style={{ padding: "60px 0" }}
         />
       ) : (
-        sections.map((section) => (
-          <div key={section.key}>
+        <>
+          {personalizedLoading && (
+            <Spin size="small" style={{ display: "block", marginBottom: 16 }} />
+          )}
+          {personalizedSections.map((section) => (
+            <div key={section.key}>
+              <Divider orientation="left">
+                <Typography.Text strong style={{ fontSize: 15 }}>{section.label}</Typography.Text>
+              </Divider>
+              <Row gutter={[16, 20]} style={{ marginBottom: 8 }}>
+                {section.items.map((item) => (
+                  <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4} xl={4}>
+                    <motion.div
+                      whileHover={{ scale: 1.04, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    >
+                      <Card
+                        hoverable
+                        className="glass-card"
+                        onClick={() => navigate(`/${item.type === "movie" ? "movie" : "tv"}/${item.id}`, { state: { from: "/recommendations" } })}
+                        cover={
+                          <img
+                            src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/500x750?text=No+Image"}
+                            alt={item.title}
+                            loading="lazy"
+                            className="movie-poster-img"
+                          />
+                        }
+                        styles={{ body: { padding: "10px 12px" } }}
+                        style={{ height: "100%" }}
+                      >
+                        <Card.Meta
+                          title={
+                            <span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>
+                              {item.title}
+                            </span>
+                          }
+                          description={
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                              <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0 }}>
+                                <StarFilled style={{ marginRight: 2 }} />
+                                {item.voteAverage.toFixed(1)}
+                              </Tag>
+                              <Button
+                                size="small"
+                                type="primary"
+                                ghost
+                                onClick={(e) => { e.stopPropagation(); navigate(`/${item.type === "movie" ? "movie" : "tv"}/${item.id}`, { state: { from: "/recommendations" } }); }}
+                                aria-label={`Details for ${item.title}`}
+                              >
+                                Details
+                              </Button>
+                            </div>
+                          }
+                        />
+                      </Card>
+                    </motion.div>
+                  </Col>
+                ))}
+              </Row>
+            </div>
+          ))}
+          {sections.map((section) => (
+            <div key={section.key}>
             <Divider orientation="left">
               <Typography.Text strong style={{ fontSize: 15 }}>{section.label}</Typography.Text>
             </Divider>
@@ -410,7 +487,8 @@ function RecommendationsPage() {
               ))}
             </Row>
           </div>
-        ))
+          ))}
+        </>
       )}
     </motion.div>
   );

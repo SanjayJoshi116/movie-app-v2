@@ -5,6 +5,7 @@ import type {
   TMDBMovieDetail,
   TMDBTVSummary,
   TMDBTVDetail,
+  TMDBSeasonDetail,
   TMDBCredits,
   TMDBAggregateCreditsFull,
   TMDBImages,
@@ -142,6 +143,12 @@ export const fetchTVWatchProviders = (
   id: number | string,
 ): Promise<AxiosResponse<TMDBWatchProviderResponse>> =>
   api.get(`/tv/${id}/watch/providers`);
+
+export const fetchTVSeason = (
+  tvId: number | string,
+  seasonNumber: number,
+): Promise<AxiosResponse<TMDBSeasonDetail>> =>
+  api.get(`/tv/${tvId}/season/${seasonNumber}`);
 
 // ─── People ───────────────────────────────────────────────────────────────────
 

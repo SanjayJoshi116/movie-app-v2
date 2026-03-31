@@ -70,4 +70,21 @@ userApi.interceptors.response.use(
   }
 );
 
+export type PersonalizedRecItem = {
+  id: number;
+  type: "movie" | "tv";
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+};
+
+export type PersonalizedRecSection = {
+  key: string;
+  label: string;
+  items: PersonalizedRecItem[];
+};
+
+export const fetchPersonalizedRecommendations = () =>
+  userApi.get<PersonalizedRecSection[]>("/recommendations/personalized/");
+
 export default userApi;

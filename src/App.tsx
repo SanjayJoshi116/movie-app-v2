@@ -17,6 +17,7 @@ import WatchedPage from "./pages/WatchedPage";
 import AnimePage from "./pages/AnimePage";
 import CalendarPage from "./pages/CalendarPage";
 import ListsPage from "./pages/ListsPage";
+import SearchPage from "./pages/SearchPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import { useAppContext } from "./context/useAppContext";
@@ -117,6 +118,7 @@ function AppInner() {
               <Route path="/tv/:id" element={<ErrorBoundary><TVDetailPage /></ErrorBoundary>} />
               <Route path="/person/:id" element={<ErrorBoundary><PersonPage /></ErrorBoundary>} />
               <Route path="/people" element={<ErrorBoundary><PeoplePage /></ErrorBoundary>} />
+              <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />

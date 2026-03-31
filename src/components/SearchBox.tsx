@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Input, Dropdown, Typography, Switch } from "antd";
 import type { MenuProps } from "antd";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/useAppContext";
 import { useRecentSearches } from "../hooks/useRecentSearches";
 
@@ -15,9 +15,6 @@ const SearchBox = () => {
   const { setSearchTerm, searchTerm, includeAdult, setIncludeAdult } = useAppContext();
   const { recents, addRecent, clearRecents } = useRecentSearches();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const isBrowsePage = location.pathname === "/movies" || location.pathname === "/tv" || location.pathname === "/people";
 
   const handleSearch = (value: string) => {
     if (value === CLEAR_KEY) {
@@ -33,9 +30,7 @@ const SearchBox = () => {
     setSearchTerm(trimmed);
     addRecent(trimmed);
     setDropdownOpen(false);
-    if (!isBrowsePage) {
-      navigate("/movies");
-    }
+    navigate("/search");
   };
 
   const recentItems: MenuItem[] = recents.map((r) => ({ key: r, label: r }));

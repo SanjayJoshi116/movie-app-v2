@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import EpisodeGuide from "./EpisodeGuide";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox,
+  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox, Collapse,
 } from "antd";
 import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
@@ -327,6 +328,22 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 </div>
               ))}
             </div>
+          </>
+        )}
+
+        {/* Episode Guide */}
+        {tvShow.seasons?.length > 0 && (
+          <>
+            <Divider />
+            <Collapse
+              ghost
+              defaultActiveKey={["episode-guide"]}
+              items={[{
+                key: "episode-guide",
+                label: <Typography.Title level={4} style={{ margin: 0 }}>Episode Guide</Typography.Title>,
+                children: <EpisodeGuide tvId={tvShow.id} seasons={tvShow.seasons} />,
+              }]}
+            />
           </>
         )}
 

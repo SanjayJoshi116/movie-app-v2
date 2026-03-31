@@ -29,6 +29,7 @@ class WatchedEntry(models.Model):
     title = models.CharField(max_length=500)
     poster_path = models.CharField(max_length=500, blank=True, null=True)
     vote_average = models.FloatField(default=0)
+    genre_ids = models.JSONField(default=list)
     watched_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

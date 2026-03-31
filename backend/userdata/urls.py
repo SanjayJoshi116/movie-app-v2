@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
+from .recommendations import personalized_recommendations
 
 urlpatterns = [
     # Auth
@@ -25,4 +26,7 @@ urlpatterns = [
     path("lists/<int:pk>/", views.lists_detail),
     path("lists/<int:list_pk>/items/", views.list_items_create),
     path("lists/<int:list_pk>/items/<int:item_pk>/", views.list_items_detail),
+
+    # Personalized recommendations
+    path("recommendations/personalized/", personalized_recommendations),
 ]
