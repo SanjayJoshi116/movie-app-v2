@@ -10,7 +10,16 @@ const PORT = 3001;
 const TMDB_KEY = process.env.TMDB_API_KEY;
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests from any host on port 3000 (LAN access) or no origin (same-origin)
+    if (!origin || /^http:\/\/[^:]+:3000$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  }
+}));
 app.use(express.json());
 
 // Generic TMDB proxy — all TMDB calls go through here, key never reaches the browser
@@ -55,6 +64,6 @@ app.post("/api/mark-watched", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
 });

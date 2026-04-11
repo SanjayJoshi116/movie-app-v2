@@ -5,6 +5,17 @@ interface AuthUser {
   id: number;
   username: string;
   email: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface ProfileUpdateData {
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  email?: string;
+  current_password?: string;
+  new_password?: string;
 }
 
 interface AuthContextType {
@@ -14,6 +25,7 @@ interface AuthContextType {
   login(username: string, password: string): Promise<void>;
   register(username: string, email: string, password: string): Promise<void>;
   logout(): void;
+  updateProfile(data: ProfileUpdateData): Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -62,8 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateProfile = async (data: ProfileUpdateData) => {
+    const { data: updated } = await userApi.patch("/auth/profile/", data);
+    localStorage.setItem("cinedb_user", JSON.stringify(updated));
+    setUser(updated);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: user !== null, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

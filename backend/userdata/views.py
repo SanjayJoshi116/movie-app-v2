@@ -10,6 +10,7 @@ from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserLis
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
+    UserProfileUpdateSerializer,
     WatchlistEntrySerializer,
     WatchedEntrySerializer,
     RatingEntrySerializer,
@@ -50,6 +51,28 @@ def login(request):
         return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
     tokens = _tokens_for_user(user)
     return Response({"user": UserSerializer(user).data, **tokens})
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def profile(request):
+    if request.method == "GET":
+        return Response(UserSerializer(request.user).data)
+
+    serializer = UserProfileUpdateSerializer(data=request.data, context={"request": request})
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    user = request.user
+    for field in ("first_name", "last_name", "username", "email"):
+        if field in data:
+            setattr(user, field, data[field])
+    if data.get("new_password"):
+        user.set_password(data["new_password"])
+    user.save()
+    return Response(UserSerializer(user).data)
 
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────

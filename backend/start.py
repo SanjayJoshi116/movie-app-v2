@@ -33,4 +33,4 @@ manage = str(base / "manage.py")
 subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 
 # Step 3: Start server
-subprocess.run([sys.executable, manage, "runserver", "8000"], check=True)
+subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)

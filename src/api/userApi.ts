@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const API_HOST = window.location.hostname;
+
 const userApi = axios.create({
-  baseURL: "http://localhost:8000/api",
+  baseURL: `http://${API_HOST}:8000/api`,
 });
 
 userApi.interceptors.request.use((config) => {
@@ -48,7 +50,7 @@ userApi.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post("http://localhost:8000/api/auth/token/refresh/", {
+        const { data } = await axios.post(`http://${API_HOST}:8000/api/auth/token/refresh/`, {
           refresh,
         });
         localStorage.setItem("cinedb_access", data.access);
@@ -86,5 +88,8 @@ export type PersonalizedRecSection = {
 
 export const fetchPersonalizedRecommendations = () =>
   userApi.get<PersonalizedRecSection[]>("/recommendations/personalized/");
+
+export const updateProfile = (data: Record<string, string>) =>
+  userApi.patch("/auth/profile/", data);
 
 export default userApi;

@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { MenuProps } from "antd";
-import { Menu, Badge, Switch, Button, Typography, Divider } from "antd";
+import { Menu, Badge, Button, Typography, Divider, Avatar, Tooltip } from "antd";
 import {
   VideoCameraOutlined,
   PlaySquareOutlined,
@@ -17,11 +17,13 @@ import {
   UnorderedListOutlined,
   LoginOutlined,
   LogoutOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
+import ProfileModal from "./ProfileModal";
 
 interface Props {
   isBrowsePage: boolean;
@@ -29,11 +31,27 @@ interface Props {
   onToggleFilterPanel: () => void;
 }
 
+function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
+  const f = user.first_name?.trim() ?? "";
+  const l = user.last_name?.trim() ?? "";
+  if (f && l) return (f[0]! + l[0]!).toUpperCase();
+  if (f) return f.slice(0, 2).toUpperCase();
+  return user.username.slice(0, 2).toUpperCase();
+}
+
+const AVATAR_COLORS = ["#e67e22", "#8e44ad", "#2980b9", "#27ae60", "#c0392b", "#16a085"];
+function avatarColor(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? "#e67e22";
+}
+
 const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme, watchlist, watchedList } = useAppContext();
   const { user, isAuthenticated, logout } = useAuth();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const menuItems: MenuProps["items"] = [
     {
@@ -142,26 +160,45 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             Filters
           </Button>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 4 }}>
-          <Switch
-            checkedChildren={<SunOutlined />}
-            unCheckedChildren={<MoonOutlined />}
-            checked={theme === "light"}
-            onChange={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          />
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {theme === "dark" ? "Dark mode" : "Light mode"}
-          </Typography.Text>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <Tooltip title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+            <Button
+              type="text"
+              icon={theme === "dark" ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleTheme}
+              style={{ color: "#f5c518", padding: "0 4px" }}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            />
+          </Tooltip>
         </div>
 
         <Divider style={{ margin: "4px 0" }} />
 
-        {isAuthenticated ? (
+        {isAuthenticated && user ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Typography.Text style={{ fontSize: 12, paddingLeft: 4 }} type="secondary">
-              Signed in as <strong>{user?.username}</strong>
-            </Typography.Text>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
+              <Avatar
+                size={36}
+                style={{ backgroundColor: avatarColor(user.username), color: "#fff", fontWeight: 700, flexShrink: 0, cursor: "pointer" }}
+                onClick={() => setProfileOpen(true)}
+              >
+                {getInitials(user)}
+              </Avatar>
+              <div style={{ overflow: "hidden" }}>
+                <Typography.Text style={{ fontSize: 13, fontWeight: 600, display: "block", lineHeight: 1.2 }} ellipsis>
+                  {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
+                </Typography.Text>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined />}
+                  style={{ padding: 0, height: "auto", fontSize: 11 }}
+                  onClick={() => setProfileOpen(true)}
+                >
+                  Edit Profile
+                </Button>
+              </div>
+            </div>
             <Button
               icon={<LogoutOutlined />}
               type="text"
@@ -174,6 +211,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             >
               Sign Out
             </Button>
+            <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
           </div>
         ) : (
           <Button
