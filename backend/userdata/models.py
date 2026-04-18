@@ -80,3 +80,11 @@ class UserListItem(models.Model):
 
     def __str__(self):
         return f"{self.user_list.name} — {self.title}"
+
+
+class TMDBProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tmdb_profile")
+    session_id = models.CharField(max_length=200, blank=True, default="")
+
+    def __str__(self):
+        return f"{self.user.username} — TMDB {'connected' if self.session_id else 'disconnected'}"

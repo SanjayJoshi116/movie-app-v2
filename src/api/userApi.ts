@@ -97,4 +97,18 @@ export const bulkMarkWatched = (
   mediaType: "movie" | "tv",
 ) => userApi.post<{ added: number; skipped: number }>("/watched/bulk/", { entries, mediaType });
 
+export const getTMDBRequestToken = (callbackUrl: string) =>
+  userApi.get<{ redirect_url: string; request_token: string }>("/tmdb-auth/request-token/", {
+    params: { redirect_to: callbackUrl },
+  });
+
+export const createTMDBSession = (requestToken: string) =>
+  userApi.post<{ connected: boolean }>("/tmdb-auth/create-session/", { request_token: requestToken });
+
+export const getTMDBAuthStatus = () =>
+  userApi.get<{ connected: boolean }>("/tmdb-auth/status/");
+
+export const disconnectTMDB = () =>
+  userApi.delete<{ connected: boolean }>("/tmdb-auth/disconnect/");
+
 export default userApi;

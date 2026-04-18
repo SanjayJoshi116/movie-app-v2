@@ -32,7 +32,7 @@ const BottomNav = () => {
   const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
-    if (searchOpen) setSearchOpen(false);
+    setSearchOpen(false);
   }, [location.pathname]);
 
   const coreItems = [

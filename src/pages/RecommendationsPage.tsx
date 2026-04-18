@@ -80,6 +80,7 @@ function RecommendationsPage() {
         return true;
       });
 
+    let cancelled = false;
     setLoading(true);
 
     const run = async () => {
@@ -297,7 +298,7 @@ function RecommendationsPage() {
       });
 
       // ── Assemble final order ─────────────────────────────────────────────────
-      setSections([
+      if (!cancelled) setSections([
         ...(lovedSection ? [lovedSection] : []),
         ...(trendingSection ? [trendingSection] : []),
         ...genreSections,
@@ -308,20 +309,26 @@ function RecommendationsPage() {
     };
 
     run()
-      .catch((err) => console.error("Error building recommendations:", err))
-      .finally(() => setLoading(false));
+      .catch((err) => { if (!cancelled) console.error("Error building recommendations:", err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
   }, [watchedList, allRatings]);
 
   useEffect(() => {
     if (watchedList.length === 0) return;
+    let cancelled = false;
     setPersonalizedLoading(true);
     fetchPersonalizedRecommendations()
-      .then((res) => setPersonalizedSections(res.data))
+      .then((res) => { if (!cancelled) setPersonalizedSections(res.data); })
       .catch((err) => {
-        console.error("Personalized recommendations error:", err?.response?.data ?? err);
-        setPersonalizedSections([]);
+        if (!cancelled) {
+          console.error("Personalized recommendations error:", err?.response?.data ?? err);
+          setPersonalizedSections([]);
+        }
       })
-      .finally(() => setPersonalizedLoading(false));
+      .finally(() => { if (!cancelled) setPersonalizedLoading(false); });
+    return () => { cancelled = true; };
   }, [watchedList]);
 
   const totalItems = sections.reduce((acc, s) => acc + s.items.length, 0) + personalizedSections.reduce((acc, s) => acc + s.items.length, 0);

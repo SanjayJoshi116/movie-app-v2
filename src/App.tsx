@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { ConfigProvider, App as AntApp } from "antd";
@@ -6,25 +6,28 @@ import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
 import { FilterPanel } from "./components/layout/FilterPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
-import HomePage from "./pages/HomePage";
-import MovieDetailPage from "./pages/MovieDetailPage";
-import TVDetailPage from "./pages/TVDetailPage";
-import PersonPage from "./pages/PersonPage";
-import PeoplePage from "./pages/PeoplePage";
-import WatchlistPage from "./pages/WatchlistPage";
-import RecommendationsPage from "./pages/RecommendationsPage";
-import WatchedPage from "./pages/WatchedPage";
-import AnimePage from "./pages/AnimePage";
-import CalendarPage from "./pages/CalendarPage";
-import ListsPage from "./pages/ListsPage";
-import SearchPage from "./pages/SearchPage";
-import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
 import { useAppContext } from "./context/useAppContext";
 import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
 import "./App.css";
+
+const HomePage = lazy(() => import("./pages/HomePage"));
+const MovieDetailPage = lazy(() => import("./pages/MovieDetailPage"));
+const TVDetailPage = lazy(() => import("./pages/TVDetailPage"));
+const PersonPage = lazy(() => import("./pages/PersonPage"));
+const PeoplePage = lazy(() => import("./pages/PeoplePage"));
+const WatchlistPage = lazy(() => import("./pages/WatchlistPage"));
+const RecommendationsPage = lazy(() => import("./pages/RecommendationsPage"));
+const WatchedPage = lazy(() => import("./pages/WatchedPage"));
+const AnimePage = lazy(() => import("./pages/AnimePage"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const ListsPage = lazy(() => import("./pages/ListsPage"));
+const SearchPage = lazy(() => import("./pages/SearchPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const TMDBCallbackPage = lazy(() => import("./pages/TMDBCallbackPage"));
 
 function AppInner() {
   const location = useLocation();
@@ -83,6 +86,7 @@ function AppInner() {
             />
           )}
 
+          <Suspense fallback={<div />}>
           <AnimatePresence mode="wait">
             <Routes location={location} key={location.pathname}>
               <Route path="/" element={<Navigate to="/movies" replace />} />
@@ -121,6 +125,7 @@ function AppInner() {
               <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/tmdb-callback" element={<TMDBCallbackPage />} />
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />
               <Route path="/watched" element={<ErrorBoundary><WatchedPage /></ErrorBoundary>} />
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
@@ -129,6 +134,7 @@ function AppInner() {
               <Route path="*" element={<Navigate to="/movies" replace />} />
             </Routes>
           </AnimatePresence>
+          </Suspense>
         </main>
 
         {isAuthenticated && <BottomNav />}

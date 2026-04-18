@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useWatchlist } from "../hooks/useWatchlist";
 import { useRatings } from "../hooks/useRatings";
@@ -26,22 +26,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [theme]);
 
-  const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
+  const toggleTheme = useCallback(
+    () => setTheme((t) => (t === "dark" ? "light" : "dark")),
+    [setTheme]
+  );
 
-  const toggleGenre = (genreId: number) => {
+  const toggleGenre = useCallback((genreId: number) => {
     setSelectedGenres((prev) =>
       prev.includes(genreId)
         ? prev.filter((id) => id !== genreId)
         : [...prev, genreId]
     );
-  };
+  }, []);
 
-  const clearGenres = () => setSelectedGenres([]);
-  const clearSearch = () => setSearchTerm("");
+  const clearGenres = useCallback(() => setSelectedGenres([]), []);
+  const clearSearch = useCallback(() => setSearchTerm(""), []);
 
   const isDataLoading = watchlist.isLoading || ratings.isLoading || watched.isLoading;
 
-  const value: AppContextType = {
+  const value = useMemo<AppContextType>(() => ({
     searchTerm,
     setSearchTerm,
     clearSearch,
@@ -69,7 +72,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getRating: ratings.get,
     removeRating: ratings.remove,
     isDataLoading,
-  };
+  }), [
+    searchTerm, setSearchTerm, clearSearch,
+    includeAdult, setIncludeAdult,
+    selectedGenres, toggleGenre, clearGenres,
+    theme, toggleTheme,
+    watchlist.watchlist, watchlist.add, watchlist.remove, watchlist.isIn, watchlist.toggle, watchlist.markWatched,
+    watched.watchedList, watched.add, watched.remove, watched.clearAll, watched.isWatched, watched.toggle,
+    ratings.ratings, ratings.set, ratings.get, ratings.remove,
+    isDataLoading,
+  ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

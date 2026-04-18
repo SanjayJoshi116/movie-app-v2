@@ -32,4 +32,10 @@ urlpatterns = [
 
     # Personalized recommendations
     path("recommendations/personalized/", personalized_recommendations),
+
+    # TMDB OAuth
+    path("tmdb-auth/request-token/", views.tmdb_request_token),
+    path("tmdb-auth/create-session/", views.tmdb_create_session),
+    path("tmdb-auth/status/", views.tmdb_auth_status),
+    path("tmdb-auth/disconnect/", views.tmdb_disconnect),
 ]

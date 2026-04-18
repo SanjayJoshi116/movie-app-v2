@@ -33,3 +33,44 @@ def get_genre_names(media_type):
     """Return {genre_id: name} map for movie or tv."""
     data = _get(f"/genre/{media_type}/list")
     return {g["id"]: g["name"] for g in data.get("genres", [])}
+
+
+def _post(path, body=None, params=None):
+    p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
+    r = requests.post(f"{TMDB_BASE}{path}", params=p, json=body or {}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def _delete(path, params=None):
+    p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
+    r = requests.delete(f"{TMDB_BASE}{path}", params=p, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_request_token():
+    """Request a new TMDB authentication token."""
+    return _get("/authentication/token/new")
+
+
+def create_session(request_token):
+    """Exchange an approved request token for a session_id."""
+    return _post("/authentication/session/new", {"request_token": request_token})
+
+
+def post_rating(media_type, media_id, session_id, value):
+    """Post a rating (0.5–10) to TMDB for a movie or TV show."""
+    return _post(
+        f"/{media_type}/{media_id}/rating",
+        {"value": value},
+        {"session_id": session_id},
+    )
+
+
+def delete_rating(media_type, media_id, session_id):
+    """Delete a rating from TMDB for a movie or TV show."""
+    return _delete(
+        f"/{media_type}/{media_id}/rating",
+        {"session_id": session_id},
+    )

@@ -6,7 +6,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserListItem
+from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserListItem, TMDBProfile
+from . import tmdb_client
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
@@ -214,6 +215,19 @@ def ratings_list(request):
             "review": serializer.validated_data.get("review", ""),
         },
     )
+    # Mirror rating to TMDB if user has a connected session
+    try:
+        tmdb_profile = request.user.tmdb_profile
+        if tmdb_profile.session_id:
+            tmdb_client.post_rating(
+                entry.media_type,
+                entry.media_id,
+                tmdb_profile.session_id,
+                entry.user_rating,
+            )
+    except (TMDBProfile.DoesNotExist, AttributeError, Exception):
+        pass  # TMDB sync is best-effort; local save already succeeded
+
     return Response(RatingEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
 
@@ -222,6 +236,13 @@ def ratings_list(request):
 def ratings_detail(request, pk):
     entry = get_object_or_404(RatingEntry, pk=pk, user=request.user)
     if request.method == "DELETE":
+        # Mirror deletion to TMDB if user has a connected session
+        try:
+            tmdb_profile = request.user.tmdb_profile
+            if tmdb_profile.session_id:
+                tmdb_client.delete_rating(entry.media_type, entry.media_id, tmdb_profile.session_id)
+        except (TMDBProfile.DoesNotExist, AttributeError, Exception):
+            pass
         entry.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     serializer = RatingEntrySerializer(entry, data=request.data, partial=True)
@@ -286,3 +307,61 @@ def list_items_detail(request, list_pk, item_pk):
     item = get_object_or_404(UserListItem, pk=item_pk, user_list=user_list)
     item.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── TMDB OAuth ────────────────────────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tmdb_request_token(request):
+    """Return a TMDB request token and the approval redirect URL."""
+    redirect_to = request.query_params.get("redirect_to", "")
+    try:
+        data = tmdb_client.get_request_token()
+        token = data["request_token"]
+        redirect_url = f"https://www.themoviedb.org/authenticate/{token}?redirect_to={redirect_to}"
+        return Response({"redirect_url": redirect_url, "request_token": token})
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def tmdb_create_session(request):
+    """Exchange an approved request token for a session_id and store it."""
+    request_token = request.data.get("request_token", "")
+    if not request_token:
+        return Response({"error": "request_token is required."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        data = tmdb_client.create_session(request_token)
+        session_id = data["session_id"]
+        profile, _ = TMDBProfile.objects.get_or_create(user=request.user)
+        profile.session_id = session_id
+        profile.save()
+        return Response({"connected": True})
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tmdb_auth_status(request):
+    """Return whether the user has a connected TMDB session."""
+    try:
+        profile = request.user.tmdb_profile
+        return Response({"connected": bool(profile.session_id)})
+    except TMDBProfile.DoesNotExist:
+        return Response({"connected": False})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def tmdb_disconnect(request):
+    """Clear the user's TMDB session."""
+    try:
+        profile = request.user.tmdb_profile
+        profile.session_id = ""
+        profile.save()
+    except TMDBProfile.DoesNotExist:
+        pass
+    return Response({"connected": False})

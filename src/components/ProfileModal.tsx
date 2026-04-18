@@ -1,8 +1,10 @@
-import React, { useState } from "react";
-import { Modal, Form, Input, Button, Divider } from "antd";
+import React, { useState, useEffect } from "react";
+import { Modal, Form, Input, Button, Divider, Tag } from "antd";
+import { CheckCircleOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../hooks/useToast";
 import CSVUploadModal from "./CSVUploadModal";
+import { getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB } from "../api/userApi";
 
 interface Props {
   open: boolean;
@@ -14,7 +16,15 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [tmdbConnected, setTmdbConnected] = useState(false);
+  const [tmdbLoading, setTmdbLoading] = useState(false);
   const [form] = Form.useForm();
+
+  useEffect(() => {
+    if (open) {
+      getTMDBAuthStatus().then((res) => setTmdbConnected(res.data.connected)).catch(() => {});
+    }
+  }, [open]);
 
   const handleSubmit = async (values: {
     first_name: string;
@@ -45,6 +55,30 @@ const ProfileModal = ({ open, onClose }: Props) => {
       showError(detail);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConnectTMDB = async () => {
+    setTmdbLoading(true);
+    try {
+      const res = await getTMDBRequestToken(window.location.origin + "/tmdb-callback");
+      window.location.href = res.data.redirect_url;
+    } catch {
+      showError("Could not connect to TMDB. Try again.");
+      setTmdbLoading(false);
+    }
+  };
+
+  const handleDisconnectTMDB = async () => {
+    setTmdbLoading(true);
+    try {
+      await disconnectTMDB();
+      setTmdbConnected(false);
+      showSuccess("TMDB account disconnected.");
+    } catch {
+      showError("Failed to disconnect.");
+    } finally {
+      setTmdbLoading(false);
     }
   };
 
@@ -141,6 +175,22 @@ const ProfileModal = ({ open, onClose }: Props) => {
       <Button block onClick={() => setCsvOpen(true)}>
         Import Watched from CSV
       </Button>
+
+      <Divider style={{ margin: "16px 0 12px" }}>TMDB Account</Divider>
+      {tmdbConnected ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
+            Connected
+          </Tag>
+          <Button size="small" danger loading={tmdbLoading} onClick={handleDisconnectTMDB}>
+            Disconnect
+          </Button>
+        </div>
+      ) : (
+        <Button block loading={tmdbLoading} onClick={handleConnectTMDB}>
+          Connect TMDB Account
+        </Button>
+      )}
 
       <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} />
     </Modal>
