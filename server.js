@@ -3,6 +3,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
+const os = require("os");
 const { createObjectCsvWriter } = require("csv-writer");
 
 const app = express();
@@ -21,6 +22,29 @@ app.use(cors({
   }
 }));
 app.use(express.json());
+
+// Django API proxy — forwards to local Django on port 8000
+app.use("/api/django", async (req, res) => {
+  const DJANGO_BASE = "http://localhost:8000/api";
+  const targetUrl = `${DJANGO_BASE}${req.path}`;
+  try {
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      params: req.query,
+      data: req.body,
+      headers: {
+        "Content-Type": req.headers["content-type"] || "application/json",
+        ...(req.headers["authorization"] ? { Authorization: req.headers["authorization"] } : {}),
+      },
+    });
+    res.status(response.status).json(response.data);
+  } catch (err) {
+    const status = err.response?.status || 500;
+    const data = err.response?.data || { error: err.message };
+    res.status(status).json(data);
+  }
+});
 
 // Generic TMDB proxy — all TMDB calls go through here, key never reaches the browser
 app.get("/api/tmdb/*", async (req, res) => {
@@ -65,5 +89,15 @@ app.post("/api/mark-watched", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
+  const nets = os.networkInterfaces();
+  const ips = Object.values(nets)
+    .flat()
+    .filter((n) => n.family === "IPv4" && !n.internal)
+    .map((n) => n.address);
+
+  console.log(`\nExpress proxy → http://localhost:${PORT}`);
+  ips.forEach((ip) => console.log(`                http://${ip}:${PORT}`));
+  console.log(`\nOpen the app at:`);
+  console.log(`  Local:   http://localhost:3000`);
+  ips.forEach((ip) => console.log(`  Network: http://${ip}:3000`));
 });

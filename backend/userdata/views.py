@@ -150,6 +150,49 @@ def watched_detail(request, pk):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def watched_clear(request):
+    deleted, _ = WatchedEntry.objects.filter(user=request.user).delete()
+    return Response({"deleted": deleted}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_watched(request):
+    entries = request.data.get("entries", [])
+    if not isinstance(entries, list):
+        return Response({"detail": "entries must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+    media_type = request.data.get("mediaType", "movie")
+    if media_type not in ("movie", "tv"):
+        return Response({"detail": "mediaType must be 'movie' or 'tv'."}, status=status.HTTP_400_BAD_REQUEST)
+
+    added = 0
+    skipped = 0
+    for item in entries:
+        media_id = item.get("mediaId")
+        title = item.get("title", "")
+        if not media_id:
+            continue
+        _, created = WatchedEntry.objects.get_or_create(
+            user=request.user,
+            media_id=media_id,
+            media_type=media_type,
+            defaults={
+                "title": title,
+                "poster_path": item.get("posterPath"),
+                "vote_average": item.get("voteAverage", 0),
+            },
+        )
+        if created:
+            added += 1
+        else:
+            skipped += 1
+
+    return Response({"added": added, "skipped": skipped}, status=status.HTTP_200_OK)
+
+
 # ── Ratings ───────────────────────────────────────────────────────────────────
 
 @api_view(["GET", "POST"])

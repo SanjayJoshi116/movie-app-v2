@@ -75,5 +75,12 @@ export function useWatched() {
     }
   };
 
-  return { watchedList, isLoading, add, remove, isWatched, toggle };
+  const clearAll = async () => {
+    if (!isAuthenticated) return;
+    await userApi.delete("/watched/clear/");
+    dbIdMap.current = {};
+    setWatchedList([]);
+  };
+
+  return { watchedList, isLoading, add, remove, isWatched, toggle, clearAll };
 }

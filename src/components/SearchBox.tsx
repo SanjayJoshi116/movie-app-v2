@@ -74,13 +74,14 @@ const SearchBox = () => {
         onFocus={() => setDropdownOpen(true)}
         placeholder="Search movies, shows or people…"
         allowClear
+        size="large"
         aria-label="Search for movies or shows"
         style={{ width: "100%" }}
       />
     </Dropdown>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingLeft: 4 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>Adult content</Typography.Text>
-      <Switch size="small" checked={includeAdult} onChange={setIncludeAdult} />
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingLeft: 4 }}>
+      <Typography.Text type="secondary" style={{ fontSize: 14 }}>Adult content</Typography.Text>
+      <Switch checked={includeAdult} onChange={setIncludeAdult} />
     </div>
     </>
   );

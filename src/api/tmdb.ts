@@ -48,6 +48,16 @@ export const fetchMovieDetails = (
     params: { append_to_response: "credits,images,videos,recommendations" },
   });
 
+export const fetchMoviePoster = (
+  id: number | string,
+): Promise<AxiosResponse<{ poster_path: string | null; vote_average: number }>> =>
+  api.get(`/movie/${id}`);
+
+export const fetchTVPoster = (
+  id: number | string,
+): Promise<AxiosResponse<{ poster_path: string | null; vote_average: number }>> =>
+  api.get(`/tv/${id}`);
+
 export const fetchMovieReviews = (
   id: number | string,
   page = 1,

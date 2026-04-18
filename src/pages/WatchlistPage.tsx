@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -9,9 +9,6 @@ import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import WatchlistStats from "../components/watchlist/WatchlistStats";
-import StreamingBadges from "../components/StreamingBadges";
-import { fetchMovieProviders, fetchTVWatchProviders } from "../api/tmdb";
-import type { TMDBProviderRegion } from "../types";
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -20,6 +17,7 @@ const pageVariants = {
 };
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
+const NO_IMAGE = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450'%3E%3Crect width='300' height='450' fill='%231a1a2e'/%3E%3Ctext x='150' y='225' text-anchor='middle' dominant-baseline='middle' fill='%23555' font-size='14' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E`;
 
 interface RatingTarget {
   id: number;
@@ -32,25 +30,6 @@ function WatchlistPage() {
   const { watchlist, removeFromWatchlist, getRating, setRating, allRatings } = useAppContext();
   const { showSuccess } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
-  const [providersMap, setProvidersMap] = useState<Record<string, TMDBProviderRegion>>({});
-
-  useEffect(() => {
-    if (watchlist.length === 0) return;
-    Promise.allSettled(
-      watchlist.map((item) =>
-        (item.type === "movie" ? fetchMovieProviders(item.id) : fetchTVWatchProviders(item.id))
-          .then((res) => ({ key: `${item.type}-${item.id}`, region: res.data.results?.["US"] }))
-      )
-    ).then((results) => {
-      const map: Record<string, TMDBProviderRegion> = {};
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value.region) {
-          map[r.value.key] = r.value.region;
-        }
-      }
-      setProvidersMap(map);
-    });
-  }, [watchlist]);
 
   return (
     <motion.div
@@ -89,7 +68,7 @@ function WatchlistPage() {
                       src={
                         item.posterPath
                           ? `${IMG_URL}${item.posterPath}`
-                          : "https://placehold.co/300x450?text=No+Image"
+                          : NO_IMAGE
                       }
                       alt={item.title}
                       className="movie-poster-img"
@@ -146,7 +125,6 @@ function WatchlistPage() {
                     )}
                   </Space>
 
-                  <StreamingBadges providers={providersMap[`${item.type}-${item.id}`]} />
 
                   {rating?.review && (
                     <Typography.Paragraph

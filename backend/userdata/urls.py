@@ -16,6 +16,8 @@ urlpatterns = [
 
     # Watched
     path("watched/", views.watched_list),
+    path("watched/clear/", views.watched_clear),
+    path("watched/bulk/", views.bulk_watched),
     path("watched/<int:pk>/", views.watched_detail),
 
     # Ratings

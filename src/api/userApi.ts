@@ -3,7 +3,7 @@ import axios from "axios";
 const API_HOST = window.location.hostname;
 
 const userApi = axios.create({
-  baseURL: `http://${API_HOST}:8000/api`,
+  baseURL: `http://${API_HOST}:3001/api/django`,
 });
 
 userApi.interceptors.request.use((config) => {
@@ -50,7 +50,7 @@ userApi.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post(`http://${API_HOST}:8000/api/auth/token/refresh/`, {
+        const { data } = await axios.post(`http://${API_HOST}:3001/api/django/auth/token/refresh/`, {
           refresh,
         });
         localStorage.setItem("cinedb_access", data.access);
@@ -91,5 +91,10 @@ export const fetchPersonalizedRecommendations = () =>
 
 export const updateProfile = (data: Record<string, string>) =>
   userApi.patch("/auth/profile/", data);
+
+export const bulkMarkWatched = (
+  entries: { mediaId: number; title: string; posterPath?: string | null; voteAverage?: number }[],
+  mediaType: "movie" | "tv",
+) => userApi.post<{ added: number; skipped: number }>("/watched/bulk/", { entries, mediaType });
 
 export default userApi;

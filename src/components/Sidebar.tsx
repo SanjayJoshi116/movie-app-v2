@@ -86,7 +86,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
     {
       key: "/watched",
       icon: (
-        <Badge count={watchedList.length} size="small" color="#52c41a">
+        <Badge count={watchedList.length} size="small" color="#52c41a" overflowCount={Infinity}>
           <EyeOutlined />
         </Badge>
       ),

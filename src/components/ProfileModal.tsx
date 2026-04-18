@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Modal, Form, Input, Button, Divider } from "antd";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../hooks/useToast";
+import CSVUploadModal from "./CSVUploadModal";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const { user, updateProfile } = useAuth();
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
   const [form] = Form.useForm();
 
   const handleSubmit = async (values: {
@@ -134,6 +136,13 @@ const ProfileModal = ({ open, onClose }: Props) => {
           </Button>
         </Form.Item>
       </Form>
+
+      <Divider style={{ margin: "16px 0 12px" }} />
+      <Button block onClick={() => setCsvOpen(true)}>
+        Import Watched from CSV
+      </Button>
+
+      <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} />
     </Modal>
   );
 };

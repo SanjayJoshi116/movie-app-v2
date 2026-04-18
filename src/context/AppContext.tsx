@@ -61,6 +61,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     watchedList: watched.watchedList,
     addToWatched: watched.add,
     removeFromWatched: watched.remove,
+    clearAllWatched: watched.clearAll,
     isWatched: watched.isWatched,
     toggleWatched: watched.toggle,
     allRatings: ratings.ratings,
