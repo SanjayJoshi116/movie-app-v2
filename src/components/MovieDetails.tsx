@@ -410,18 +410,20 @@ const MovieDetails = ({ movie }: Props) => {
         {images?.backdrops?.length > 0 && (
           <>
             <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Images</Typography.Title></Divider>
-            <Row gutter={[12, 12]}>
-              {images.backdrops.slice(0, 10).map((image, index) => (
-                <Col key={index} xs={12} sm={8} md={6}>
-                  <Image
-                    src={`${IMG_URL}${image.file_path}`}
-                    alt={`Backdrop ${index + 1}`}
-                    className="backdrop-img"
-                    style={{ borderRadius: 8 }}
-                  />
-                </Col>
-              ))}
-            </Row>
+            <Image.PreviewGroup>
+              <Row gutter={[12, 12]}>
+                {images.backdrops.slice(0, 10).map((image, index) => (
+                  <Col key={index} xs={12} sm={8} md={6}>
+                    <Image
+                      src={`${IMG_URL}${image.file_path}`}
+                      alt={`Backdrop ${index + 1}`}
+                      className="backdrop-img"
+                      style={{ borderRadius: 8 }}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            </Image.PreviewGroup>
           </>
         )}
 
