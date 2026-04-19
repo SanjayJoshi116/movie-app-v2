@@ -89,6 +89,9 @@ export type PersonalizedRecSection = {
 export const fetchPersonalizedRecommendations = () =>
   userApi.get<PersonalizedRecSection[]>("/recommendations/personalized/");
 
+export const fetchForYouRecommendations = () =>
+  userApi.get<PersonalizedRecSection[]>("/recommendations/for-you/");
+
 export const updateProfile = (data: Record<string, string>) =>
   userApi.patch("/auth/profile/", data);
 

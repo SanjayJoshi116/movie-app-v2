@@ -29,6 +29,23 @@ def discover(media_type, genre_ids, page=1):
     return data.get("results", [])
 
 
+def get_details_with_cast(media_id, media_type):
+    """Return {genre_ids, top_cast} for a movie or TV show."""
+    if media_type == "movie":
+        data = _get(f"/movie/{media_id}", {"append_to_response": "credits"})
+        cast = [
+            {"id": c["id"], "name": c["name"]}
+            for c in (data.get("credits") or {}).get("cast", [])[:3]
+        ]
+    else:
+        data = _get(f"/tv/{media_id}")
+        cast = []
+    return {
+        "genre_ids": [g["id"] for g in data.get("genres", [])],
+        "top_cast": cast,
+    }
+
+
 def get_genre_names(media_type):
     """Return {genre_id: name} map for movie or tv."""
     data = _get(f"/genre/{media_type}/list")

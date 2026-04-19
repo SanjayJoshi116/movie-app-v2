@@ -1,13 +1,273 @@
+import random
+from datetime import timedelta
+
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from django.db import IntegrityError
+from django.utils import timezone
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WatchedEntry, RatingEntry
+from .models import WatchedEntry, RatingEntry, TMDBMediaCache
 from . import tmdb_client
+
+CACHE_TTL_DAYS = 7
+
+
+def _ensure_cached(entry):
+    """Return a TMDBMediaCache row for entry, fetching from TMDB if stale/missing."""
+    cutoff = timezone.now() - timedelta(days=CACHE_TTL_DAYS)
+    cached = TMDBMediaCache.objects.filter(
+        media_id=entry.media_id, media_type=entry.media_type
+    ).first()
+    if cached and cached.cached_at >= cutoff:
+        return cached
+    try:
+        details = tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
+    except Exception:
+        details = {"genre_ids": [], "top_cast": []}
+    try:
+        cached, _ = TMDBMediaCache.objects.update_or_create(
+            media_id=entry.media_id,
+            media_type=entry.media_type,
+            defaults={"genre_ids": details["genre_ids"], "top_cast": details["top_cast"]},
+        )
+    except IntegrityError:
+        # Another thread won the race — just read what it wrote
+        cached = TMDBMediaCache.objects.filter(
+            media_id=entry.media_id, media_type=entry.media_type
+        ).first()
+    return cached
+
+
+def _interleave(a, b):
+    result = []
+    for i in range(max(len(a), len(b))):
+        if i < len(a):
+            result.append(a[i])
+        if i < len(b):
+            result.append(b[i])
+    return result
+
+
+def _tmdb_item(r, media_type):
+    return {
+        "id": r.get("id"),
+        "type": media_type,
+        "title": r.get("title") or r.get("name", ""),
+        "posterPath": r.get("poster_path"),
+        "voteAverage": r.get("vote_average", 0),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def recommendations_for_you(request):
+    watched = list(WatchedEntry.objects.filter(user=request.user))
+    if not watched:
+        return Response([])
+
+    rating_map = {
+        f"{r.media_type}-{r.media_id}": r.user_rating
+        for r in RatingEntry.objects.filter(user=request.user)
+    }
+
+    # ── Cache: parallel fetch for all watched items ──────────────────────────
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        cache_rows = list(ex.map(_ensure_cached, watched))
+
+    cache_by_key = {
+        f"{row.media_type}-{row.media_id}": row for row in cache_rows
+    }
+
+    # ── Build frequency maps ─────────────────────────────────────────────────
+    genre_count = {}
+    loved_genre_count = {}
+    cast_count = {}
+
+    cast_sample_keys = {
+        f"{w.media_type}-{w.media_id}"
+        for w in random.sample(watched, min(20, len(watched)))
+    }
+
+    sorted_watched = sorted(
+        watched,
+        key=lambda w: (-(rating_map.get(f"{w.media_type}-{w.media_id}", 0)), -w.watched_at.timestamp()),
+    )
+
+    for w in watched:
+        key = f"{w.media_type}-{w.media_id}"
+        row = cache_by_key.get(key)
+        if not row:
+            continue
+        user_rating = rating_map.get(key, 0)
+        for gid in (row.genre_ids or []):
+            genre_count[gid] = genre_count.get(gid, 0) + 1
+            if user_rating >= 7:
+                loved_genre_count[gid] = loved_genre_count.get(gid, 0) + 1
+        if key in cast_sample_keys:
+            for c in (row.top_cast or []):
+                actor_id = c["id"]
+                entry = cast_count.get(actor_id, {"name": c["name"], "count": 0})
+                entry["count"] += 1
+                cast_count[actor_id] = entry
+
+    top_genres = sorted(genre_count, key=lambda g: -genre_count[g])[:3]
+    top_loved_genres = sorted(loved_genre_count, key=lambda g: -loved_genre_count[g])[:2]
+    top_actors = sorted(cast_count.items(), key=lambda x: -x[1]["count"])[:3]
+
+    # Seeds for "Because you watched X"
+    by_rating = sorted_watched[:3]
+    by_recency_ids = {f"{w.media_type}-{w.media_id}" for w in by_rating}
+    by_recency = [
+        w for w in sorted(watched, key=lambda w: -w.watched_at.timestamp())
+        if f"{w.media_type}-{w.media_id}" not in by_recency_ids
+    ][:2]
+    because_source = by_rating + by_recency
+
+    watched_set = {(w.media_id, w.media_type) for w in watched}
+    seen = set()
+
+    def filter_new(items):
+        out = []
+        for item in items:
+            k = (item["id"], item["type"])
+            if k in watched_set or k in seen:
+                continue
+            seen.add(k)
+            out.append(item)
+        return out
+
+    sections = []
+
+    # ── Fetch genre names ────────────────────────────────────────────────────
+    try:
+        genre_name_map = {
+            **tmdb_client.get_genre_names("movie"),
+            **tmdb_client.get_genre_names("tv"),
+        }
+    except Exception:
+        genre_name_map = {}
+
+    def discover_mixed(genre_id):
+        mov, tv = [], []
+        try:
+            mov = [_tmdb_item(r, "movie") for r in tmdb_client.discover("movie", [genre_id])]
+        except Exception:
+            pass
+        try:
+            tv = [_tmdb_item(r, "tv") for r in tmdb_client.discover("tv", [genre_id])]
+        except Exception:
+            pass
+        return _interleave(mov, tv)
+
+    # ── 1. More like what you love ───────────────────────────────────────────
+    if top_loved_genres:
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            loved_results = list(ex.map(discover_mixed, top_loved_genres))
+        loved_items = filter_new(
+            [item for sublist in loved_results for item in sublist]
+        )[:12]
+        if loved_items:
+            sections.append({"key": "loved", "label": "More like what you love", "items": loved_items})
+
+    # ── 2. Trending This Week ─────────────────────────────────────────────────
+    try:
+        trending_data = tmdb_client._get("/trending/all/week")
+        trending_items = filter_new([
+            _tmdb_item(r, r.get("media_type"))
+            for r in trending_data.get("results", [])
+            if r.get("media_type") in ("movie", "tv")
+        ])[:12]
+        if trending_items:
+            sections.append({"key": "trending", "label": "Trending This Week", "items": trending_items})
+    except Exception:
+        pass
+
+    # ── 3. Genre sections ─────────────────────────────────────────────────────
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        genre_results = list(ex.map(discover_mixed, top_genres))
+    for genre_id, items in zip(top_genres, genre_results):
+        filtered = filter_new(items)[:12]
+        if filtered:
+            genre_name = genre_name_map.get(genre_id, f"Genre {genre_id}")
+            sections.append({
+                "key": f"genre-{genre_id}",
+                "label": f"Based on your taste in {genre_name}",
+                "items": filtered,
+            })
+
+    # ── 4. Because you watched X ──────────────────────────────────────────────
+    def fetch_similar(w):
+        try:
+            if w.media_type == "movie":
+                data = tmdb_client._get(f"/movie/{w.media_id}/similar")
+            else:
+                data = tmdb_client._get(f"/tv/{w.media_id}/recommendations")
+            return w, [_tmdb_item(r, w.media_type) for r in data.get("results", [])]
+        except Exception:
+            return w, []
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        because_results = list(ex.map(fetch_similar, because_source))
+    for w, items in because_results:
+        filtered = filter_new(items)[:12]
+        if filtered:
+            sections.append({
+                "key": f"because-{w.media_id}",
+                "label": f"Because you watched {w.title}",
+                "items": filtered,
+            })
+
+    # ── 5. Hidden Gems ────────────────────────────────────────────────────────
+    def fetch_gems(media_type):
+        try:
+            return [_tmdb_item(r, media_type) for r in tmdb_client._get(
+                f"/discover/{media_type}",
+                {
+                    "sort_by": "vote_average.desc",
+                    "vote_average.gte": 7.5,
+                    "vote_count.gte": 50,
+                    "vote_count.lte": 1500,
+                }
+            ).get("results", [])]
+        except Exception:
+            return []
+
+    gems_mov = filter_new(_interleave(fetch_gems("movie"), fetch_gems("tv")))[:12]
+    if gems_mov:
+        sections.append({"key": "hidden-gems", "label": "Hidden Gems", "items": gems_mov})
+
+    # ── 6. Because you like [Actor] ───────────────────────────────────────────
+    def fetch_actor_credits(actor_tuple):
+        actor_id, info = actor_tuple
+        try:
+            data = tmdb_client._get(f"/person/{actor_id}/combined_credits")
+            items = [
+                _tmdb_item(c, c.get("media_type"))
+                for c in data.get("cast", [])
+                if c.get("media_type") in ("movie", "tv") and (c.get("vote_average") or 0) >= 6
+            ]
+            items.sort(key=lambda x: -x["voteAverage"])
+            return info["name"], items
+        except Exception:
+            return info["name"], []
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        actor_results = list(ex.map(fetch_actor_credits, top_actors))
+    for name, items in actor_results:
+        filtered = filter_new(items)[:12]
+        if filtered:
+            sections.append({
+                "key": f"actor-{name}",
+                "label": f"Because you like {name}",
+                "items": filtered,
+            })
+
+    return Response(sections)
 
 
 def _fill_genre(entry):
