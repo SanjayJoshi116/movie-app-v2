@@ -43,7 +43,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
             className="movie-poster-img"
           />
         }
-        bodyStyle={{ padding: "10px 12px" }}
+        styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}
       >
         <Card.Meta

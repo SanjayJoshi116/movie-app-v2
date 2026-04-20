@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Space, Button, Alert } from "antd";
+import { Space, Button, Alert, Typography } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
@@ -47,7 +47,7 @@ interface Props {
 }
 
 function HomePage({ tab, externalFilters, externalSortBy }: Props) {
-  const { searchTerm, setSearchTerm, selectedGenres, clearGenres, includeAdult, isWatched } = useAppContext();
+  const { searchTerm, setSearchTerm, selectedGenres, clearGenres, includeAdult, isWatched, watchedList } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const isMovie = tab === "movies";
@@ -227,6 +227,10 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     ? allItems
     : allItems.filter((item) => !isWatched(item.id, mediaType));
 
+  const recentWatched = watchedList
+    .filter((item) => item.type === (tab === "movies" ? "movie" : "tv"))
+    .slice(0, 8);
+
   return (
     <motion.div
       variants={pageVariants}
@@ -236,6 +240,34 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
       transition={{ duration: 0.2 }}
     >
       <HeroBanner mediaType={tab === "tv" ? "tv" : "movie"} excludeGenreId={tab === "tv" ? 16 : undefined} />
+
+      {recentWatched.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Typography.Text strong style={{ fontSize: 13, display: "block", marginBottom: 8, opacity: 0.7 }}>
+            Recently Watched
+          </Typography.Text>
+          <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
+            {recentWatched.map((item) => (
+              <div
+                key={`${item.type}-${item.id}`}
+                onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`)}
+                style={{ flexShrink: 0, width: 72, cursor: "pointer" }}
+              >
+                <img
+                  src={
+                    item.posterPath
+                      ? `https://image.tmdb.org/t/p/w185${item.posterPath}`
+                      : "https://placehold.co/72x108?text=?"
+                  }
+                  alt={item.title}
+                  title={item.title}
+                  style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {searchTerm && (
         <Alert

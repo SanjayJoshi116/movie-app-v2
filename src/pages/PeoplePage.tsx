@@ -157,7 +157,7 @@ function PeoplePage() {
                         className="movie-poster-img"
                       />
                     }
-                    bodyStyle={{ padding: "8px 10px" }}
+                    styles={{ body: { padding: "8px 10px" } }}
                     aria-label={`View profile of ${person.name}`}
                   >
                     <Typography.Text strong style={{ display: "block", fontSize: 13, marginBottom: 4 }}>

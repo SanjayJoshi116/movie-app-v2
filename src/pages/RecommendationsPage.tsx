@@ -7,6 +7,7 @@ import { useAppContext } from "../context/useAppContext";
 import {
   fetchForYouRecommendations,
   fetchPersonalizedRecommendations,
+  fetchFollowedPeopleRecommendations,
   type PersonalizedRecSection,
 } from "../api/userApi";
 
@@ -93,6 +94,7 @@ function RecommendationsPage() {
   const { watchedList } = useAppContext();
   const [sections, setSections] = useState<PersonalizedRecSection[]>([]);
   const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>([]);
+  const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -103,10 +105,12 @@ function RecommendationsPage() {
     Promise.allSettled([
       fetchForYouRecommendations(),
       fetchPersonalizedRecommendations(),
-    ]).then(([forYouRes, personalizedRes]) => {
+      fetchFollowedPeopleRecommendations(),
+    ]).then(([forYouRes, personalizedRes, followedRes]) => {
       if (cancelled) return;
       if (forYouRes.status === "fulfilled") setSections(forYouRes.value.data);
       if (personalizedRes.status === "fulfilled") setPersonalizedSections(personalizedRes.value.data);
+      if (followedRes.status === "fulfilled") setFollowedSections(followedRes.value.data);
     }).finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -114,7 +118,8 @@ function RecommendationsPage() {
 
   const totalItems =
     sections.reduce((acc, s) => acc + s.items.length, 0) +
-    personalizedSections.reduce((acc, s) => acc + s.items.length, 0);
+    personalizedSections.reduce((acc, s) => acc + s.items.length, 0) +
+    followedSections.reduce((acc, s) => acc + s.items.length, 0);
 
   return (
     <motion.div
@@ -159,6 +164,9 @@ function RecommendationsPage() {
         />
       ) : (
         <>
+          {followedSections.map((section) => (
+            <SectionRow key={section.key} section={section} navigate={navigate} />
+          ))}
           {personalizedSections.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}

@@ -6,10 +6,11 @@ import {
   Space, Popconfirm, Tag, Divider,
 } from "antd";
 import {
-  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled,
+  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined,
 } from "@ant-design/icons";
 import { useListsContext } from "../context/useListsContext";
 import type { UserList } from "../types";
+import { downloadCSV } from "../utils/export";
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 
@@ -115,7 +116,28 @@ function ListsPage() {
       {currentSelected && (
         <>
           <Divider>
-            <Typography.Text strong>{currentSelected.name}</Typography.Text>
+            <Space>
+              <Typography.Text strong>{currentSelected.name}</Typography.Text>
+              {currentSelected.items.length > 0 && (
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    const rows = currentSelected.items.map((i) => ({
+                      list: currentSelected.name,
+                      title: i.title,
+                      type: i.type,
+                      tmdb_id: i.id,
+                      vote_average: i.voteAverage,
+                      added_at: i.addedAt,
+                    }));
+                    downloadCSV(rows, `${currentSelected.name.replace(/\s+/g, "_")}.csv`);
+                  }}
+                >
+                  Export CSV
+                </Button>
+              )}
+            </Space>
           </Divider>
 
           {currentSelected.items.length === 0 ? (
@@ -138,7 +160,7 @@ function ListsPage() {
                         style={{ cursor: "pointer" }}
                       />
                     }
-                    bodyStyle={{ padding: "10px 12px" }}
+                    styles={{ body: { padding: "10px 12px" } }}
                     actions={[
                       <Popconfirm
                         key="remove"

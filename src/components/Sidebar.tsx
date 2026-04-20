@@ -18,6 +18,8 @@ import {
   LoginOutlined,
   LogoutOutlined,
   EditOutlined,
+  BarChartOutlined,
+  UserAddOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
@@ -106,6 +108,16 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       key: "/lists",
       icon: <UnorderedListOutlined />,
       label: "My Lists",
+    },
+    {
+      key: "/stats",
+      icon: <BarChartOutlined />,
+      label: "Stats",
+    },
+    {
+      key: "/following",
+      icon: <UserAddOutlined />,
+      label: "Following",
     },
   ];
 

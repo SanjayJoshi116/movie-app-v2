@@ -102,3 +102,31 @@ class TMDBProfile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — TMDB {'connected' if self.session_id else 'disconnected'}"
+
+
+class FollowedPerson(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="followed_people")
+    person_id = models.IntegerField()
+    name = models.CharField(max_length=500)
+    profile_path = models.CharField(max_length=500, blank=True, null=True)
+    followed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "person_id")
+
+    def __str__(self):
+        return f"{self.user.username} follows {self.name}"
+
+
+class EpisodeProgress(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="episode_progress")
+    show_id = models.IntegerField()
+    season_number = models.PositiveIntegerField(default=1)
+    episode_number = models.PositiveIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "show_id")
+
+    def __str__(self):
+        return f"{self.user.username} — show {self.show_id} S{self.season_number:02d}E{self.episode_number:02d}"

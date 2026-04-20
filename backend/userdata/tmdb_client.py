@@ -38,8 +38,11 @@ def get_details_with_cast(media_id, media_type):
             for c in (data.get("credits") or {}).get("cast", [])[:3]
         ]
     else:
-        data = _get(f"/tv/{media_id}")
-        cast = []
+        data = _get(f"/tv/{media_id}", {"append_to_response": "aggregate_credits"})
+        cast = [
+            {"id": c["id"], "name": c["name"]}
+            for c in (data.get("aggregate_credits") or {}).get("cast", [])[:3]
+        ]
     return {
         "genre_ids": [g["id"] for g in data.get("genres", [])],
         "top_cast": cast,

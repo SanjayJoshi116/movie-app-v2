@@ -4,14 +4,16 @@ import EpisodeGuide from "./EpisodeGuide";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox, Collapse,
+  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox, Collapse, Popconfirm,
 } from "antd";
 import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
+  PlayCircleOutlined, MinusOutlined, DeleteOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
+import { useEpisodeProgress } from "../hooks/useEpisodeProgress";
 import { RatingModal } from "./watchlist/RatingModal";
 import type { TMDBTVDetail, TMDBProvider, TMDBProviderRegion } from "../types";
 
@@ -92,8 +94,12 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
   const { lists, addToList, isInList } = useListsContext();
   const { showSuccess } = useToast();
+  const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
+  const [epSeason, setEpSeason] = useState<number>(1);
+  const [epEpisode, setEpEpisode] = useState<number>(1);
+  const [epEditing, setEpEditing] = useState(false);
 
   if (!tvShow) return <Spin size="large" style={{ display: "block", margin: "80px auto" }} />;
 
@@ -110,6 +116,11 @@ const TVShowDetails = ({ tvShow }: Props) => {
 
   const hasBackdrop = !!backdrop_path;
   const castList = aggregate_credits?.cast ?? [];
+
+  const getMaxEpisodes = (season: number): number => {
+    const s = tvShow.seasons?.find((s) => s.season_number === season);
+    return s?.episode_count ?? 99;
+  };
 
   return (
     <div>
@@ -237,6 +248,77 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   ))}
                 </Space>
               )}
+
+              {/* Episode progress tracker */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <PlayCircleOutlined style={{ color: "#52c41a", fontSize: 16 }} />
+                {epProgress && !epEditing ? (
+                  <>
+                    <Typography.Text>
+                      Currently on{" "}
+                      <Typography.Text strong>
+                        S{String(epProgress.season).padStart(2, "0")}E{String(epProgress.episode).padStart(2, "0")}
+                      </Typography.Text>
+                    </Typography.Text>
+                    <Button size="small" type="link" style={{ padding: 0 }} onClick={() => {
+                      setEpSeason(epProgress.season);
+                      setEpEpisode(epProgress.episode);
+                      setEpEditing(true);
+                    }}>
+                      Edit
+                    </Button>
+                    <Popconfirm
+                      title="Remove episode progress?"
+                      onConfirm={async () => {
+                        await clearEpProgress();
+                        showSuccess("Episode progress removed.");
+                      }}
+                      okText="Remove"
+                      okType="danger"
+                      cancelText="Cancel"
+                    >
+                      <Button size="small" type="link" danger style={{ padding: 0 }} icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </>
+                ) : epEditing ? (
+                  <>
+                    <Typography.Text style={{ fontSize: 12 }}>S</Typography.Text>
+                    <Button size="small" icon={<MinusOutlined />} onClick={() => { setEpSeason((s) => Math.max(1, s - 1)); setEpEpisode(1); }} />
+                    <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epSeason}</Typography.Text>
+                    <Button size="small" icon={<PlusOutlined />} onClick={() => { setEpSeason((s) => Math.min(s + 1, number_of_seasons ?? 99)); setEpEpisode(1); }} />
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>/{number_of_seasons ?? "?"}</Typography.Text>
+                    <Typography.Text style={{ fontSize: 12, marginLeft: 4 }}>E</Typography.Text>
+                    <Button size="small" icon={<MinusOutlined />} onClick={() => setEpEpisode((e) => Math.max(1, e - 1))} />
+                    <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epEpisode}</Typography.Text>
+                    <Button size="small" icon={<PlusOutlined />} onClick={() => setEpEpisode((e) => Math.min(e + 1, getMaxEpisodes(epSeason)))} />
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>/{getMaxEpisodes(epSeason)}</Typography.Text>
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={async () => {
+                        await updateEpProgress(epSeason, epEpisode);
+                        setEpEditing(false);
+                        showSuccess(`Progress saved: S${String(epSeason).padStart(2, "0")}E${String(epEpisode).padStart(2, "0")}`);
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button size="small" onClick={() => setEpEditing(false)}>Cancel</Button>
+                  </>
+                ) : (
+                  <Button
+                    size="small"
+                    type="dashed"
+                    onClick={() => {
+                      setEpSeason(1);
+                      setEpEpisode(1);
+                      setEpEditing(true);
+                    }}
+                  >
+                    Track episode progress
+                  </Button>
+                )}
+              </div>
             </Space>
           </Col>
         </Row>
@@ -317,7 +399,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                         className="cast-card-img-lg"
                       />
                     }
-                    bodyStyle={{ padding: "6px 8px" }}
+                    styles={{ body: { padding: "6px 8px" } }}
                     aria-label={`View details for ${actor.name}`}
                   >
                     <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{actor.name}</Typography.Text>
@@ -367,7 +449,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                           className="rec-card-img"
                         />
                       }
-                      bodyStyle={{ padding: "6px 8px" }}
+                      styles={{ body: { padding: "6px 8px" } }}
                     >
                       <Typography.Text style={{ fontSize: 11 }}>{showName}</Typography.Text>
                     </Card>
@@ -396,7 +478,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                         className="rec-card-img"
                       />
                     }
-                    bodyStyle={{ padding: "6px 8px" }}
+                    styles={{ body: { padding: "6px 8px" } }}
                   >
                     <Typography.Text style={{ fontSize: 11 }}>{show.name}</Typography.Text>
                   </Card>

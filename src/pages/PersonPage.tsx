@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   Row, Col, Card, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
 } from "antd";
-import { LeftOutlined } from "@ant-design/icons";
+import { LeftOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import {
   fetchPerson,
   fetchPersonCombinedCredits,
@@ -12,6 +12,8 @@ import {
   fetchPersonTVCredits,
   fetchPersonImages,
 } from "../api/tmdb";
+import { useFollowedPeople } from "../hooks/useFollowedPeople";
+import { useToast } from "../hooks/useToast";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
@@ -52,7 +54,7 @@ function CreditCard({
           className="rec-card-img"
         />
       }
-      bodyStyle={{ padding: "6px 8px" }}
+      styles={{ body: { padding: "6px 8px" } }}
       aria-label={`View details for ${title}`}
     >
       <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{title}</Typography.Text>
@@ -70,6 +72,8 @@ function PersonPage() {
   const locationState = location.state as { from?: string; page?: number } | null;
   const from = locationState?.from;
   const savedPage = locationState?.page;
+  const { isFollowing, follow, unfollow } = useFollowedPeople();
+  const { showSuccess } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
   const [combinedCredits, setCombinedCredits] = useState<TMDBPersonCredits | null>(null);
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
@@ -227,9 +231,26 @@ function PersonPage() {
             />
           </Col>
           <Col xs={24} sm={16} md={18}>
-            <Typography.Title level={2} style={{ marginTop: 0 }}>
-              {person.name}
-            </Typography.Title>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+              <Typography.Title level={2} style={{ margin: 0 }}>
+                {person.name}
+              </Typography.Title>
+              <Button
+                icon={isFollowing(person.id) ? <UserDeleteOutlined /> : <UserAddOutlined />}
+                type={isFollowing(person.id) ? "default" : "primary"}
+                onClick={async () => {
+                  if (isFollowing(person.id)) {
+                    await unfollow(person.id);
+                    showSuccess(`Unfollowed ${person.name}`);
+                  } else {
+                    await follow(person.id, person.name, person.profile_path ?? null);
+                    showSuccess(`Following ${person.name}`);
+                  }
+                }}
+              >
+                {isFollowing(person.id) ? "Unfollow" : "Follow"}
+              </Button>
+            </div>
 
             <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered style={{ marginBottom: 16 }}>
               {person.birthday && (

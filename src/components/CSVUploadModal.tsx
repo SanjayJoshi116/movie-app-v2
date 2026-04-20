@@ -108,7 +108,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [, setFileName] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,8 +211,13 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         type="file"
         accept=".csv"
         onChange={handleFileChange}
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: fileName ? 8 : 16 }}
       />
+      {fileName && (
+        <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+          {fileName}
+        </Text>
+      )}
 
       {parseError && (
         <Alert type="error" message={parseError} style={{ marginBottom: 16 }} showIcon />

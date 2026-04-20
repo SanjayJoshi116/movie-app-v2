@@ -1,7 +1,10 @@
+import logging
 import random
 from datetime import timedelta
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.db import IntegrityError
 from django.utils import timezone
@@ -27,7 +30,8 @@ def _ensure_cached(entry):
         return cached
     try:
         details = tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
-    except Exception:
+    except Exception as e:
+        logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
         details = {"genre_ids": [], "top_cast": []}
     try:
         cached, _ = TMDBMediaCache.objects.update_or_create(

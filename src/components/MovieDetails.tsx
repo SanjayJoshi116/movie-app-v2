@@ -317,7 +317,7 @@ const MovieDetails = ({ movie }: Props) => {
                         className="cast-card-img-lg"
                       />
                     }
-                    bodyStyle={{ padding: "6px 8px" }}
+                    styles={{ body: { padding: "6px 8px" } }}
                     aria-label={`View details for ${actor.name}`}
                   >
                     <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{actor.name}</Typography.Text>
@@ -347,7 +347,7 @@ const MovieDetails = ({ movie }: Props) => {
                         className="rec-card-img"
                       />
                     }
-                    bodyStyle={{ padding: "6px 8px" }}
+                    styles={{ body: { padding: "6px 8px" } }}
                   >
                     <Typography.Text style={{ fontSize: 11 }}>{rec.title}</Typography.Text>
                   </Card>
@@ -375,7 +375,7 @@ const MovieDetails = ({ movie }: Props) => {
                         className="rec-card-img"
                       />
                     }
-                    bodyStyle={{ padding: "6px 8px" }}
+                    styles={{ body: { padding: "6px 8px" } }}
                   >
                     <Typography.Text style={{ fontSize: 11 }}>{m.title}</Typography.Text>
                   </Card>
@@ -412,11 +412,11 @@ const MovieDetails = ({ movie }: Props) => {
             <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Images</Typography.Title></Divider>
             <Image.PreviewGroup>
               <Row gutter={[12, 12]}>
-                {images.backdrops.slice(0, 10).map((image, index) => (
-                  <Col key={index} xs={12} sm={8} md={6}>
+                {images.backdrops.slice(0, 10).map((image) => (
+                  <Col key={image.file_path} xs={12} sm={8} md={6}>
                     <Image
                       src={`${IMG_URL}${image.file_path}`}
-                      alt={`Backdrop ${index + 1}`}
+                      alt="Backdrop"
                       className="backdrop-img"
                       style={{ borderRadius: 8 }}
                     />

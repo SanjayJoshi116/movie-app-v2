@@ -1,4 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 from django.contrib.auth.models import User
+from django.db.models import Count
+from django.db.models.functions import TruncMonth
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -6,7 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserListItem, TMDBProfile
+from .models import WatchlistEntry, WatchedEntry, RatingEntry, UserList, UserListItem, TMDBProfile, EpisodeProgress, FollowedPerson
 from . import tmdb_client
 from .serializers import (
     RegisterSerializer,
@@ -365,3 +368,196 @@ def tmdb_disconnect(request):
     except TMDBProfile.DoesNotExist:
         pass
     return Response({"connected": False})
+
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
+
+_genre_name_cache: dict[int, str] = {}
+
+
+def _get_cached_genre_names() -> dict[int, str]:
+    """Fetch genre names from TMDB once per process and cache in memory."""
+    global _genre_name_cache
+    if not _genre_name_cache:
+        try:
+            _genre_name_cache = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
+        except Exception:
+            pass
+    return _genre_name_cache
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def stats(request):
+    watched = WatchedEntry.objects.filter(user=request.user)
+    ratings_qs = RatingEntry.objects.filter(user=request.user)
+
+    total_watched = watched.count()
+    movies_count = watched.filter(media_type="movie").count()
+    tv_count = watched.filter(media_type="tv").count()
+
+    all_ratings = list(ratings_qs.values_list("user_rating", flat=True))
+    total_ratings = len(all_ratings)
+    avg_user_rating = round(sum(all_ratings) / total_ratings, 1) if all_ratings else 0
+
+    # Ratings distribution in buckets 1–10
+    dist = {str(i): 0 for i in range(1, 11)}
+    for r in all_ratings:
+        bucket = str(min(10, max(1, round(r))))
+        dist[bucket] += 1
+    rating_distribution = [{"rating": k, "count": v} for k, v in dist.items()]
+
+    # Monthly activity — all time, ordered chronologically
+    monthly_qs = (
+        watched.annotate(month=TruncMonth("watched_at"))
+        .values("month")
+        .annotate(count=Count("id"))
+        .order_by("month")
+    )
+    monthly_activity = [
+        {"month": m["month"].strftime("%b %Y"), "count": m["count"]}
+        for m in monthly_qs
+    ]
+
+    # Genre breakdown from cached genre_ids
+    genre_counts: dict[int, int] = {}
+    for entry in watched.only("genre_ids"):
+        for gid in (entry.genre_ids or []):
+            genre_counts[gid] = genre_counts.get(gid, 0) + 1
+
+    genre_names = _get_cached_genre_names()
+
+    top_genres = [
+        {"genre": genre_names.get(gid, f"Genre {gid}"), "count": cnt}
+        for gid, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
+    ]
+
+    return Response({
+        "totalWatched": total_watched,
+        "moviesCount": movies_count,
+        "tvCount": tv_count,
+        "totalRatings": total_ratings,
+        "avgUserRating": avg_user_rating,
+        "ratingDistribution": rating_distribution,
+        "monthlyActivity": monthly_activity,
+        "topGenres": top_genres,
+    })
+
+
+# ── Episode Progress ──────────────────────────────────────────────────────────
+
+@api_view(["GET", "POST", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def episode_progress(request, show_id: int):
+    if request.method == "GET":
+        try:
+            prog = EpisodeProgress.objects.get(user=request.user, show_id=show_id)
+            return Response({"showId": prog.show_id, "season": prog.season_number, "episode": prog.episode_number})
+        except EpisodeProgress.DoesNotExist:
+            return Response(None)
+
+    if request.method == "DELETE":
+        EpisodeProgress.objects.filter(user=request.user, show_id=show_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    season = int(request.data.get("season", 1))
+    episode = int(request.data.get("episode", 1))
+    if season < 1 or episode < 1:
+        return Response({"detail": "season and episode must be >= 1."}, status=status.HTTP_400_BAD_REQUEST)
+
+    prog, _ = EpisodeProgress.objects.update_or_create(
+        user=request.user,
+        show_id=show_id,
+        defaults={"season_number": season, "episode_number": episode},
+    )
+    return Response({"showId": prog.show_id, "season": prog.season_number, "episode": prog.episode_number})
+
+
+# ── Followed People ───────────────────────────────────────────────────────────
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def followed_people_list(request):
+    if request.method == "GET":
+        people = FollowedPerson.objects.filter(user=request.user).order_by("-followed_at")
+        return Response([
+            {"id": p.id, "personId": p.person_id, "name": p.name, "profilePath": p.profile_path}
+            for p in people
+        ])
+
+    person_id = request.data.get("personId")
+    name = request.data.get("name", "")
+    profile_path = request.data.get("profilePath")
+    if not person_id:
+        return Response({"detail": "personId is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    fp, created = FollowedPerson.objects.get_or_create(
+        user=request.user,
+        person_id=person_id,
+        defaults={"name": name, "profile_path": profile_path},
+    )
+    return Response(
+        {"id": fp.id, "personId": fp.person_id, "name": fp.name, "profilePath": fp.profile_path},
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def followed_people_detail(request, person_id: int):
+    try:
+        fp = FollowedPerson.objects.get(user=request.user, person_id=person_id)
+        fp.delete()
+    except FollowedPerson.DoesNotExist:
+        pass
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def followed_people_recommendations(request):
+    """Return top-rated credits for each followed person as recommendation sections."""
+    followed = list(FollowedPerson.objects.filter(user=request.user).order_by("-followed_at")[:10])
+    if not followed:
+        return Response([])
+
+    watched_set = {
+        (e.media_id, e.media_type)
+        for e in WatchedEntry.objects.filter(user=request.user).only("media_id", "media_type")
+    }
+
+    def fetch_credits(fp):
+        try:
+            data = tmdb_client._get(f"/person/{fp.person_id}/combined_credits")
+            items = []
+            seen_ids = set()
+            for c in data.get("cast", []):
+                if c.get("media_type") not in ("movie", "tv"):
+                    continue
+                mid = c.get("id")
+                if (mid, c["media_type"]) in watched_set or mid in seen_ids:
+                    continue
+                if (c.get("vote_average") or 0) < 6:
+                    continue
+                seen_ids.add(mid)
+                items.append({
+                    "id": mid,
+                    "type": c["media_type"],
+                    "title": c.get("title") or c.get("name", ""),
+                    "posterPath": c.get("poster_path"),
+                    "voteAverage": c.get("vote_average", 0),
+                })
+            items.sort(key=lambda x: -x["voteAverage"])
+            return fp.name, items[:12]
+        except Exception:
+            return fp.name, []
+
+    sections = []
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        results = list(ex.map(fetch_credits, followed))
+
+    for name, items in results:
+        if items:
+            sections.append({"key": f"follow-{name}", "label": f"New from {name}", "items": items})
+
+    return Response(sections)

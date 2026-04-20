@@ -114,4 +114,51 @@ export const getTMDBAuthStatus = () =>
 export const disconnectTMDB = () =>
   userApi.delete<{ connected: boolean }>("/tmdb-auth/disconnect/");
 
+export interface StatsData {
+  totalWatched: number;
+  moviesCount: number;
+  tvCount: number;
+  totalRatings: number;
+  avgUserRating: number;
+  ratingDistribution: { rating: string; count: number }[];
+  monthlyActivity: { month: string; count: number }[];
+  topGenres: { genre: string; count: number }[];
+}
+
+export const fetchStats = () => userApi.get<StatsData>("/stats/");
+
+export interface EpisodeProgressData {
+  showId: number;
+  season: number;
+  episode: number;
+}
+
+export const getEpisodeProgress = (showId: number) =>
+  userApi.get<EpisodeProgressData | null>(`/episode-progress/${showId}/`);
+
+export const setEpisodeProgress = (showId: number, season: number, episode: number) =>
+  userApi.post<EpisodeProgressData>(`/episode-progress/${showId}/`, { season, episode });
+
+export const deleteEpisodeProgress = (showId: number) =>
+  userApi.delete(`/episode-progress/${showId}/`);
+
+export interface FollowedPersonEntry {
+  id: number;
+  personId: number;
+  name: string;
+  profilePath: string | null;
+}
+
+export const getFollowedPeople = () =>
+  userApi.get<FollowedPersonEntry[]>("/followed-people/");
+
+export const followPerson = (personId: number, name: string, profilePath: string | null) =>
+  userApi.post<FollowedPersonEntry>("/followed-people/", { personId, name, profilePath });
+
+export const unfollowPerson = (personId: number) =>
+  userApi.delete(`/followed-people/${personId}/`);
+
+export const fetchFollowedPeopleRecommendations = () =>
+  userApi.get<PersonalizedRecSection[]>("/recommendations/followed-people/");
+
 export default userApi;

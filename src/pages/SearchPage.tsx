@@ -36,13 +36,11 @@ function usePaginatedSearch<T>(
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (!query) {
       setItems([]);
       setHasMore(false);
-      setTotal(0);
       return;
     }
     let cancelled = false;
@@ -53,7 +51,6 @@ function usePaginatedSearch<T>(
         setItems(results);
         setPage(1);
         setHasMore(totalPages > 1);
-        setTotal(results.length); // updated below with actual total
       })
       .catch(() => { if (!cancelled) setItems([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -73,7 +70,7 @@ function usePaginatedSearch<T>(
     finally { setLoadingMore(false); }
   }, [loadingMore, hasMore, page, query, adult]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, loadingMore, hasMore, loadMore, total };
+  return { items, loading, loadingMore, hasMore, loadMore };
 }
 
 // ── Sub-tabs ─────────────────────────────────────────────────────────────────

@@ -16,6 +16,8 @@ import {
   LogoutOutlined,
   SearchOutlined,
   RightOutlined,
+  BarChartOutlined,
+  UserAddOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
@@ -48,6 +50,8 @@ const BottomNav = () => {
     { path: "/recommendations", icon: <BulbOutlined />, label: "For You" },
     { path: "/calendar", icon: <CalendarOutlined />, label: "Calendar" },
     { path: "/lists", icon: <UnorderedListOutlined />, label: "My Lists" },
+    { path: "/stats", icon: <BarChartOutlined />, label: "Stats" },
+    { path: "/following", icon: <UserAddOutlined />, label: "Following" },
   ];
 
   const handleMoreNav = (path: string) => {

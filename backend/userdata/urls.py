@@ -34,6 +34,17 @@ urlpatterns = [
     path("recommendations/personalized/", personalized_recommendations),
     path("recommendations/for-you/", recommendations_for_you),
 
+    # Stats
+    path("stats/", views.stats),
+
+    # Episode Progress
+    path("episode-progress/<int:show_id>/", views.episode_progress),
+
+    # Followed People
+    path("followed-people/", views.followed_people_list),
+    path("followed-people/<int:person_id>/", views.followed_people_detail),
+    path("recommendations/followed-people/", views.followed_people_recommendations),
+
     # TMDB OAuth
     path("tmdb-auth/request-token/", views.tmdb_request_token),
     path("tmdb-auth/create-session/", views.tmdb_create_session),
