@@ -94,7 +94,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
           ? await searchMovies(searchTerm, page, includeAdult)
           : await searchTV(searchTerm, page, includeAdult);
       } else if (hasFilters && externalFilters) {
-        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy);
+        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy, isMovie ? "movie" : "tv");
         const params = { ...baseParams, ...filterParams };
         response = isMovie ? await discoverMovies(params) : await discoverTV(params);
       } else if (isMovie) {

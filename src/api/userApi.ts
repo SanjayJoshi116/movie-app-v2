@@ -107,8 +107,6 @@ export const requestPasswordReset = (email: string) =>
 export const confirmPasswordReset = (uid: string, token: string, newPassword: string) =>
   publicApi.post<{ detail: string }>("/auth/password-reset/confirm/", { uid, token, new_password: newPassword });
 
-export const resetPasswordByUsername = (username: string, newPassword: string) =>
-  publicApi.post<{ detail: string }>("/auth/password-reset/by-username/", { username, new_password: newPassword });
 
 export const bulkMarkWatched = (
   entries: { mediaId: number; title: string; posterPath?: string | null; voteAverage?: number }[],

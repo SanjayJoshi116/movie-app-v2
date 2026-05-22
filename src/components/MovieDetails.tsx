@@ -103,7 +103,7 @@ const MovieDetails = ({ movie }: Props) => {
   const savedScrollY = locationState?.scrollY;
   const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
-  const { lists, addToList, isInList } = useListsContext();
+  const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
@@ -277,7 +277,10 @@ const MovieDetails = ({ movie }: Props) => {
                 <Checkbox
                   checked={inList}
                   onChange={() => {
-                    if (!inList) {
+                    if (inList) {
+                      removeFromList(list.id, id, "movie");
+                      showSuccess(`Removed from "${list.name}"`);
+                    } else {
                       addToList(list.id, { id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
                       showSuccess(`Added to "${list.name}"`);
                     }

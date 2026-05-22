@@ -19,7 +19,7 @@ const pageVariants = {
   exit: { opacity: 0, y: -16 },
 };
 
-const PROXY_BASE = "http://localhost:3001/api/tmdb";
+const PROXY_BASE = `http://${window.location.hostname}:3001/api/tmdb`;
 
 function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();

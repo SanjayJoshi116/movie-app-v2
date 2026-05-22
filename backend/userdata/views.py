@@ -97,27 +97,6 @@ def password_reset_confirm(request):
     return Response({"detail": "Password reset successfully."})
 
 
-@api_view(["POST"])
-@permission_classes([AllowAny])
-def password_reset_by_username(request):
-    username = request.data.get("username", "").strip()
-    new_password = request.data.get("new_password", "").strip()
-
-    if not username or not new_password:
-        return Response({"detail": "username and new_password are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if len(new_password) < 6:
-        return Response({"detail": "Password must be at least 6 characters."}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        user = User.objects.get(username__iexact=username)
-    except User.DoesNotExist:
-        return Response({"detail": "No account found with that username."}, status=status.HTTP_400_BAD_REQUEST)
-
-    user.set_password(new_password)
-    user.save()
-    return Response({"detail": "Password reset successfully."})
-
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -551,8 +530,11 @@ def episode_progress(request, show_id: int):
         EpisodeProgress.objects.filter(user=request.user, show_id=show_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    season = int(request.data.get("season", 1))
-    episode = int(request.data.get("episode", 1))
+    try:
+        season = int(request.data.get("season", 1))
+        episode = int(request.data.get("episode", 1))
+    except (TypeError, ValueError):
+        return Response({"detail": "season and episode must be integers."}, status=status.HTTP_400_BAD_REQUEST)
     if season < 1 or episode < 1:
         return Response({"detail": "season and episode must be >= 1."}, status=status.HTTP_400_BAD_REQUEST)
 

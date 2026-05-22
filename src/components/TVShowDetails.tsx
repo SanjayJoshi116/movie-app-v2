@@ -92,7 +92,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const savedScrollY = locationState?.scrollY;
   const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
-  const { lists, addToList, isInList } = useListsContext();
+  const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess } = useToast();
   const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -359,7 +359,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 <Checkbox
                   checked={inList}
                   onChange={() => {
-                    if (!inList) {
+                    if (inList) {
+                      removeFromList(list.id, id, "tv");
+                      showSuccess(`Removed from "${list.name}"`);
+                    } else {
                       addToList(list.id, { id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
                       showSuccess(`Added to "${list.name}"`);
                     }

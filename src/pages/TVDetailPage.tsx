@@ -8,7 +8,6 @@ import {
   fetchTVCredits,
   fetchTVAggregateCredits,
   fetchTVImages,
-  fetchTVRecommendations,
   fetchTVWatchProviders,
 } from "../api/tmdb";
 
@@ -33,13 +32,12 @@ function TVDetailPage() {
 
     const load = async () => {
       try {
-        const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, recommendationsRes, providersRes] =
+        const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, providersRes] =
           await Promise.all([
             fetchTVDetails(id),
             fetchTVCredits(id),
             fetchTVAggregateCredits(id),
             fetchTVImages(id),
-            fetchTVRecommendations(id),
             fetchTVWatchProviders(id),
           ]);
 
@@ -48,7 +46,6 @@ function TVDetailPage() {
           credits: creditsRes.data,
           aggregate_credits: aggregateCreditsRes.data,
           images: imagesRes.data,
-          recommendations: recommendationsRes.data.results,
           watchProviders: providersRes.data.results,
         });
       } catch (err) {

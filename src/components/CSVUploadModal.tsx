@@ -4,6 +4,7 @@ import { DownloadOutlined } from "@ant-design/icons";
 import { bulkMarkWatched } from "../api/userApi";
 import { fetchMoviePoster, fetchTVPoster } from "../api/tmdb";
 import { useToast } from "../hooks/useToast";
+import { useAppContext } from "../context/useAppContext";
 
 const { Text } = Typography;
 
@@ -33,7 +34,12 @@ function parseCSV(text: string): { rows: ParsedRow[]; error: string | null } {
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') {
-        inQuotes = !inQuotes;
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
       } else if (ch === "," && !inQuotes) {
         result.push(current.trim());
         current = "";
@@ -75,7 +81,7 @@ function parseCSV(text: string): { rows: ParsedRow[]; error: string | null } {
   }
 
   if (rows.length === 0) {
-    return { rows: [], error: "No valid movie entries found in the CSV." };
+    return { rows: [], error: "No valid entries found in the CSV. Each row needs a numeric TMDB ID." };
   }
 
   return { rows, error: null };
@@ -105,6 +111,7 @@ function downloadTemplate(type: "movie" | "tv") {
 
 const CSVUploadModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
+  const { reloadWatched } = useAppContext();
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -155,6 +162,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
 
       const { data } = await bulkMarkWatched(enriched, mediaType);
       showSuccess(`Import complete: ${data.added} added, ${data.skipped} already watched.`);
+      await reloadWatched();
       handleClose();
     } catch {
       showError("Failed to import watched movies. Please try again.");

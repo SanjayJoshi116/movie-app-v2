@@ -11,7 +11,6 @@ urlpatterns = [
     path("auth/profile/", views.profile),
     path("auth/password-reset/", views.password_reset_request),
     path("auth/password-reset/confirm/", views.password_reset_confirm),
-    path("auth/password-reset/by-username/", views.password_reset_by_username),
 
     # Watchlist
     path("watchlist/", views.watchlist_list),

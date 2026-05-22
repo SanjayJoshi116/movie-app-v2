@@ -110,7 +110,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
           ? await searchTV(searchTerm, page, includeAdult)
           : await searchMovies(searchTerm, page, includeAdult);
       } else if (hasFilters && externalFilters) {
-        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy);
+        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy, animeTab === "tv" ? "tv" : "movie");
         const params = { ...baseParams, ...filterParams };
         response = isTV ? await discoverTV(params) : await discoverMovies(params);
       } else {
@@ -239,7 +239,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       {searchTerm && (
         <Alert
-          message="Filters are disabled during search. Clear the search to use filters."
+          message="Search shows all results — anime keyword filter cannot be applied during search. Clear search to browse anime only."
           type="info"
           showIcon
           style={{ marginBottom: 16 }}

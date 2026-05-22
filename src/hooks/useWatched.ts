@@ -82,5 +82,24 @@ export function useWatched() {
     setWatchedList([]);
   };
 
-  return { watchedList, isLoading, add, remove, isWatched, toggle, clearAll };
+  const reload = async () => {
+    if (!isAuthenticated) return;
+    const { data } = await userApi.get("/watched/");
+    const map: Record<string, number> = {};
+    const entries: WatchedEntry[] = data.map((item: any) => {
+      map[key(item.mediaId, item.mediaType)] = item.id;
+      return {
+        id: item.mediaId,
+        type: item.mediaType,
+        title: item.title,
+        posterPath: item.posterPath,
+        voteAverage: item.voteAverage,
+        watchedAt: item.watchedAt,
+      };
+    });
+    dbIdMap.current = map;
+    setWatchedList(entries);
+  };
+
+  return { watchedList, isLoading, add, remove, isWatched, toggle, clearAll, reload };
 }

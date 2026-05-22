@@ -65,6 +65,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addToWatched: watched.add,
     removeFromWatched: watched.remove,
     clearAllWatched: watched.clearAll,
+    reloadWatched: watched.reload,
     isWatched: watched.isWatched,
     toggleWatched: watched.toggle,
     allRatings: ratings.ratings,
@@ -78,7 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectedGenres, toggleGenre, clearGenres,
     theme, toggleTheme,
     watchlist.watchlist, watchlist.add, watchlist.remove, watchlist.isIn, watchlist.toggle, watchlist.markWatched,
-    watched.watchedList, watched.add, watched.remove, watched.clearAll, watched.isWatched, watched.toggle,
+    watched.watchedList, watched.add, watched.remove, watched.clearAll, watched.reload, watched.isWatched, watched.toggle,
     ratings.ratings, ratings.set, ratings.get, ratings.remove,
     isDataLoading,
   ]);

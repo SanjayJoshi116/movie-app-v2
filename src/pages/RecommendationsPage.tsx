@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider } from "antd";
@@ -91,14 +91,16 @@ function SectionRow({ section, navigate }: { section: PersonalizedRecSection; na
 
 function RecommendationsPage() {
   const navigate = useNavigate();
-  const { watchedList } = useAppContext();
+  const { watchedList, isDataLoading } = useAppContext();
   const [sections, setSections] = useState<PersonalizedRecSection[]>([]);
   const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>([]);
   const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>([]);
   const [loading, setLoading] = useState(false);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (watchedList.length === 0) return;
+    if (isDataLoading || watchedList.length === 0 || fetchedRef.current) return;
+    fetchedRef.current = true;
     let cancelled = false;
     setLoading(true);
 
@@ -114,7 +116,7 @@ function RecommendationsPage() {
     }).finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [watchedList]);
+  }, [isDataLoading, watchedList.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalItems =
     sections.reduce((acc, s) => acc + s.items.length, 0) +
@@ -136,7 +138,9 @@ function RecommendationsPage() {
         Recommendations based on {watchedList.length} watched title{watchedList.length !== 1 ? "s" : ""}
       </Typography.Text>
 
-      {watchedList.length === 0 ? (
+      {isDataLoading ? (
+        <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
+      ) : watchedList.length === 0 ? (
         <Empty
           image={<BulbOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
           description={

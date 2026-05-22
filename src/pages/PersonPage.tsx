@@ -69,9 +69,10 @@ function PersonPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { from?: string; page?: number } | null;
+  const locationState = location.state as { from?: string; scrollY?: number; loadedPages?: number } | null;
   const from = locationState?.from;
-  const savedPage = locationState?.page;
+  const savedScrollY = locationState?.scrollY;
+  const savedLoadedPages = locationState?.loadedPages;
   const { isFollowing, follow, unfollow } = useFollowedPeople();
   const { showSuccess } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
@@ -211,7 +212,7 @@ function PersonPage() {
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { page: savedPage, isReturn: true } }) : navigate(-1)}
+          onClick={() => from ? navigate(from, { state: { scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
           style={{ marginBottom: 16 }}
         >
           Back

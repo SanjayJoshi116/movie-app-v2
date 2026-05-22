@@ -47,7 +47,7 @@ function WatchedPage() {
         });
         break;
       }
-      default: items.sort((a, b) => b.watchedAt.localeCompare(a.watchedAt));
+      default: items.sort((a, b) => (b.watchedAt ?? "").localeCompare(a.watchedAt ?? ""));
     }
     return items;
   }, [watchedList, search, sortKey, getRating]);

@@ -39,6 +39,7 @@ export interface AppContextType {
   addToWatched(entry: WatchedInput): void;
   removeFromWatched(id: number, type: string): void;
   clearAllWatched(): Promise<void>;
+  reloadWatched(): Promise<void>;
   isWatched(id: number, type: string): boolean;
   toggleWatched(entry: WatchedInput): void;
 

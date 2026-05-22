@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Typography, Spin, Empty, Statistic } from "antd";
 import {
@@ -196,7 +197,7 @@ function StatsPage() {
             ) : (
               <Typography.Text type="secondary" style={{ display: "block", padding: "24px 0", textAlign: "center" }}>
                 Genre data not yet available. Visit the{" "}
-                <a href="/recommendations">For You</a> page once to generate it.
+                <Link to="/recommendations">For You</Link> page once to generate it.
               </Typography.Text>
             )}
           </Card>

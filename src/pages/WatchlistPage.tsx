@@ -43,10 +43,10 @@ function WatchlistPage() {
       items = items.filter((i) => i.title.toLowerCase().includes(q));
     }
     switch (sortKey) {
-      case "added-asc":  items.sort((a, b) => a.addedAt.localeCompare(b.addedAt)); break;
+      case "added-asc":  items.sort((a, b) => (a.addedAt ?? "").localeCompare(b.addedAt ?? "")); break;
       case "title-asc":  items.sort((a, b) => a.title.localeCompare(b.title)); break;
       case "rating-desc": items.sort((a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0)); break;
-      default:           items.sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+      default:           items.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
     }
     return items;
   }, [watchlist, search, sortKey]);

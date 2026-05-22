@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Typography, Button, Modal, Form, Input, Card, Row, Col, Empty,
-  Space, Popconfirm, Tag, Divider,
+  Space, Popconfirm, Tag, Divider, Spin,
 } from "antd";
 import {
   PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined,
@@ -22,7 +22,7 @@ const pageVariants = {
 
 function ListsPage() {
   const navigate = useNavigate();
-  const { lists, createList, deleteList, removeFromList } = useListsContext();
+  const { lists, isLoading, createList, deleteList, removeFromList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedList, setSelectedList] = useState<UserList | null>(null);
   const [form] = Form.useForm();
@@ -58,7 +58,11 @@ function ListsPage() {
         </Button>
       </div>
 
-      {lists.length === 0 ? (
+      {isLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
+          <Spin size="large" />
+        </div>
+      ) : lists.length === 0 ? (
         <Empty
           image={<UnorderedListOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
           description="No custom lists yet. Create your first list to organize your favorites."

@@ -218,12 +218,16 @@ export const fetchTrending = (
 export function filtersToTMDBParams(
   filters: Partial<FilterValues> = {},
   sortBy: SortOption = "popularity.desc",
+  mediaType: "movie" | "tv" = "movie",
 ): Record<string, string | number> {
-  const params: Record<string, string | number> = { sort_by: sortBy };
-  if (filters.yearFrom)
-    params["primary_release_date.gte"] = `${filters.yearFrom}-01-01`;
-  if (filters.yearTo)
-    params["primary_release_date.lte"] = `${filters.yearTo}-12-31`;
+  const isTV = mediaType === "tv";
+  const dateField = isTV ? "first_air_date" : "primary_release_date";
+  const effectiveSortBy = isTV && sortBy.startsWith("primary_release_date")
+    ? sortBy.replace("primary_release_date", "first_air_date")
+    : sortBy;
+  const params: Record<string, string | number> = { sort_by: effectiveSortBy };
+  if (filters.yearFrom) params[`${dateField}.gte`] = `${filters.yearFrom}-01-01`;
+  if (filters.yearTo) params[`${dateField}.lte`] = `${filters.yearTo}-12-31`;
   if (filters.minRating) params["vote_average.gte"] = filters.minRating;
   if (filters.maxRating) params["vote_average.lte"] = filters.maxRating;
   if (filters.language) params["with_original_language"] = filters.language;

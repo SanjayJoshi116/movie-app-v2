@@ -82,19 +82,37 @@ function CalendarPage() {
         "primary_release_date.lte": future,
         sort_by: "primary_release_date.asc",
         page: 1,
-      };
+      } as Record<string, string | number>;
       const tvParams = {
         "first_air_date.gte": today,
         "first_air_date.lte": future,
         sort_by: "first_air_date.asc",
         page: 1,
-      };
+      } as Record<string, string | number>;
 
       const allItems: CalendarItem[] = [];
 
+      const fetchAllPages = async <T,>(
+        fetcher: (params: Record<string, string | number>) => Promise<{ data: { results: T[]; total_pages: number } }>,
+        baseParams: Record<string, string | number>,
+      ): Promise<T[]> => {
+        const first = await fetcher(baseParams);
+        const pages = Math.min(first.data.total_pages, 3);
+        const results: T[] = [...first.data.results];
+        if (pages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: pages - 1 }, (_, i) =>
+              fetcher({ ...baseParams, page: i + 2 }).then((r) => r.data.results),
+            ),
+          );
+          rest.forEach((r) => results.push(...r));
+        }
+        return results;
+      };
+
       if (filter === "movies" || filter === "both") {
-        const res = await discoverMovies(movieParams);
-        for (const m of res.data.results as TMDBMovieSummary[]) {
+        const movies = await fetchAllPages<TMDBMovieSummary>(discoverMovies, movieParams);
+        for (const m of movies) {
           if (m.release_date) {
             allItems.push({
               id: m.id,
@@ -109,8 +127,8 @@ function CalendarPage() {
       }
 
       if (filter === "tv" || filter === "both") {
-        const res = await discoverTV(tvParams);
-        for (const t of res.data.results as TMDBTVSummary[]) {
+        const shows = await fetchAllPages<TMDBTVSummary>(discoverTV, tvParams);
+        for (const t of shows) {
           const date = (t as any).first_air_date;
           if (date) {
             allItems.push({
