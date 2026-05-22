@@ -8,6 +8,14 @@
 # testing
 /coverage
 
+# Playwright
+test-results/
+playwright-report/
+
+# Python
+__pycache__/
+*.py[cod]
+
 # production
 /build
 

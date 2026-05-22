@@ -5,7 +5,7 @@
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
     "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^13.4.0",
+    "@testing-library/react": "^15.0.7",
     "@testing-library/user-event": "^13.5.0",
     "antd": "^5.17.0",
     "axios": "^1.7.2",
@@ -52,8 +52,14 @@
       "last 1 safari version"
     ]
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(axios)/)"
+    ]
+  },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@playwright/test": "^1.60.0",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",

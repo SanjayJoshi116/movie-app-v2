@@ -1,3 +1,4 @@
+import time as _time
 from concurrent.futures import ThreadPoolExecutor
 from django.contrib.auth.models import User
 from django.db.models import Count
@@ -278,7 +279,7 @@ def ratings_list(request):
 
     serializer = RatingEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    entry, _ = RatingEntry.objects.update_or_create(
+    entry, created = RatingEntry.objects.update_or_create(
         user=request.user,
         media_id=serializer.validated_data["media_id"],
         media_type=serializer.validated_data["media_type"],
@@ -301,7 +302,10 @@ def ratings_list(request):
     except (TMDBProfile.DoesNotExist, AttributeError, Exception):
         pass  # TMDB sync is best-effort; local save already succeeded
 
-    return Response(RatingEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
+    return Response(
+        RatingEntrySerializer(entry).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
 
 
 @api_view(["DELETE", "PATCH"])
@@ -443,14 +447,17 @@ def tmdb_disconnect(request):
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 _genre_name_cache: dict[int, str] = {}
+_genre_cache_ts: float = 0.0
+_GENRE_CACHE_TTL = 86400  # 24 hours
 
 
 def _get_cached_genre_names() -> dict[int, str]:
-    """Fetch genre names from TMDB once per process and cache in memory."""
-    global _genre_name_cache
-    if not _genre_name_cache:
+    """Fetch genre names from TMDB, refreshing every 24 h."""
+    global _genre_name_cache, _genre_cache_ts
+    if not _genre_name_cache or (_time.time() - _genre_cache_ts) > _GENRE_CACHE_TTL:
         try:
             _genre_name_cache = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
+            _genre_cache_ts = _time.time()
         except Exception:
             pass
     return _genre_name_cache
