@@ -1,15 +1,17 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
 import type { RatingEntry, RatingsMap } from "../types";
+
+function ratingKey(id: number, type: string) { return `${type}-${id}`; }
 
 export function useRatings() {
   const { isAuthenticated } = useAuth();
   const [ratings, setRatings] = useState<RatingsMap>({});
   const [isLoading, setIsLoading] = useState(false);
   const dbIdMap = useRef<Record<string, number>>({});
-
-  const ratingKey = (id: number, type: string) => `${type}-${id}`;
+  const ratingsRef = useRef(ratings);
+  ratingsRef.current = ratings;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -41,7 +43,7 @@ export function useRatings() {
       .finally(() => setIsLoading(false));
   }, [isAuthenticated]);
 
-  const set = async (
+  const set = useCallback(async (
     id: number,
     type: string,
     title: string,
@@ -69,12 +71,13 @@ export function useRatings() {
         ratedAt: data.ratedAt,
       },
     }));
-  };
+  }, [isAuthenticated]);
 
-  const get = (id: number, type: string): RatingEntry | null =>
-    ratings[ratingKey(id, type)] ?? null;
+  const get = useCallback((id: number, type: string): RatingEntry | null =>
+    ratingsRef.current[ratingKey(id, type)] ?? null,
+  []);
 
-  const remove = async (id: number, type: string) => {
+  const remove = useCallback(async (id: number, type: string) => {
     if (!isAuthenticated) return;
     const k = ratingKey(id, type);
     const dbId = dbIdMap.current[k];
@@ -86,7 +89,7 @@ export function useRatings() {
       delete next[k];
       return next;
     });
-  };
+  }, [isAuthenticated]);
 
   return { ratings, isLoading, set, get, remove };
 }

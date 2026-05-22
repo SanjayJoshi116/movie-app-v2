@@ -9,9 +9,15 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-change-in-production")
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
-DEBUG = True
+DEBUG = os.environ.get("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+
+if not DEBUG:
+    assert SECRET_KEY != "django-insecure-dev-key-change-in-production", \
+        "Set SECRET_KEY env var before running in production."
+    assert ALLOWED_HOSTS != ["*"], \
+        "Set ALLOWED_HOSTS env var before running in production."
 
 INSTALLED_APPS = [
     "django.contrib.admin",

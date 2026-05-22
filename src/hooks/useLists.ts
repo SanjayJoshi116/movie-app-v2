@@ -56,6 +56,8 @@ export function useLists() {
 
   const addToList = async (listId: number, entry: WatchlistInput) => {
     if (!isAuthenticated) return;
+    const list = lists.find((l) => l.id === listId);
+    if (list?.items.some((i) => i.id === entry.id && i.type === entry.type)) return;
     const { data } = await userApi.post(`/lists/${listId}/items/`, {
       mediaId: entry.id,
       mediaType: entry.type,

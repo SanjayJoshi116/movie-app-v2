@@ -88,6 +88,10 @@ DEFAULT_FROM_EMAIL=noreply@cinedb.app
 
 # Must match the port the React app runs on (3000)
 FRONTEND_URL=http://localhost:3000
+
+# Production overrides (required when DEBUG=False)
+# DEBUG=False
+# ALLOWED_HOSTS=yourdomain.com
 ```
 
 4. Set up the Python environment and install backend dependencies:
@@ -118,14 +122,15 @@ The React app runs at `http://localhost:3000`. The Express proxy runs at `http:/
 
 ## Scripts
 
-| Command           | Description                                          |
-| ----------------- | ---------------------------------------------------- |
-| `npm run dev`     | Start React, Express proxy, and Django (recommended) |
-| `npm start`       | Start React dev server only                          |
-| `npm run server`  | Start Express proxy server only                      |
-| `npm run django`  | Start Django API server only                         |
-| `npm run build`   | Production build                                     |
-| `npm test`        | Run tests                                            |
+| Command                  | Description                                          |
+| ------------------------ | ---------------------------------------------------- |
+| `npm run dev`            | Start React, Express proxy, and Django (recommended) |
+| `npm start`              | Start React dev server only                          |
+| `npm run server`         | Start Express proxy server only                      |
+| `npm run django`         | Start Django API server only                         |
+| `npm run build`          | Production build                                     |
+| `npm test`               | Run Jest unit tests                                  |
+| `npx playwright test`    | Run E2E tests (starts React dev server automatically)|
 
 ---
 
@@ -233,6 +238,8 @@ src/
 **Key design decisions:**
 
 - **Auth** — JWT via `djangorestframework-simplejwt`. Access (60 min) + refresh (7 days) tokens stored in `localStorage`. `userApi.ts` intercepts 401s and silently refreshes before retrying failed requests. Password reset uses Django's built-in token generator sent via email; the link encodes a base64 uid and a one-use HMAC token.
+- **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. When `DEBUG=False`, the app asserts that `SECRET_KEY` and `ALLOWED_HOSTS` are properly set, preventing accidental production runs with insecure defaults.
+- **Stable hook callbacks** — `useWatchlist`, `useRatings`, and `useWatched` use `useCallback` with a ref pattern (`watchlistRef.current = watchlist`) so returned functions only change identity when `isAuthenticated` changes, not on every render. This prevents `AppContext`'s `useMemo` from recomputing on unrelated parent re-renders.
 - **API key security** — The TMDB key lives in `.env` and is only accessed server-side (Express proxy or Django). Frontend requests go through `/api/tmdb/*`.
 - **Backend data** — All user data lives in PostgreSQL, bound to the authenticated user. No localStorage drift.
 - **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag).
@@ -289,7 +296,9 @@ src/
 
 ## Testing
 
-Tests cover core hook and context logic (29 tests, 4 suites):
+### Unit tests — Jest (29 tests, 4 suites)
+
+Covers core hook and context logic. All hooks are tested with mocked `AuthContext` and `userApi` — no backend required.
 
 ```
 src/hooks/__tests__/
@@ -301,10 +310,23 @@ src/context/__tests__/
 └── AppContext.test.tsx
 ```
 
-Run with:
-
 ```bash
 npm test
+```
+
+### E2E tests — Playwright (20 tests)
+
+Covers auth flows, movie browsing, search, and watchlist operations. All API calls are mocked via Playwright route interception — no backend required. The React dev server starts automatically.
+
+```
+e2e/
+├── auth.spec.ts       # Login, register, forgot password, redirect guards
+├── movies.spec.ts     # Movie/TV browse, category buttons, search, detail navigation
+└── watchlist.spec.ts  # Empty state, add/remove, export CSV, watched list
+```
+
+```bash
+npx playwright test
 ```
 
 ---

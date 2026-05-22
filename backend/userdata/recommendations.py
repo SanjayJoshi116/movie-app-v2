@@ -241,7 +241,9 @@ def recommendations_for_you(request):
         except Exception:
             return []
 
-    gems_mov = filter_new(_interleave(fetch_gems("movie"), fetch_gems("tv")))[:12]
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        gems_results = list(ex.map(fetch_gems, ["movie", "tv"]))
+    gems_mov = filter_new(_interleave(*gems_results))[:12]
     if gems_mov:
         sections.append({"key": "hidden-gems", "label": "Hidden Gems", "items": gems_mov})
 

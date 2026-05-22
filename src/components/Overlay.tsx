@@ -3,7 +3,7 @@ import { Modal, Spin, Typography, Empty } from "antd";
 import axios from "axios";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBVideo } from "../types";
 
-const PROXY_BASE = "http://localhost:3001/api/tmdb";
+const PROXY_BASE = `http://${window.location.hostname}:3001/api/tmdb`;
 
 interface Props {
   movie?: TMDBMovieSummary | null;

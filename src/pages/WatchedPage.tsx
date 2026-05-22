@@ -30,6 +30,8 @@ function WatchedPage() {
   const [sortKey, setSortKey] = useState<SortKey>("watched-desc");
   const PAGE_SIZE = 48;
 
+  React.useEffect(() => { setPage(1); }, [search, sortKey]);
+
   const filtered = useMemo(() => {
     let items = [...watchedList];
     if (search.trim()) {
