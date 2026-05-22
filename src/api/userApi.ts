@@ -1,9 +1,15 @@
 import axios from "axios";
 
 const API_HOST = window.location.hostname;
+const DJANGO_BASE = `http://${API_HOST}:3001/api/django`;
 
 const userApi = axios.create({
-  baseURL: `http://${API_HOST}:3001/api/django`,
+  baseURL: DJANGO_BASE,
+});
+
+// No auth interceptors — for public endpoints (login, register, password reset)
+const publicApi = axios.create({
+  baseURL: DJANGO_BASE,
 });
 
 userApi.interceptors.request.use((config) => {
@@ -94,6 +100,15 @@ export const fetchForYouRecommendations = () =>
 
 export const updateProfile = (data: Record<string, string>) =>
   userApi.patch("/auth/profile/", data);
+
+export const requestPasswordReset = (email: string) =>
+  publicApi.post<{ detail: string }>("/auth/password-reset/", { email });
+
+export const confirmPasswordReset = (uid: string, token: string, newPassword: string) =>
+  publicApi.post<{ detail: string }>("/auth/password-reset/confirm/", { uid, token, new_password: newPassword });
+
+export const resetPasswordByUsername = (username: string, newPassword: string) =>
+  publicApi.post<{ detail: string }>("/auth/password-reset/by-username/", { username, new_password: newPassword });
 
 export const bulkMarkWatched = (
   entries: { mediaId: number; title: string; posterPath?: string | null; voteAverage?: number }[],

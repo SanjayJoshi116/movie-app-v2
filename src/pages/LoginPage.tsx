@@ -38,6 +38,9 @@ export default function LoginPage() {
             </Button>
           </Form.Item>
         </Form>
+        <Typography.Text type="secondary" style={{ display: "block", textAlign: "center", marginBottom: 8 }}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </Typography.Text>
         <Typography.Text type="secondary" style={{ display: "block", textAlign: "center" }}>
           No account?{" "}
           <Link to="/register">Register</Link>

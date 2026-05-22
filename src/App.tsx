@@ -28,6 +28,8 @@ const StatsPage = lazy(() => import("./pages/StatsPage"));
 const FollowingPage = lazy(() => import("./pages/FollowingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const TMDBCallbackPage = lazy(() => import("./pages/TMDBCallbackPage"));
 
@@ -40,8 +42,10 @@ function AppInner() {
   const [activeSortBy, setActiveSortBy] = useState<SortOption>("popularity.desc");
   const [animeMediaType, setAnimeMediaType] = useState<"tv" | "movies">("tv");
 
-  const PUBLIC_PATHS = ["/login", "/register"];
-  if (!isLoading && !isAuthenticated && !PUBLIC_PATHS.includes(location.pathname)) {
+  const isPublicPath =
+    ["/login", "/register", "/forgot-password"].includes(location.pathname) ||
+    location.pathname.startsWith("/reset-password/");
+  if (!isLoading && !isAuthenticated && !isPublicPath) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -127,6 +131,8 @@ function AppInner() {
               <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
               <Route path="/tmdb-callback" element={<TMDBCallbackPage />} />
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />
               <Route path="/watched" element={<ErrorBoundary><WatchedPage /></ErrorBoundary>} />
