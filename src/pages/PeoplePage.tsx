@@ -5,6 +5,7 @@ import { Row, Col, Card, Tag, Typography } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
+import MarqueeTitle from "../components/MarqueeTitle";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
@@ -93,7 +94,10 @@ function PeoplePage() {
     setLoadingMore(true);
     try {
       const { results, totalPages } = await fetchPage(nextPage);
-      setAllPeople((prev) => [...prev, ...results]);
+      setAllPeople((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        return [...prev, ...results.filter((p) => !existingIds.has(p.id))];
+      });
       setCurrentPage(nextPage);
       setHasMore(nextPage < totalPages);
     } catch {
@@ -160,9 +164,7 @@ function PeoplePage() {
                     styles={{ body: { padding: "8px 10px" } }}
                     aria-label={`View profile of ${person.name}`}
                   >
-                    <Typography.Text strong style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
-                      {person.name}
-                    </Typography.Text>
+                    <MarqueeTitle style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{person.name}</MarqueeTitle>
                     {person.known_for_department && (
                       <Tag icon={<UserOutlined />} color="default" style={{ fontSize: 11 }}>
                         {person.known_for_department}

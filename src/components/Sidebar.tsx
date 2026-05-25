@@ -17,7 +17,6 @@ import {
   UnorderedListOutlined,
   LoginOutlined,
   LogoutOutlined,
-  EditOutlined,
   BarChartOutlined,
   UserAddOutlined,
 } from "@ant-design/icons";
@@ -187,8 +186,8 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
         <Divider style={{ margin: "4px 0" }} />
 
         {isAuthenticated && user ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
+            <Tooltip title="Edit Profile">
               <Avatar
                 size={36}
                 style={{ backgroundColor: avatarColor(user.username), color: "#fff", fontWeight: 700, flexShrink: 0, cursor: "pointer" }}
@@ -196,33 +195,21 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
               >
                 {getInitials(user)}
               </Avatar>
-              <div style={{ overflow: "hidden" }}>
-                <Typography.Text style={{ fontSize: 13, fontWeight: 600, display: "block", lineHeight: 1.2 }} ellipsis>
-                  {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
-                </Typography.Text>
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<EditOutlined />}
-                  style={{ padding: 0, height: "auto", fontSize: 11 }}
-                  onClick={() => setProfileOpen(true)}
-                >
-                  Edit Profile
-                </Button>
-              </div>
-            </div>
-            <Button
-              icon={<LogoutOutlined />}
-              type="text"
-              block
-              onClick={() => {
-                logout();
-                navigate("/movies");
-              }}
-              style={{ textAlign: "left" }}
-            >
-              Sign Out
-            </Button>
+            </Tooltip>
+            <Typography.Text style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600 }} ellipsis>
+              {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
+            </Typography.Text>
+            <Tooltip title="Sign Out">
+              <Button
+                type="text"
+                icon={<LogoutOutlined />}
+                size="small"
+                onClick={() => {
+                  logout();
+                  navigate("/movies");
+                }}
+              />
+            </Tooltip>
             <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
           </div>
         ) : (

@@ -26,7 +26,7 @@ function getRatingColor(v: number) {
 
 // ── Shared paginated hook ────────────────────────────────────────────────────
 
-function usePaginatedSearch<T>(
+function usePaginatedSearch<T extends { id: number }>(
   fetcher: (query: string, page: number, adult: boolean) => Promise<{ results: T[]; totalPages: number }>,
   query: string,
   adult: boolean,
@@ -63,7 +63,10 @@ function usePaginatedSearch<T>(
     setLoadingMore(true);
     try {
       const { results, totalPages } = await fetcher(query, next, adult);
-      setItems((prev) => [...prev, ...results]);
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        return [...prev, ...results.filter((item) => !existingIds.has(item.id))];
+      });
       setPage(next);
       setHasMore(next < totalPages);
     } catch { /* ignore */ }

@@ -1,8 +1,9 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Card, Tag, Button, Tooltip } from "antd";
-import { EyeOutlined, EyeFilled } from "@ant-design/icons";
+import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import type { TMDBMovieSummary } from "../types";
+import MarqueeTitle from "./MarqueeTitle";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 
@@ -21,7 +22,7 @@ interface Props {
 
 const Movie = ({ movie, onKnowMore }: Props) => {
   const { title, poster_path, vote_average } = movie;
-  const { isWatched, toggleWatched, theme } = useAppContext();
+  const { isWatched, toggleWatched, isInWatchlist, toggleWatchlist, theme } = useAppContext();
   const { showSuccess } = useToast();
 
   return (
@@ -48,9 +49,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
       >
         <Card.Meta
           title={
-            <span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>
-              {title}
-            </span>
+            <MarqueeTitle style={{ fontSize: 14, lineHeight: "1.3" }}>{title}</MarqueeTitle>
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -71,6 +70,21 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                       showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
                     }}
                     aria-label={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}
+                  />
+                </Tooltip>
+                <Tooltip title={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={isInWatchlist(movie.id, "movie") ? <BookFilled /> : <BookOutlined />}
+                    style={{ color: isInWatchlist(movie.id, "movie") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const inList = isInWatchlist(movie.id, "movie");
+                      toggleWatchlist({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                    }}
+                    aria-label={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}
                   />
                 </Tooltip>
                 <Button

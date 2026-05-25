@@ -202,7 +202,11 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     try {
       const nextPage = currentPage + 1;
       const { results, totalPages } = await fetchPage(nextPage);
-      setAllItems((prev) => [...prev, ...results] as TMDBMovieSummary[] | TMDBTVSummary[]);
+      setAllItems((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const deduped = results.filter((item) => !existingIds.has(item.id));
+        return [...prev, ...deduped] as TMDBMovieSummary[] | TMDBTVSummary[];
+      });
       setCurrentPage(nextPage);
       setHasMore(nextPage < totalPages);
     } catch (err) {

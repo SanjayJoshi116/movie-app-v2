@@ -8,14 +8,18 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { message } = App.useApp();
+  const [loading, setLoading] = React.useState(false);
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/movies";
 
   const onFinish = async (values: { username: string; password: string }) => {
+    setLoading(true);
     try {
       await login(values.username, values.password);
       navigate(from, { replace: true });
     } catch {
       message.error("Invalid username or password.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -33,7 +37,7 @@ export default function LoginPage() {
             <Input.Password size="large" autoComplete="current-password" />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large">
+            <Button type="primary" htmlType="submit" block size="large" loading={loading}>
               Sign In
             </Button>
           </Form.Item>

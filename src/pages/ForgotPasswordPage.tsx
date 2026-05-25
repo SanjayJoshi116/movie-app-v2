@@ -14,11 +14,12 @@ export default function ForgotPasswordPage() {
       await requestPasswordReset(values.email.trim());
       setSent(true);
     } catch (err: unknown) {
-      const response = (err as { response?: { data?: unknown; status?: number } })?.response;
+      const axiosErr = err as { response?: { data?: { detail?: string }; status?: number } };
+      const response = axiosErr?.response;
       if (!response) {
         message.error("Cannot reach the server. Make sure the backend is running.");
       } else {
-        message.error("Something went wrong. Please try again.");
+        message.error(response.data?.detail || "Something went wrong. Please try again.");
       }
     } finally {
       setLoading(false);

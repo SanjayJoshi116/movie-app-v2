@@ -24,8 +24,7 @@ const AnimePage = lazy(() => import("./pages/AnimePage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const ListsPage = lazy(() => import("./pages/ListsPage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
-const StatsPage = lazy(() => import("./pages/StatsPage"));
-const FollowingPage = lazy(() => import("./pages/FollowingPage"));
+const StatsPage = lazy(() => import("./pages/StatsPage"));const FollowingPage = lazy(() => import("./pages/FollowingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
@@ -139,8 +138,7 @@ function AppInner() {
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
               <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
               <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />
-              <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />
-              <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
+              <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />              <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
               <Route path="*" element={<Navigate to="/movies" replace />} />
             </Routes>
           </AnimatePresence>

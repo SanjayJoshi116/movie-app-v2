@@ -133,9 +133,15 @@ export interface StatsData {
   tvCount: number;
   totalRatings: number;
   avgUserRating: number;
+  avgTmdbRating: number | null;
   ratingDistribution: { rating: string; count: number }[];
   monthlyActivity: { month: string; count: number }[];
   topGenres: { genre: string; count: number }[];
+  languageBreakdown: { language: string; count: number }[];
+  decadeBreakdown: { decade: string; count: number }[];
+  dailyActivity: { date: string; count: number }[];
+  topRatedItems: { title: string; posterPath: string | null; userRating: number; mediaType: string }[];
+  recentItems: { title: string; posterPath: string | null; watchedAt: string; mediaType: string }[];
 }
 
 export const fetchStats = () => userApi.get<StatsData>("/stats/");

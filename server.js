@@ -25,7 +25,7 @@ app.use(express.json({ limit: "10mb" }));
 
 // Django API proxy — forwards to local Django on port 8000
 app.use("/api/django", async (req, res) => {
-  const DJANGO_BASE = "http://localhost:8000/api";
+  const DJANGO_BASE = process.env.DJANGO_API_URL || "http://localhost:8000/api";
   const targetUrl = `${DJANGO_BASE}${req.path}`;
   try {
     const response = await axios({

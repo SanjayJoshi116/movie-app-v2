@@ -468,7 +468,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
           <>
             <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Recommendations</Typography.Title></Divider>
             <Row gutter={[12, 16]}>
-              {(recommendations as Array<{ id: number; poster_path: string | null; name: string }>).map((show) => (
+              {((recommendations as { results?: Array<{ id: number; poster_path: string | null; name: string }> })?.results ?? []).map((show) => (
                 <Col key={show.id} xs={8} sm={6} md={4} lg={3}>
                   <Card
                     hoverable

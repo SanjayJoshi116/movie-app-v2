@@ -21,7 +21,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name")
+        fields = ("id", "username", "email", "first_name", "last_name", "is_staff")
 
 
 class UserProfileUpdateSerializer(serializers.Serializer):
@@ -67,10 +67,12 @@ class WatchedEntrySerializer(serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True)
     voteAverage = serializers.FloatField(source="vote_average")
     watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
+    originalLanguage = serializers.CharField(source="original_language", allow_null=True, allow_blank=True, required=False)
+    releaseYear = serializers.IntegerField(source="release_year", allow_null=True, required=False)
 
     class Meta:
         model = WatchedEntry
-        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "watchedAt")
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "watchedAt", "originalLanguage", "releaseYear")
         read_only_fields = ("id", "watchedAt")
 
 

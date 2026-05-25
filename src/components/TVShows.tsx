@@ -1,8 +1,9 @@
 import React from "react";
 import { Row, Col, Card, Tag, Button, Empty, Tooltip } from "antd";
-import { EyeOutlined, EyeFilled, SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
+import { EyeOutlined, EyeFilled, BookOutlined, BookFilled, SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import type { TMDBTVSummary } from "../types";
+import MarqueeTitle from "./MarqueeTitle";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 
@@ -22,7 +23,7 @@ interface Props {
 }
 
 const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
-  const { isWatched, toggleWatched, theme } = useAppContext();
+  const { isWatched, toggleWatched, isInWatchlist, toggleWatchlist, theme } = useAppContext();
   const { showSuccess } = useToast();
 
   if (tvShows.length === 0) {
@@ -78,9 +79,7 @@ const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
               >
                 <Card.Meta
                   title={
-                    <span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>
-                      {tvShow.name}
-                    </span>
+                    <MarqueeTitle style={{ fontSize: 14, lineHeight: "1.3" }}>{tvShow.name}</MarqueeTitle>
                   }
                   description={
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -101,6 +100,21 @@ const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
                               showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
                             }}
                             aria-label={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}
+                          />
+                        </Tooltip>
+                        <Tooltip title={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}>
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={isInWatchlist(tvShow.id, "tv") ? <BookFilled /> : <BookOutlined />}
+                            style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const inList = isInWatchlist(tvShow.id, "tv");
+                              toggleWatchlist({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
+                              showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                            }}
+                            aria-label={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}
                           />
                         </Tooltip>
                         <Button

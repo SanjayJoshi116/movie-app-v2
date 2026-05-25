@@ -1,0 +1,11 @@
+node_modules
+build
+.env
+.env.docker
+.env.local
+.env.*.local
+e2e
+test-results
+playwright-report
+*.md
+backend

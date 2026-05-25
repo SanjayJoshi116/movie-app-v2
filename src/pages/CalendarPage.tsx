@@ -170,7 +170,7 @@ function CalendarPage() {
         </Typography.Title>
       </div>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 20 }}>
-        Upcoming releases in the next 60 days
+        Upcoming releases in the next 7 days
       </Typography.Text>
 
       <Radio.Group
@@ -189,7 +189,7 @@ function CalendarPage() {
       ) : groups.length === 0 ? (
         <Empty
           image={<CalendarOutlined style={{ fontSize: 48, color: "#aaa" }} />}
-          description="No upcoming releases in the next 60 days."
+          description="No upcoming releases in the next 7 days."
           style={{ padding: "60px 0" }}
         />
       ) : (

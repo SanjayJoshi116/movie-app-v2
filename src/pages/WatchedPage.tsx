@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Card, Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select,
@@ -22,15 +22,32 @@ type SortKey = "watched-desc" | "title-asc" | "tmdb-desc" | "my-rating-desc";
 
 function WatchedPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [clearing, setClearing] = useState(false);
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("watched-desc");
-  const PAGE_SIZE = 48;
 
-  React.useEffect(() => { setPage(1); }, [search, sortKey]);
+  const page = Number(searchParams.get("page") ?? "1") || 1;
+  const pageSize = Number(searchParams.get("pageSize") ?? "48") || 48;
+
+  const setPageState = (p: number, ps: number) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (p === 1) next.delete("page"); else next.set("page", String(p));
+      if (ps === 48) next.delete("pageSize"); else next.set("pageSize", String(ps));
+      return next;
+    }, { replace: true });
+  };
+
+  const buildFromUrl = () => {
+    const p = new URLSearchParams();
+    if (page > 1) p.set("page", String(page));
+    if (pageSize !== 48) p.set("pageSize", String(pageSize));
+    const qs = p.toString();
+    return qs ? `/watched?${qs}` : "/watched";
+  };
 
   const filtered = useMemo(() => {
     let items = [...watchedList];
@@ -54,7 +71,7 @@ function WatchedPage() {
     return items;
   }, [watchedList, search, sortKey, getRating]);
 
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
   const movies = watchedList.filter((w) => w.type === "movie");
   const tvShows = watchedList.filter((w) => w.type === "tv");
 
@@ -126,13 +143,13 @@ function WatchedPage() {
             prefix={<SearchOutlined />}
             placeholder="Search title…"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setPageState(1, pageSize); }}
             allowClear
             style={{ width: 200 }}
           />
           <Select
             value={sortKey}
-            onChange={(v) => { setSortKey(v); setPage(1); }}
+            onChange={(v) => { setSortKey(v); setPageState(1, pageSize); }}
             style={{ width: 180 }}
             options={[
               { label: "Watched (newest)", value: "watched-desc" },
@@ -167,7 +184,7 @@ function WatchedPage() {
                       alt={item.title}
                       className="movie-poster-img"
                       onClick={() =>
-                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watched" } })
+                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
                       }
                       style={{ cursor: "pointer" }}
                     />
@@ -204,13 +221,18 @@ function WatchedPage() {
             ))}
           </Row>
 
-          {filtered.length > PAGE_SIZE && (
+          {filtered.length > pageSize && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
               <Pagination
                 current={page}
-                pageSize={PAGE_SIZE}
+                pageSize={pageSize}
                 total={filtered.length}
-                onChange={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                showSizeChanger
+                pageSizeOptions={[12, 24, 48, 96]}
+                onChange={(p, ps) => {
+                  setPageState(ps !== pageSize ? 1 : p, ps);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
                 showTotal={(total) => `${total} titles`}
               />
             </div>

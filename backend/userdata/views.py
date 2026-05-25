@@ -1,9 +1,13 @@
 import time as _time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from threading import Thread
 from django.contrib.auth.models import User
-from django.db.models import Count
-from django.db.models.functions import TruncMonth
+from django.db.models import Count, Avg, Q
+from django.db.models.functions import TruncMonth, TruncDate
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -49,18 +53,24 @@ def password_reset_request(request):
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"
-        send_mail(
-            subject="Reset your CINE DB password",
-            message=(
-                f"Hi {user.username},\n\n"
-                f"Click the link below to reset your password:\n{reset_url}\n\n"
-                f"This link expires in 1 hour.\n\n"
-                f"If you didn't request this, you can ignore this email."
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+        try:
+            send_mail(
+                subject="Reset your CINE DB password",
+                message=(
+                    f"Hi {user.username},\n\n"
+                    f"Click the link below to reset your password:\n{reset_url}\n\n"
+                    f"This link expires in 1 hour.\n\n"
+                    f"If you didn't request this, you can ignore this email."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            return Response(
+                {"detail": "Failed to send reset email. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
     except User.DoesNotExist:
         pass  # Don't reveal whether the email is registered
 
@@ -509,15 +519,114 @@ def stats(request):
         for gid, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
     ]
 
+    avg_tmdb = watched.aggregate(Avg("vote_average"))["vote_average__avg"]
+    avg_tmdb_rating = round(avg_tmdb, 1) if avg_tmdb else None
+
+    # TMDB backfill: fetch original_language + release_year for entries missing them
+    missing = list(
+        watched.filter(Q(original_language__isnull=True) | Q(release_year__isnull=True))
+        .only("id", "media_id", "media_type")
+    )
+
+    if missing:
+        def _fetch_and_update(entry):
+            try:
+                data = tmdb_client._get(f"/{entry.media_type}/{entry.media_id}")
+                lang = data.get("original_language") or "??"
+                date_field = "release_date" if entry.media_type == "movie" else "first_air_date"
+                date_str = data.get(date_field) or ""
+                year = int(date_str[:4]) if len(date_str) >= 4 else -1
+                WatchedEntry.objects.filter(pk=entry.pk).update(
+                    original_language=lang,
+                    release_year=year,
+                )
+            except Exception:
+                pass
+
+        def _run_backfill():
+            with ThreadPoolExecutor(max_workers=20) as ex:
+                list(ex.map(_fetch_and_update, missing))
+        Thread(target=_run_backfill, daemon=True).start()
+
+    # Language breakdown (top 10, excluding sentinel — uses current DB state)
+    lang_counter = Counter(
+        e.original_language for e in watched.only("original_language")
+        if e.original_language and e.original_language not in ("??", "")
+    )
+    language_breakdown = [
+        {"language": lang, "count": cnt}
+        for lang, cnt in lang_counter.most_common(10)
+    ]
+
+    # Decade breakdown
+    decade_counts: dict[str, int] = {}
+    for entry in watched.only("release_year"):
+        if entry.release_year and entry.release_year > 0:
+            decade = f"{(entry.release_year // 10) * 10}s"
+            decade_counts[decade] = decade_counts.get(decade, 0) + 1
+    decade_breakdown = [
+        {"decade": decade, "count": cnt}
+        for decade, cnt in sorted(decade_counts.items())
+    ]
+
+    # Daily activity — last 365 days
+    cutoff = timezone.now() - timedelta(days=364)
+    daily_qs = (
+        watched.filter(watched_at__gte=cutoff)
+        .annotate(date=TruncDate("watched_at"))
+        .values("date")
+        .annotate(count=Count("id"))
+        .order_by("date")
+    )
+    daily_activity = [
+        {"date": d["date"].strftime("%Y-%m-%d"), "count": d["count"]}
+        for d in daily_qs
+    ]
+
+    # Top rated items (joined with user ratings)
+    rating_map = {
+        (r.media_id, r.media_type): r.user_rating
+        for r in ratings_qs.only("media_id", "media_type", "user_rating")
+    }
+    top_rated: list[dict] = []
+    for entry in watched.only("media_id", "media_type", "title", "poster_path"):
+        user_rating = rating_map.get((entry.media_id, entry.media_type))
+        if user_rating is not None:
+            top_rated.append({
+                "title": entry.title,
+                "posterPath": entry.poster_path,
+                "userRating": user_rating,
+                "mediaType": entry.media_type,
+            })
+    top_rated.sort(key=lambda x: -x["userRating"])
+    top_rated_items = top_rated[:8]
+
+    # Recent items
+    recent_items = [
+        {
+            "title": e.title,
+            "posterPath": e.poster_path,
+            "watchedAt": e.watched_at.strftime("%Y-%m-%d"),
+            "mediaType": e.media_type,
+        }
+        for e in watched.order_by("-watched_at")[:8]
+    ]
+
     return Response({
         "totalWatched": total_watched,
         "moviesCount": movies_count,
         "tvCount": tv_count,
         "totalRatings": total_ratings,
         "avgUserRating": avg_user_rating,
+        "avgTmdbRating": avg_tmdb_rating,
         "ratingDistribution": rating_distribution,
         "monthlyActivity": monthly_activity,
         "topGenres": top_genres,
+        "languageBreakdown": language_breakdown,
+        "decadeBreakdown": decade_breakdown,
+        "dailyActivity": daily_activity,
+        "topRatedItems": top_rated_items,
+        "recentItems": recent_items,
     })
 
 
