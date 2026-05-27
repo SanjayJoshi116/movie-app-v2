@@ -11,10 +11,13 @@
 # Playwright
 test-results/
 playwright-report/
+e2e/python/.pytest_cache/
 
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+.pytest_cache/
 
 # production
 /build
