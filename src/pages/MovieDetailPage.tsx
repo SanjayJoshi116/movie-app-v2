@@ -24,6 +24,7 @@ const PROXY_BASE = `http://${window.location.hostname}:3001/api/tmdb`;
 function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [movie, setMovie] = useState<any>(null);
+  // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

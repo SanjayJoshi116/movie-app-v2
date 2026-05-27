@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty } from "antd";
 import { CalendarOutlined, StarFilled } from "@ant-design/icons";
@@ -67,9 +67,18 @@ function getRatingColor(vote: number): string {
 
 function CalendarPage() {
   const navigate = useNavigate();
-  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("both");
+  const location = useLocation();
+  const locationState = location.state as { scrollY?: number; mediaFilter?: MediaFilter; isReturn?: boolean } | null;
+  const isReturning = locationState?.isReturn ?? false;
+  const savedScrollY = locationState?.scrollY ?? 0;
+  const savedMediaFilter = locationState?.mediaFilter;
+
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>(
+    (isReturning && savedMediaFilter) ? savedMediaFilter : "both"
+  );
   const [groups, setGroups] = useState<DateGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const didRestoreRef = useRef(false);
 
   const fetchCalendar = useCallback(async (filter: MediaFilter) => {
     setLoading(true);
@@ -155,6 +164,13 @@ function CalendarPage() {
     fetchCalendar(mediaFilter);
   }, [mediaFilter, fetchCalendar]);
 
+  useLayoutEffect(() => {
+    if (isReturning && savedScrollY > 0 && !didRestoreRef.current && groups.length > 0) {
+      didRestoreRef.current = true;
+      window.scrollTo(0, savedScrollY);
+    }
+  }, [groups, isReturning, savedScrollY]);
+
   return (
     <motion.div
       variants={pageVariants}
@@ -205,7 +221,7 @@ function CalendarPage() {
                     whileHover={{ scale: 1.04, y: -4 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
                     style={{ cursor: "pointer" }}
-                    onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/calendar" } })}
+                    onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/calendar", scrollY: window.scrollY, mediaFilter, isReturn: false } })}
                   >
                     <Card
                       hoverable

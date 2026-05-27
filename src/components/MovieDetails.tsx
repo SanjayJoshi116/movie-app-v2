@@ -97,11 +97,8 @@ function WatchProviders({ providers, title }: { providers: Record<string, TMDBPr
 const MovieDetails = ({ movie }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { from?: string; page?: number; scrollY?: number; loadedPages?: number } | null;
+  const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const savedPage = locationState?.page;
-  const savedScrollY = locationState?.scrollY;
-  const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
   const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess } = useToast();
@@ -116,6 +113,10 @@ const MovieDetails = ({ movie }: Props) => {
   } = movie;
 
   const cast = credits?.cast ?? [];
+  const directors = (credits?.crew ?? [])
+    .filter((c: any) => c.job === "Director")
+    .map((c: any) => c.name)
+    .join(", ");
   const { isWatched, toggleWatched, theme } = useAppContext();
   const inWatchlist = isInWatchlist(id, "movie");
   const watched = isWatched(id, "movie");
@@ -143,7 +144,7 @@ const MovieDetails = ({ movie }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { page: savedPage, scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
+          onClick={() => from ? navigate(from, { state: { ...locationState, isReturn: true } }) : navigate(-1)}
           style={{ marginBottom: 16 }}
         >
           Back
@@ -227,6 +228,7 @@ const MovieDetails = ({ movie }: Props) => {
                 <Descriptions.Item label="Status">{status}</Descriptions.Item>
                 <Descriptions.Item label="Language">{original_language?.toUpperCase()}</Descriptions.Item>
                 <Descriptions.Item label="Certification">{renderCertifications(certifications)}</Descriptions.Item>
+                {directors && <Descriptions.Item label="Director">{directors}</Descriptions.Item>}
                 {revenue ? <Descriptions.Item label="Revenue">${revenue.toLocaleString()}</Descriptions.Item> : null}
               </Descriptions>
 

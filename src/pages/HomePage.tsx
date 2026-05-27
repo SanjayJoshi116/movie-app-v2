@@ -52,17 +52,21 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
   const location = useLocation();
   const isMovie = tab === "movies";
 
-  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
+  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean; activeCategory?: string } | null;
   const isReturning = locationState?.isReturn ?? false;
   const savedScrollY = locationState?.scrollY ?? 0;
   const savedLoadedPages = locationState?.loadedPages ?? 1;
+  const savedActiveCategory = locationState?.activeCategory;
 
   const [allItems, setAllItems] = useState<TMDBMovieSummary[] | TMDBTVSummary[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeCategory, setActiveCategory] = useState(isMovie ? "discover" : "tv-popular");
+  const defaultCategory = isMovie ? "discover" : "tv-popular";
+  const [activeCategory, setActiveCategory] = useState(
+    (isReturning && savedActiveCategory) ? savedActiveCategory : defaultCategory
+  );
 
   const didRestoreRef = useRef(false);
   const isRestoringRef = useRef(isReturning);
@@ -71,8 +75,8 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     if (!isReturning) {
       setSearchTerm("");
       clearGenres();
+      setActiveCategory(defaultCategory);
     }
-    setActiveCategory(isMovie ? "discover" : "tv-popular");
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPage = useCallback(
@@ -220,7 +224,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
   const handleKnowMore = (id: number) => {
     navigate(isMovie ? `/movie/${id}` : `/tv/${id}`, {
-      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false },
+      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
     });
   };
 

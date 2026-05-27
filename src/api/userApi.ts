@@ -32,6 +32,14 @@ userApi.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
+
+    // Retry once on 500 after a brief pause — handles transient DB/network blips
+    if (error.response?.status === 500 && !original._retry500) {
+      original._retry500 = true;
+      await new Promise((r) => setTimeout(r, 2000));
+      return userApi(original);
+    }
+
     if (error.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {

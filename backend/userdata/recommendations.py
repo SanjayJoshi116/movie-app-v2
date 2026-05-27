@@ -283,7 +283,10 @@ def _fill_genre(entry):
     except Exception:
         ids = []
     entry.genre_ids = ids
-    entry.save(update_fields=["genre_ids"])
+    try:
+        entry.save(update_fields=["genre_ids"])
+    except Exception:
+        pass  # best-effort; don't surface DB blips as 500
 
 
 @api_view(["GET"])
@@ -305,7 +308,10 @@ def personalized_recommendations(request):
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(_fill_genre, e): e for e in missing}
             for f in as_completed(futures):
-                f.result()  # surface exceptions if any
+                try:
+                    f.result()
+                except Exception:
+                    pass  # best-effort genre fill; don't crash the view
 
     # --- Build genre vocabulary ---
     all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})

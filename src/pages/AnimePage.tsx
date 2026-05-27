@@ -55,13 +55,22 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   const navigate = useNavigate();
   const location = useLocation();
 
-  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
+  const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean; activeCategory?: string } | null;
   const isReturning = locationState?.isReturn ?? false;
   const savedScrollY = locationState?.scrollY ?? 0;
   const savedLoadedPages = locationState?.loadedPages ?? 1;
+  const savedActiveCategory = locationState?.activeCategory;
 
-  const [animeTab, setAnimeTab] = useState<"tv" | "movies">("tv");
-  const [activeCategory, setActiveCategory] = useState("anime-tv-popular");
+  // Derive animeTab from saved activeCategory so we don't need a separate state field
+  const restoredTab: "tv" | "movies" =
+    savedActiveCategory?.startsWith("anime-movies-") ? "movies" : "tv";
+
+  const [animeTab, setAnimeTab] = useState<"tv" | "movies">(
+    isReturning && savedActiveCategory ? restoredTab : "tv"
+  );
+  const [activeCategory, setActiveCategory] = useState(
+    isReturning && savedActiveCategory ? savedActiveCategory : "anime-tv-popular"
+  );
   const [allItems, setAllItems] = useState<TMDBMovieSummary[] | TMDBTVSummary[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -79,15 +88,15 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setActiveCategory(animeTab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
     if (!isRestoringRef.current) {
+      // User manually switched tab — reset category and clear results
+      setActiveCategory(animeTab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
       setAllItems([]);
       setCurrentPage(1);
       setHasMore(true);
     }
-    isRestoringRef.current = false;
     onMediaTypeChange(animeTab);
-  }, [animeTab, onMediaTypeChange]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [animeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPage = useCallback(
     async (page: number): Promise<{ results: TMDBMovieSummary[] | TMDBTVSummary[]; totalPages: number }> => {
@@ -211,7 +220,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   const handleKnowMore = (id: number) => {
     navigate(animeTab === "movies" ? `/movie/${id}` : `/tv/${id}`, {
-      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false },
+      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
     });
   };
 

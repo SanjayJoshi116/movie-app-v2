@@ -86,11 +86,8 @@ interface Props {
 const TVShowDetails = ({ tvShow }: Props) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const locationState = location.state as { from?: string; page?: number; scrollY?: number; loadedPages?: number } | null;
+  const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const savedPage = locationState?.page;
-  const savedScrollY = locationState?.scrollY;
-  const savedLoadedPages = locationState?.loadedPages;
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
   const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess } = useToast();
@@ -116,6 +113,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
 
   const hasBackdrop = !!backdrop_path;
   const castList = aggregate_credits?.cast ?? [];
+  const creators = ((tvShow as any).created_by ?? [])
+    .map((c: any) => c.name)
+    .join(", ");
 
   const getMaxEpisodes = (season: number): number => {
     const s = tvShow.seasons?.find((s) => s.season_number === season);
@@ -143,7 +143,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { page: savedPage, scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
+          onClick={() => from ? navigate(from, { state: { ...locationState, isReturn: true } }) : navigate(-1)}
           style={{ marginBottom: 16 }}
         >
           Back
@@ -226,6 +226,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 <Descriptions.Item label="Status">{status || "N/A"}</Descriptions.Item>
                 <Descriptions.Item label="Language">{original_language?.toUpperCase() || "N/A"}</Descriptions.Item>
                 <Descriptions.Item label="Last Air Date">{last_air_date || "N/A"}</Descriptions.Item>
+                {creators && (
+                  <Descriptions.Item label="Created By">{creators}</Descriptions.Item>
+                )}
                 {next_episode_to_air && (
                   <Descriptions.Item label="Next Episode">{next_episode_to_air.air_date}</Descriptions.Item>
                 )}
