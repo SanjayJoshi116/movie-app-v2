@@ -460,6 +460,12 @@ GitHub Actions runs both test suites automatically on every push and pull reques
 
 ---
 
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=SanjayJoshi116/movie-app-v2)](https://github.com/SanjayJoshi116/movie-app-v2/graphs/contributors)
+
+---
+
 ## License
 
 MIT © 2026 [SanjayJoshi116](https://github.com/SanjayJoshi116)
