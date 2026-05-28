@@ -9,7 +9,6 @@ import {
   PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined,
 } from "@ant-design/icons";
 import { useListsContext } from "../context/useListsContext";
-import type { UserList } from "../types";
 import { downloadCSV } from "../utils/export";
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
@@ -20,11 +19,16 @@ const pageVariants = {
   exit: { opacity: 0, y: -16 },
 };
 
+const SS_SELECTED = "lists_selected_id";
+
 function ListsPage() {
   const navigate = useNavigate();
   const { lists, isLoading, createList, deleteList, removeFromList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [selectedList, setSelectedList] = useState<UserList | null>(null);
+  const [selectedListId, setSelectedListId] = useState<number | null>(() => {
+    const saved = sessionStorage.getItem(SS_SELECTED);
+    return saved ? Number(saved) : null;
+  });
   const [form] = Form.useForm();
 
   const handleCreate = () => {
@@ -35,9 +39,14 @@ function ListsPage() {
     });
   };
 
-  // Keep selectedList in sync with latest lists data
-  const currentSelected = selectedList
-    ? lists.find((l) => l.id === selectedList.id) ?? null
+  const selectList = (id: number | null) => {
+    setSelectedListId(id);
+    if (id !== null) sessionStorage.setItem(SS_SELECTED, String(id));
+    else sessionStorage.removeItem(SS_SELECTED);
+  };
+
+  const currentSelected = selectedListId
+    ? lists.find((l) => l.id === selectedListId) ?? null
     : null;
 
   return (
@@ -79,13 +88,13 @@ function ListsPage() {
               <Card
                 hoverable
                 style={{ cursor: "pointer", borderColor: currentSelected?.id === list.id ? "#f5c518" : undefined }}
-                onClick={() => setSelectedList(list.id === currentSelected?.id ? null : list)}
+                onClick={() => selectList(list.id === currentSelected?.id ? null : list.id)}
                 actions={[
                   <Popconfirm
                     key="delete"
                     title={`Delete "${list.name}"?`}
                     description="This will permanently remove the list and all its items."
-                    onConfirm={() => { if (currentSelected?.id === list.id) setSelectedList(null); deleteList(list.id); }}
+                    onConfirm={() => { if (currentSelected?.id === list.id) selectList(null); deleteList(list.id); }}
                     okText="Delete"
                     okType="danger"
                     cancelText="Cancel"

@@ -118,6 +118,54 @@ The React app runs at `http://localhost:3000`. The Express proxy runs at `http:/
 
 > **Note:** All three must be running for the app to work fully. `npm run dev` starts them together using `concurrently`.
 
+### Docker (Production)
+
+All four services (frontend, proxy, backend, database) run together via Docker Compose.
+
+1. Create `.env.docker` in the project root:
+
+```
+POSTGRES_PASSWORD=your_db_password
+DB_PASSWORD=your_db_password
+DB_NAME=cinedb
+DB_USER=postgres
+DB_HOST=db
+DB_PORT=5432
+TMDB_API_KEY=your_tmdb_api_key
+SECRET_KEY=your-long-random-django-secret-key
+JWT_SIGNING_KEY=your-long-random-jwt-signing-key
+DJANGO_API_URL=http://backend:8000/api
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+FRONTEND_URL=http://localhost
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=you@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
+```
+
+2. Build and start all services:
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost`.
+
+**Service layout:**
+
+| Service | Image | Port |
+|---------|-------|------|
+| `frontend` | nginx + React build | 80 (public) |
+| `proxy` | Node/Express | 3001 (internal) |
+| `backend` | Python/Django | 8000 (internal) |
+| `db` | postgres:15-alpine | 5432 (internal) |
+
+Nginx proxies `/api/*` to the Express proxy, which forwards TMDB requests and Django API calls. PostgreSQL data persists in the `pgdata` Docker volume.
+
 ---
 
 ## Scripts
@@ -250,7 +298,7 @@ src/
 - **Protected routes** — Unauthenticated access to any non-public path redirects to `/login` with `state.from` preserved, handled inline in `AppInner` (`App.tsx`). Public paths: `/login`, `/register`, `/forgot-password`, `/reset-password/*`.
 - **Layout** — `App.tsx` uses a plain flex `div.app-shell`: `<Sidebar>` (desktop) + `<main>` + `<BottomNav>` (mobile). No Ant Design Layout wrapper.
 - **State** — `AppContext` for global UI state; `AuthContext` for auth; `ListsContext` for lists. Ephemeral page state (loading, pagination) stays local to each page component.
-- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page. On back-navigation, the pages re-fetch the required pages sequentially and restore the scroll position via `useLayoutEffect`.
+- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page. On back-navigation, the pages re-fetch the required pages sequentially and restore the scroll position via `useLayoutEffect`. WatchlistPage persists scroll position, search query, and sort key in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
 - **Routing** — React Router v6. Every movie, show, and person has its own URL.
 - **TypeScript** — Strict mode. All TMDB response shapes typed in `src/types/tmdb.ts`.
 - **UI** — Ant Design 5 with `ConfigProvider`. Cinema-dark uses `#0d0f1a` background and `#f5c518` gold accent. Cards use `rgba` glassmorphism (`.glass-card`, `.glass-sidebar`).

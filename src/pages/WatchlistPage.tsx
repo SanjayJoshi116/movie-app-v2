@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -10,6 +10,10 @@ import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import WatchlistStats from "../components/watchlist/WatchlistStats";
 import { downloadCSV } from "../utils/export";
+
+const SS_SCROLL = "watchlist_scroll";
+const SS_SEARCH = "watchlist_search";
+const SS_SORT   = "watchlist_sort";
 
 const pageVariants = {
   initial: { opacity: 0, y: 16 },
@@ -33,8 +37,23 @@ function WatchlistPage() {
   const { watchlist, removeFromWatchlist, getRating, setRating, allRatings } = useAppContext();
   const { showSuccess } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
-  const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("added-desc");
+  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
+  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "added-desc");
+  const didRestoreScroll = useRef(false);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SS_SCROLL);
+    if (saved && !didRestoreScroll.current) {
+      didRestoreScroll.current = true;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: parseInt(saved, 10), behavior: "instant" });
+        sessionStorage.removeItem(SS_SCROLL);
+      });
+    }
+  }, []);
+
+  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
+  useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
 
   const filtered = useMemo(() => {
     let items = [...watchlist];
@@ -133,9 +152,10 @@ function WatchlistPage() {
                       src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
                       alt={item.title}
                       className="movie-poster-img"
-                      onClick={() =>
-                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } })
-                      }
+                      onClick={() => {
+                        sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
+                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
+                      }}
                       style={{ cursor: "pointer" }}
                     />
                   }
