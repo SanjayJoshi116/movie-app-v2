@@ -19,7 +19,7 @@ import type {
   SortOption,
 } from "../types";
 
-const api = axios.create({ baseURL: `http://${window.location.hostname}:3001/api/tmdb` });
+const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:3001/api/tmdb` });
 
 // ─── Movies ───────────────────────────────────────────────────────────────────
 
