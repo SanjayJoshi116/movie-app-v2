@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API_HOST = window.location.hostname;
-const DJANGO_BASE = `http://${API_HOST}:3001/api/django`;
+const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:3001/api/django`;
 
 const userApi = axios.create({
   baseURL: DJANGO_BASE,
@@ -64,7 +64,7 @@ userApi.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post(`http://${API_HOST}:3001/api/django/auth/token/refresh/`, {
+        const { data } = await axios.post(`${DJANGO_BASE}/auth/token/refresh/`, {
           refresh,
         });
         localStorage.setItem("cinedb_access", data.access);
