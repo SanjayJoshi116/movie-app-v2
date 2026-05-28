@@ -6,10 +6,12 @@ import {
   Space, Popconfirm, Tag, Divider, Spin,
 } from "antd";
 import {
-  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined,
+  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined, UploadOutlined,
 } from "@ant-design/icons";
+
 import { useListsContext } from "../context/useListsContext";
 import { downloadCSV } from "../utils/export";
+import CSVListImportModal from "../components/lists/CSVListImportModal";
 
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 
@@ -25,11 +27,13 @@ function ListsPage() {
   const navigate = useNavigate();
   const { lists, isLoading, createList, deleteList, removeFromList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [importListOpen, setImportListOpen] = useState(false);
   const [selectedListId, setSelectedListId] = useState<number | null>(() => {
     const saved = sessionStorage.getItem(SS_SELECTED);
     return saved ? Number(saved) : null;
   });
   const [form] = Form.useForm();
+
 
   const handleCreate = () => {
     form.validateFields().then((values) => {
@@ -62,9 +66,14 @@ function ListsPage() {
           <UnorderedListOutlined style={{ fontSize: 24, color: "#f5c518" }} />
           <Typography.Title level={2} style={{ margin: 0 }}>My Lists</Typography.Title>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-          New List
-        </Button>
+        <Space wrap>
+          <Button icon={<UploadOutlined />} onClick={() => setImportListOpen(true)} size="small">
+            Import to List
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            New List
+          </Button>
+        </Space>
       </div>
 
       {isLoading ? (
@@ -235,6 +244,8 @@ function ListsPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <CSVListImportModal open={importListOpen} onClose={() => setImportListOpen(false)} />
     </motion.div>
   );
 }

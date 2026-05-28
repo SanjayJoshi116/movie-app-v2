@@ -67,4 +67,5 @@ export interface ListsContextType {
   addToList(listId: number, entry: WatchlistInput): void;
   removeFromList(listId: number, itemId: number, type: string): void;
   isInList(listId: number, id: number, type: string): boolean;
+  reloadLists(): Promise<void>;
 }

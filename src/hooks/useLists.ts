@@ -3,40 +3,45 @@ import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
 import type { UserList, WatchlistInput } from "../types";
 
+function mapListData(data: any[]): UserList[] {
+  return data.map((l: any) => ({
+    id: l.id,
+    name: l.name,
+    description: l.description,
+    createdAt: l.createdAt,
+    items: l.items.map((i: any) => ({
+      id: i.mediaId,
+      type: i.mediaType,
+      title: i.title,
+      posterPath: i.posterPath,
+      voteAverage: i.voteAverage,
+      addedAt: i.addedAt,
+      watched: i.watched,
+      _itemId: i.id,
+    })),
+  }));
+}
+
 export function useLists() {
   const { isAuthenticated } = useAuth();
   const [lists, setLists] = useState<UserList[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setLists([]);
-      return;
-    }
+  const fetchLists = async () => {
+    if (!isAuthenticated) return;
     setIsLoading(true);
-    userApi
-      .get("/lists/")
-      .then(({ data }) => {
-        setLists(
-          data.map((l: any) => ({
-            id: l.id,
-            name: l.name,
-            description: l.description,
-            createdAt: l.createdAt,
-            items: l.items.map((i: any) => ({
-              id: i.mediaId,
-              type: i.mediaType,
-              title: i.title,
-              posterPath: i.posterPath,
-              voteAverage: i.voteAverage,
-              addedAt: i.addedAt,
-              watched: i.watched,
-              _itemId: i.id,
-            })),
-          }))
-        );
-      })
-      .finally(() => setIsLoading(false));
+    try {
+      const { data } = await userApi.get("/lists/");
+      setLists(mapListData(data));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated) { setLists([]); return; }
+    fetchLists();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const createList = async (name: string, description: string) => {
@@ -110,5 +115,5 @@ export function useLists() {
     return list ? list.items.some((i) => i.id === id && i.type === type) : false;
   };
 
-  return { lists, isLoading, createList, deleteList, addToList, removeFromList, isInList };
+  return { lists, isLoading, createList, deleteList, addToList, removeFromList, isInList, reloadLists: fetchLists };
 }

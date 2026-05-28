@@ -1,6 +1,25 @@
 # CINE DB
 
-A personal movie and TV show discovery app powered by the [TMDB API](https://www.themoviedb.org/documentation/api), with a Django + PostgreSQL backend for user accounts and persistent data.
+A personal movie and TV show discovery and tracking app powered by the [TMDB API](https://www.themoviedb.org/documentation/api), with a Django + PostgreSQL backend for user accounts and persistent data.
+
+[![CI](https://github.com/SanjayJoshi116/movie-app-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/SanjayJoshi116/movie-app-v2/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
+
+## Demo
+
+No live deployment yet — see [Quick Start](#quick-start) to run locally.
+
+---
+
+## Screenshots
+
+| Home | Movie Detail | Stats Dashboard | Release Calendar |
+|------|-------------|-----------------|-----------------|
+| *Coming soon* | *Coming soon* | *Coming soon* | *Coming soon* |
+
+---
 
 ## Features
 
@@ -44,152 +63,35 @@ A personal movie and TV show discovery app powered by the [TMDB API](https://www
 
 ---
 
-## Getting Started
+## Tech Stack
 
-### Prerequisites
+**Frontend**
+- [React 18](https://react.dev/) + [Create React App](https://create-react-app.dev/)
+- [TypeScript 5](https://www.typescriptlang.org/) — strict mode
+- [React Router v6](https://reactrouter.com/)
+- [Ant Design 5](https://ant.design/) + [@ant-design/icons](https://ant.design/components/icon/)
+- [Framer Motion](https://www.framer.com/motion/)
+- [Recharts](https://recharts.org/) — stats dashboard charts
+- [Axios](https://axios-http.com/)
+- [Express.js](https://expressjs.com/) — TMDB API proxy
 
-- Node.js 18+
-- Python 3.10+ (Anaconda recommended)
-- PostgreSQL
-- A free [TMDB API key](https://developer.themoviedb.org/docs/getting-started)
+**Backend**
+- [Django 4](https://www.djangoproject.com/) + [Django REST Framework](https://www.django-rest-framework.org/)
+- [djangorestframework-simplejwt](https://django-rest-framework-simplejwt.readthedocs.io/) — JWT auth
+- [scikit-learn](https://scikit-learn.org/) — K-means clustering for recommendations
+- [PostgreSQL](https://www.postgresql.org/) + [psycopg2](https://www.psycopg.org/)
 
-### Setup
-
-1. Install frontend dependencies:
-
-```bash
-npm install
-```
-
-2. Create a `.env` file in the project root (frontend + Express proxy):
-
-```
-TMDB_API_KEY=your_tmdb_api_key_here
-```
-
-3. Create a `.env` file inside `backend/` (Django):
-
-```
-SECRET_KEY=your-django-secret-key
-DB_NAME=cinedb
-DB_USER=postgres
-DB_PASSWORD=your_db_password
-DB_HOST=localhost
-DB_PORT=5432
-
-# Email password reset (leave blank to use console backend for development)
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=you@gmail.com
-EMAIL_HOST_PASSWORD=your_app_password
-DEFAULT_FROM_EMAIL=noreply@cinedb.app
-
-# Must match the port the React app runs on (3000)
-FRONTEND_URL=http://localhost:3000
-
-# Production overrides (required when DEBUG=False)
-# DEBUG=False
-# ALLOWED_HOSTS=yourdomain.com
-```
-
-4. Set up the Python environment and install backend dependencies:
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-5. Configure your PostgreSQL database (or use the `DB_*` variables above).
-
-6. Run Django migrations:
-
-```bash
-python backend/manage.py migrate
-```
-
-7. Start all three servers together:
-
-```bash
-npm run dev
-```
-
-The React app runs at `http://localhost:3000`. The Express proxy runs at `http://localhost:3001`. The Django API runs at `http://localhost:8000`.
-
-> **Note:** All three must be running for the app to work fully. `npm run dev` starts them together using `concurrently`.
-
-### Docker (Production)
-
-All four services (frontend, proxy, backend, database) run together via Docker Compose.
-
-1. Create `.env.docker` in the project root:
-
-```
-POSTGRES_PASSWORD=your_db_password
-DB_PASSWORD=your_db_password
-DB_NAME=cinedb
-DB_USER=postgres
-DB_HOST=db
-DB_PORT=5432
-TMDB_API_KEY=your_tmdb_api_key
-SECRET_KEY=your-long-random-django-secret-key
-JWT_SIGNING_KEY=your-long-random-jwt-signing-key
-DJANGO_API_URL=http://backend:8000/api
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
-FRONTEND_URL=http://localhost
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=you@gmail.com
-EMAIL_HOST_PASSWORD=your_app_password
-DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
-```
-
-2. Build and start all services:
-
-```bash
-docker compose up --build
-```
-
-The app will be available at `http://localhost`.
-
-**Service layout:**
-
-| Service | Image | Port |
-|---------|-------|------|
-| `frontend` | nginx + React build | 80 (public) |
-| `proxy` | Node/Express | 3001 (internal) |
-| `backend` | Python/Django | 8000 (internal) |
-| `db` | postgres:15-alpine | 5432 (internal) |
-
-Nginx proxies `/api/*` to the Express proxy, which forwards TMDB requests and Django API calls. PostgreSQL data persists in the `pgdata` Docker volume.
+**APIs**
+- [TMDB API](https://developer.themoviedb.org/)
 
 ---
 
-## Scripts
-
-| Command                  | Description                                          |
-| ------------------------ | ---------------------------------------------------- |
-| `npm run dev`            | Start React, Express proxy, and Django (recommended) |
-| `npm start`              | Start React dev server only                          |
-| `npm run server`         | Start Express proxy server only                      |
-| `npm run django`         | Start Django API server only                         |
-| `npm run build`          | Production build                                     |
-| `npm test`               | Run Jest unit tests                                  |
-| `npx playwright test`    | Run E2E tests (starts React dev server automatically)|
-| `npx prettier --check src/` | Check formatting (config in `.prettierrc`)        |
-| `npx prettier --write src/` | Auto-format all source files                      |
-
----
-
-## Architecture
+## Architecture Overview
 
 ```
 backend/
 ├── cinedb/
-│   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email)
+│   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email, throttle rates)
 │   └── urls.py                  # Root URL config — mounts /api/
 ├── userdata/
 │   ├── models.py                # WatchlistEntry, WatchedEntry, RatingEntry,
@@ -274,7 +176,7 @@ src/
 │   ├── ListsPage.tsx            # /lists — create/delete lists, add items, export CSV (protected)
 │   ├── StatsPage.tsx            # /stats — watch history charts (protected)
 │   ├── FollowingPage.tsx        # /following — manage followed people (protected)
-│   ├── CalendarPage.tsx         # /calendar — 60-day release lookahead (protected)
+│   ├── CalendarPage.tsx         # /calendar — 60-day release lookahead + iCal export (protected)
 │   ├── RecommendationsPage.tsx  # /recommendations — personalized + followed-people recs (protected)
 │   ├── LoginPage.tsx            # /login
 │   ├── RegisterPage.tsx         # /register
@@ -296,7 +198,10 @@ src/
 **Key design decisions:**
 
 - **Auth** — JWT via `djangorestframework-simplejwt`. Access (60 min) + refresh (7 days) tokens stored in `localStorage`. `userApi.ts` intercepts 401s and silently refreshes before retrying failed requests. Password reset uses Django's built-in token generator sent via email; the link encodes a base64 uid and a one-use HMAC token.
+- **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
 - **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. When `DEBUG=False`, the app asserts that `SECRET_KEY` and `ALLOWED_HOSTS` are properly set, preventing accidental production runs with insecure defaults.
+- **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.
+- **DB indexes** — Migration `0008_add_indexes.py` adds compound indexes on `(user, *_at)` fields across WatchedEntry, WatchlistEntry, RatingEntry, FollowedPerson, EpisodeProgress, and `(user, release_year)` for stats decade queries.
 - **Stable hook callbacks** — `useWatchlist`, `useRatings`, and `useWatched` use `useCallback` with a ref pattern (`watchlistRef.current = watchlist`) so returned functions only change identity when `isAuthenticated` changes, not on every render. This prevents `AppContext`'s `useMemo` from recomputing on unrelated parent re-renders.
 - **API key security** — The TMDB key lives in `.env` and is only accessed server-side (Express proxy or Django). Frontend requests go through `/api/tmdb/*`.
 - **Backend data** — All user data lives in PostgreSQL, bound to the authenticated user. No localStorage drift.
@@ -305,57 +210,162 @@ src/
 - **Episode progress bounds** — The tracker reads `number_of_seasons` and `seasons[].episode_count` from the TMDB TV detail response to cap the +/- controls; no extra API call needed.
 - **CSV import** — Parses CSV in the browser (handles quoted fields and `""` escaped quotes), enriches with TMDB poster data in batches of 20, bulk-saves via `/api/watched/bulk/`, then calls `reloadWatched()` so the watched list in context updates immediately.
 - **CSV export** — Pure browser-side: `Blob` + `URL.createObjectURL`. No server round-trip.
+- **Image lazy loading** — All off-screen/below-fold `<img>` tags carry `loading="lazy"`. Hero backdrop and main detail-page poster intentionally omitted (LCP images; eager is correct).
+- **Security headers** — `nginx.conf` sets `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, and `Permissions-Policy` on every response.
 - **Protected routes** — Unauthenticated access to any non-public path redirects to `/login` with `state.from` preserved, handled inline in `AppInner` (`App.tsx`). Public paths: `/login`, `/register`, `/forgot-password`, `/reset-password/*`.
 - **Layout** — `App.tsx` uses a plain flex `div.app-shell`: `<Sidebar>` (desktop) + `<main>` + `<BottomNav>` (mobile). No Ant Design Layout wrapper.
 - **State** — `AppContext` for global UI state; `AuthContext` for auth; `ListsContext` for lists. Ephemeral page state (loading, pagination) stays local to each page component.
 - **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page. On back-navigation, the pages re-fetch the required pages sequentially and restore the scroll position via `useLayoutEffect`. WatchlistPage persists scroll position, search query, and sort key in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
+- **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes.
+- **CI/CD** — `.github/workflows/ci.yml` runs two jobs on every push/PR to main: frontend (lint + Jest + build) and backend (pytest against a live Postgres service container).
 - **Routing** — React Router v6. Every movie, show, and person has its own URL.
 - **TypeScript** — Strict mode. All TMDB response shapes typed in `src/types/tmdb.ts`.
 - **UI** — Ant Design 5 with `ConfigProvider`. Cinema-dark uses `#0d0f1a` background and `#f5c518` gold accent. Cards use `rgba` glassmorphism (`.glass-card`, `.glass-sidebar`).
 - **Error boundaries** — Root, per-route, and video overlay placements.
-- **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
-- **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.
-- **DB indexes** — Migration `0008_add_indexes.py` adds compound indexes on `(user, *_at)` fields across WatchedEntry, WatchlistEntry, RatingEntry, FollowedPerson, EpisodeProgress, and `(user, release_year)` for stats decade queries.
-- **Image lazy loading** — All off-screen/below-fold `<img>` tags carry `loading="lazy"`. Hero backdrop and main detail-page poster intentionally omitted (LCP images; eager is correct).
-- **Security headers** — `nginx.conf` sets `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, and `Permissions-Policy` on every response.
-- **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes.
-- **CI/CD** — `.github/workflows/ci.yml` runs two jobs on every push/PR to main: frontend (lint + Jest + build) and backend (pytest against a live Postgres service container).
 
 ---
 
-## API Endpoints
+## Quick Start
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register/` | Create account |
-| POST | `/api/auth/login/` | Login (returns access + refresh tokens) |
-| POST | `/api/auth/token/refresh/` | Refresh access token |
-| GET/PATCH | `/api/auth/profile/` | Get or update profile (requires auth) |
-| POST | `/api/auth/password-reset/` | Request email password reset link |
-| POST | `/api/auth/password-reset/confirm/` | Confirm reset with uid + token + new password |
-| GET/POST | `/api/watchlist/` | List or add watchlist entries |
-| DELETE/PATCH | `/api/watchlist/<id>/` | Remove or update a watchlist entry |
-| GET/POST | `/api/watched/` | List or add watched entries |
-| DELETE | `/api/watched/<id>/` | Remove a watched entry |
-| DELETE | `/api/watched/clear/` | Remove all watched entries |
-| POST | `/api/watched/bulk/` | Bulk-import watched entries (CSV upload) |
-| GET/POST | `/api/ratings/` | List or add/update ratings |
-| DELETE/PATCH | `/api/ratings/<id>/` | Remove or update a rating |
-| GET/POST | `/api/lists/` | Create and list user lists |
-| DELETE | `/api/lists/<id>/` | Delete a list |
-| POST | `/api/lists/<id>/items/` | Add an item to a list |
-| DELETE | `/api/lists/<id>/items/<item_id>/` | Remove an item from a list |
-| GET | `/api/stats/` | Watch history statistics |
-| GET/POST/PATCH/DELETE | `/api/episode-progress/<show_id>/` | Get/set/update/delete episode progress |
-| GET/POST | `/api/followed-people/` | List followed people / follow a person |
-| DELETE | `/api/followed-people/<person_id>/` | Unfollow a person |
-| GET | `/api/recommendations/for-you/` | Trending + genre-based recommendations |
-| GET | `/api/recommendations/personalized/` | K-means clustered personalized recommendations |
-| GET | `/api/recommendations/followed-people/` | Top-rated credits from followed people |
-| GET | `/api/tmdb-auth/request-token/` | Start TMDB OAuth flow |
-| POST | `/api/tmdb-auth/create-session/` | Complete TMDB OAuth, store session |
-| GET | `/api/tmdb-auth/status/` | Check if TMDB account is connected |
-| DELETE | `/api/tmdb-auth/disconnect/` | Disconnect TMDB account |
+### Prerequisites
+
+- Node.js 18+
+- Python 3.10+ (Anaconda recommended)
+- PostgreSQL
+- A free [TMDB API key](https://developer.themoviedb.org/docs/getting-started)
+
+### Installation
+
+1. Install frontend dependencies:
+
+```bash
+npm install
+```
+
+2. Install backend dependencies:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+3. Set up environment variables — see [Environment Variables](#environment-variables) below.
+
+4. Run Django migrations:
+
+```bash
+python backend/manage.py migrate
+```
+
+5. Start all three servers:
+
+```bash
+npm run dev
+```
+
+The React app runs at `http://localhost:3000`. The Express proxy runs at `http://localhost:3001`. The Django API runs at `http://localhost:8000`.
+
+> **Note:** All three must be running for the app to work fully. `npm run dev` starts them together using `concurrently`.
+
+### Available Scripts
+
+| Command                     | Description                                           |
+| --------------------------- | ----------------------------------------------------- |
+| `npm run dev`               | Start React, Express proxy, and Django (recommended)  |
+| `npm start`                 | Start React dev server only                           |
+| `npm run server`            | Start Express proxy server only                       |
+| `npm run django`            | Start Django API server only                          |
+| `npm run build`             | Production build                                      |
+| `npm test`                  | Run Jest unit tests                                   |
+| `npx playwright test`       | Run E2E tests (starts React dev server automatically) |
+| `npx prettier --check src/` | Check formatting (config in `.prettierrc`)            |
+| `npx prettier --write src/` | Auto-format all source files                          |
+
+---
+
+## Environment Variables
+
+### `.env` — Frontend + Express Proxy (project root)
+
+```
+TMDB_API_KEY=your_tmdb_api_key_here
+```
+
+### `backend/.env` — Django
+
+```
+SECRET_KEY=your-django-secret-key
+DB_NAME=cinedb
+DB_USER=postgres
+DB_PASSWORD=your_db_password
+DB_HOST=localhost
+DB_PORT=5432
+
+# Email password reset (leave blank to use console backend for development)
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=you@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+DEFAULT_FROM_EMAIL=noreply@cinedb.app
+
+# Must match the port the React app runs on (3000)
+FRONTEND_URL=http://localhost:3000
+
+# Production overrides (required when DEBUG=False)
+# DEBUG=False
+# ALLOWED_HOSTS=yourdomain.com
+```
+
+---
+
+## Docker Setup
+
+All four services (frontend, proxy, backend, database) run together via Docker Compose.
+
+1. Create `.env.docker` in the project root:
+
+```
+POSTGRES_PASSWORD=your_db_password
+DB_PASSWORD=your_db_password
+DB_NAME=cinedb
+DB_USER=postgres
+DB_HOST=db
+DB_PORT=5432
+TMDB_API_KEY=your_tmdb_api_key
+SECRET_KEY=your-long-random-django-secret-key
+JWT_SIGNING_KEY=your-long-random-jwt-signing-key
+DJANGO_API_URL=http://backend:8000/api
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+FRONTEND_URL=http://localhost
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=you@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
+```
+
+2. Build and start all services:
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost`.
+
+**Service layout:**
+
+| Service    | Image                  | Port            |
+| ---------- | ---------------------- | --------------- |
+| `frontend` | nginx + React build    | 80 (public)     |
+| `proxy`    | Node/Express           | 3001 (internal) |
+| `backend`  | Python/Django          | 8000 (internal) |
+| `db`       | postgres:15-alpine     | 5432 (internal) |
+
+Nginx proxies `/api/*` to the Express proxy, which forwards TMDB requests and Django API calls. PostgreSQL data persists in the `pgdata` Docker volume.
 
 ---
 
@@ -394,25 +404,64 @@ e2e/
 npx playwright test
 ```
 
+### CI
+
+GitHub Actions runs both test suites automatically on every push and pull request to `main`. See `.github/workflows/ci.yml`.
+
 ---
 
-## Tech Stack
+## API Overview
 
-**Frontend**
-- [React 18](https://react.dev/) + [Create React App](https://create-react-app.dev/)
-- [TypeScript 5](https://www.typescriptlang.org/) — strict mode
-- [React Router v6](https://reactrouter.com/)
-- [Ant Design 5](https://ant.design/) + [@ant-design/icons](https://ant.design/components/icon/)
-- [Framer Motion](https://www.framer.com/motion/)
-- [Recharts](https://recharts.org/) — stats dashboard charts
-- [Axios](https://axios-http.com/)
-- [Express.js](https://expressjs.com/) — TMDB API proxy
+| Method          | Endpoint                                    | Description                                        |
+| --------------- | ------------------------------------------- | -------------------------------------------------- |
+| POST            | `/api/auth/register/`                       | Create account                                     |
+| POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
+| POST            | `/api/auth/token/refresh/`                  | Refresh access token                               |
+| GET/PATCH       | `/api/auth/profile/`                        | Get or update profile (requires auth)              |
+| POST            | `/api/auth/password-reset/`                 | Request email password reset link                  |
+| POST            | `/api/auth/password-reset/confirm/`         | Confirm reset with uid + token + new password      |
+| GET/POST        | `/api/watchlist/`                           | List or add watchlist entries                      |
+| DELETE/PATCH    | `/api/watchlist/<id>/`                      | Remove or update a watchlist entry                 |
+| GET/POST        | `/api/watched/`                             | List or add watched entries                        |
+| DELETE          | `/api/watched/<id>/`                        | Remove a watched entry                             |
+| DELETE          | `/api/watched/clear/`                       | Remove all watched entries                         |
+| POST            | `/api/watched/bulk/`                        | Bulk-import watched entries (CSV upload)           |
+| GET/POST        | `/api/ratings/`                             | List or add/update ratings                         |
+| DELETE/PATCH    | `/api/ratings/<id>/`                        | Remove or update a rating                          |
+| GET/POST        | `/api/lists/`                               | Create and list user lists                         |
+| DELETE          | `/api/lists/<id>/`                          | Delete a list                                      |
+| POST            | `/api/lists/<id>/items/`                    | Add an item to a list                              |
+| DELETE          | `/api/lists/<id>/items/<item_id>/`          | Remove an item from a list                         |
+| GET             | `/api/stats/`                               | Watch history statistics                           |
+| GET/POST/PATCH/DELETE | `/api/episode-progress/<show_id>/`    | Get/set/update/delete episode progress             |
+| GET/POST        | `/api/followed-people/`                     | List followed people / follow a person             |
+| DELETE          | `/api/followed-people/<person_id>/`         | Unfollow a person                                  |
+| GET             | `/api/recommendations/for-you/`             | Trending + genre-based recommendations             |
+| GET             | `/api/recommendations/personalized/`        | K-means clustered personalized recommendations     |
+| GET             | `/api/recommendations/followed-people/`     | Top-rated credits from followed people             |
+| GET             | `/api/tmdb-auth/request-token/`             | Start TMDB OAuth flow                              |
+| POST            | `/api/tmdb-auth/create-session/`            | Complete TMDB OAuth, store session                 |
+| GET             | `/api/tmdb-auth/status/`                    | Check if TMDB account is connected                 |
+| DELETE          | `/api/tmdb-auth/disconnect/`                | Disconnect TMDB account                            |
 
-**Backend**
-- [Django 4](https://www.djangoproject.com/) + [Django REST Framework](https://www.django-rest-framework.org/)
-- [djangorestframework-simplejwt](https://django-rest-framework-simplejwt.readthedocs.io/) — JWT auth
-- [scikit-learn](https://scikit-learn.org/) — K-means clustering for recommendations
-- [PostgreSQL](https://www.postgresql.org/) + [psycopg2](https://www.psycopg.org/)
+---
 
-**APIs**
-- [TMDB API](https://developer.themoviedb.org/)
+## Roadmap
+
+**Planned:**
+- [ ] Backend API tests (pytest + DRF `APITestCase`) — CI config ready, test files not yet written
+- [ ] In-app notifications for new releases from followed people
+- [ ] Auto-next episode workflow on TV detail pages
+
+**Considering:**
+- [ ] PWA / offline support (Service Workers for poster caching)
+- [ ] Regional watch provider switching
+- [ ] Per-person or per-list iCal export
+
+---
+
+## License
+
+MIT © 2026 [SanjayJoshi116](https://github.com/SanjayJoshi116)
+
+See [LICENSE](LICENSE) for the full text.

@@ -1,20 +1,14 @@
 import React, { useState, useRef } from "react";
-import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
+import { Modal, Button, Table, Typography, Alert, Radio, Space, Select } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
-import { bulkMarkWatched } from "../api/userApi";
-import { fetchMoviePoster, fetchTVPoster } from "../api/tmdb";
-import { useToast } from "../hooks/useToast";
-import { useAppContext } from "../context/useAppContext";
-import { parseCSVForImport } from "../utils/csvParse";
+import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
+import { useToast } from "../../hooks/useToast";
+import { useListsContext } from "../../context/useListsContext";
+import { parseCSVForImport } from "../../utils/csvParse";
+import type { ParsedEntry } from "../../utils/csvParse";
+import userApi from "../../api/userApi";
 
 const { Text } = Typography;
-
-interface ParsedRow {
-  mediaId: number;
-  title: string;
-  posterPath?: string | null;
-  voteAverage?: number;
-}
 
 interface Props {
   open: boolean;
@@ -24,30 +18,23 @@ interface Props {
 function downloadTemplate(type: "movie" | "tv") {
   const rows =
     type === "movie"
-      ? [
-          "id,title,original_title,language,runtime,release_year",
-          "550,Fight Club,Fight Club,en,139,1999",
-          "13,Forrest Gump,Forrest Gump,en,142,1994",
-        ]
-      : [
-          "id,title,original_title,language,runtime,first_air_year",
-          "1396,Breaking Bad,Breaking Bad,en,47,2008",
-          "66732,Stranger Things,Stranger Things,en,51,2016",
-        ];
+      ? ["id,title", "550,Fight Club", "13,Forrest Gump"]
+      : ["id,title", "1396,Breaking Bad", "66732,Stranger Things"];
   const blob = new Blob([rows.join("\n")], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = type === "movie" ? "movies_template.csv" : "tvshows_template.csv";
+  a.download = type === "movie" ? "list_movies_template.csv" : "list_tv_template.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
 
-const CSVUploadModal = ({ open, onClose }: Props) => {
+const CSVListImportModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
-  const { reloadWatched } = useAppContext();
+  const { lists, reloadLists } = useListsContext();
+  const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
-  const [parsed, setParsed] = useState<ParsedRow[]>([]);
+  const [parsed, setParsed] = useState<ParsedEntry[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,47 +46,59 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     setFileName(file.name);
     setParsed([]);
     setParseError(null);
-
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const { rows, error } = parseCSVForImport(text);
-      if (error) {
-        setParseError(error);
-      } else {
-        setParsed(rows);
-      }
+      const { rows, error } = parseCSVForImport(ev.target?.result as string);
+      if (error) setParseError(error);
+      else setParsed(rows);
     };
     reader.readAsText(file);
   };
 
   const handleSubmit = async () => {
-    if (parsed.length === 0) return;
+    if (parsed.length === 0 || selectedListId === null) return;
     setLoading(true);
     try {
-      // Batch-fetch TMDB poster data (20 concurrent) to enrich entries before saving
       const enriched = [...parsed];
       const BATCH = 20;
       for (let i = 0; i < enriched.length; i += BATCH) {
         await Promise.allSettled(
           enriched.slice(i, i + BATCH).map(async (row, offset) => {
-            const idx = i + offset;
             try {
-              const { data } = await (mediaType === "tv" ? fetchTVPoster(row.mediaId) : fetchMoviePoster(row.mediaId));
-              enriched[idx] = { mediaId: row.mediaId, title: row.title, posterPath: data.poster_path, voteAverage: data.vote_average };
+              const { data } = await (mediaType === "tv"
+                ? fetchTVPoster(row.mediaId)
+                : fetchMoviePoster(row.mediaId));
+              enriched[i + offset] = { ...row, posterPath: data.poster_path, voteAverage: data.vote_average };
             } catch {
-              // leave without poster data on failure
+              // leave without enrichment
             }
           })
         );
       }
 
-      const { data } = await bulkMarkWatched(enriched, mediaType);
-      showSuccess(`Import complete: ${data.added} added, ${data.skipped} already watched.`);
-      await reloadWatched();
+      const allResults: PromiseSettledResult<{ status: number }>[] = [];
+      for (let i = 0; i < enriched.length; i += BATCH) {
+        const batch = await Promise.allSettled(
+          enriched.slice(i, i + BATCH).map((row) =>
+            userApi.post(`/lists/${selectedListId}/items/`, {
+              mediaId: row.mediaId,
+              mediaType: mediaType,
+              title: row.title,
+              posterPath: row.posterPath ?? null,
+              voteAverage: row.voteAverage ?? 0,
+            })
+          )
+        );
+        allResults.push(...batch);
+      }
+      const added = allResults.filter((r) => r.status === "fulfilled" && r.value.status === 201).length;
+      const skipped = allResults.filter((r) => r.status === "fulfilled" && r.value.status !== 201).length;
+
+      showSuccess(`Import complete: ${added} added, ${skipped} already in list.`);
+      await reloadLists();
       handleClose();
     } catch {
-      showError("Failed to import watched movies. Please try again.");
+      showError("Import failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -109,6 +108,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     setParsed([]);
     setParseError(null);
     setFileName(null);
+    setSelectedListId(null);
     setMediaType("movie");
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClose();
@@ -117,17 +117,22 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   const preview = parsed.slice(0, 10);
 
   return (
-    <Modal
-      title="Import Watched from CSV"
-      open={open}
-      onCancel={handleClose}
-      footer={null}
-      destroyOnClose
-    >
+    <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnClose>
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: 13 }}>
           Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.
         </Text>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <Text style={{ display: "block", marginBottom: 6 }}>Target list:</Text>
+        <Select
+          style={{ width: "100%" }}
+          placeholder="Select a list"
+          value={selectedListId}
+          onChange={setSelectedListId}
+          options={lists.map((l) => ({ label: `${l.name} (${l.items.length} items)`, value: l.id }))}
+        />
       </div>
 
       <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -161,14 +166,12 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         </Text>
       )}
 
-      {parseError && (
-        <Alert type="error" message={parseError} style={{ marginBottom: 16 }} showIcon />
-      )}
+      {parseError && <Alert type="error" message={parseError} style={{ marginBottom: 16 }} showIcon />}
 
       {parsed.length > 0 && (
         <>
           <Text style={{ display: "block", marginBottom: 8 }}>
-            {parsed.length} {mediaType === "tv" ? "TV show" : "movie"}{parsed.length !== 1 ? "s" : ""} found
+            {parsed.length} entr{parsed.length !== 1 ? "ies" : "y"} found
             {parsed.length > 10 ? ` — showing first 10` : ""}:
           </Text>
           <Table
@@ -181,8 +184,14 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
             ]}
             style={{ marginBottom: 16 }}
           />
-          <Button type="primary" block loading={loading} onClick={handleSubmit}>
-            Import {parsed.length} {mediaType === "tv" ? "TV Show" : "Movie"}{parsed.length !== 1 ? "s" : ""}
+          <Button
+            type="primary"
+            block
+            loading={loading}
+            disabled={selectedListId === null}
+            onClick={handleSubmit}
+          >
+            Import {parsed.length} item{parsed.length !== 1 ? "s" : ""}
           </Button>
         </>
       )}
@@ -190,4 +199,4 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   );
 };
 
-export default CSVUploadModal;
+export default CSVListImportModal;

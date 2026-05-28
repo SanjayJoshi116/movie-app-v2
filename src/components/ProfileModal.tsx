@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Modal, Form, Input, Button, Divider, Tag } from "antd";
-import { CheckCircleOutlined } from "@ant-design/icons";
+import { Modal, Form, Input, Button, Divider, Tag, Space } from "antd";
+import { CheckCircleOutlined, DownloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../hooks/useToast";
+import { useAppContext } from "../context/useAppContext";
+import { useListsContext } from "../context/useListsContext";
 import CSVUploadModal from "./CSVUploadModal";
+import CSVImportAllModal from "./lists/CSVImportAllModal";
+import { downloadAllAsZip } from "../utils/export";
 import { getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB } from "../api/userApi";
 
 interface Props {
@@ -14,8 +18,15 @@ interface Props {
 const ProfileModal = ({ open, onClose }: Props) => {
   const { user, updateProfile } = useAuth();
   const { showSuccess, showError } = useToast();
+  const { watchlist, watchedList } = useAppContext();
+  const { lists } = useListsContext();
   const [loading, setLoading] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [importAllOpen, setImportAllOpen] = useState(false);
+
+  const handleExportAll = () => {
+    downloadAllAsZip(watchlist, watchedList, lists);
+  };
   const [tmdbConnected, setTmdbConnected] = useState(false);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [form] = Form.useForm();
@@ -171,10 +182,18 @@ const ProfileModal = ({ open, onClose }: Props) => {
         </Form.Item>
       </Form>
 
-      <Divider style={{ margin: "16px 0 12px" }} />
-      <Button block onClick={() => setCsvOpen(true)}>
-        Import Watched from CSV
-      </Button>
+      <Divider style={{ margin: "16px 0 12px" }}>Data</Divider>
+      <Space direction="vertical" style={{ width: "100%" }}>
+        <Button block icon={<UploadOutlined />} onClick={() => setCsvOpen(true)}>
+          Import Watched from CSV
+        </Button>
+        <Button block icon={<DownloadOutlined />} onClick={handleExportAll}>
+          Export All Data (ZIP)
+        </Button>
+        <Button block icon={<UploadOutlined />} onClick={() => setImportAllOpen(true)}>
+          Import All Data from Backup
+        </Button>
+      </Space>
 
       <Divider style={{ margin: "16px 0 12px" }}>TMDB Account</Divider>
       {tmdbConnected ? (
@@ -193,6 +212,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
       )}
 
       <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} />
+      <CSVImportAllModal open={importAllOpen} onClose={() => setImportAllOpen(false)} />
     </Modal>
   );
 };
