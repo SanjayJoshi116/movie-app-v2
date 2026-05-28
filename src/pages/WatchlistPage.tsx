@@ -151,6 +151,7 @@ function WatchlistPage() {
                     <img
                       src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
                       alt={item.title}
+                      loading="lazy"
                       className="movie-poster-img"
                       onClick={() => {
                         sessionStorage.setItem(SS_SCROLL, String(window.scrollY));

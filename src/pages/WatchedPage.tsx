@@ -182,6 +182,7 @@ function WatchedPage() {
                     <img
                       src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
                       alt={item.title}
+                      loading="lazy"
                       className="movie-poster-img"
                       onClick={() =>
                         navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })

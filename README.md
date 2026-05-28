@@ -29,7 +29,7 @@ A personal movie and TV show discovery app powered by the [TMDB API](https://www
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity (bar chart), and top genres (horizontal bar chart)
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`)
-- **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type (`/calendar`)
+- **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type; one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
 - **Login / Register** — JWT-based auth; tokens stored in `localStorage`
@@ -179,6 +179,8 @@ Nginx proxies `/api/*` to the Express proxy, which forwards TMDB requests and Dj
 | `npm run build`          | Production build                                     |
 | `npm test`               | Run Jest unit tests                                  |
 | `npx playwright test`    | Run E2E tests (starts React dev server automatically)|
+| `npx prettier --check src/` | Check formatting (config in `.prettierrc`)        |
+| `npx prettier --write src/` | Auto-format all source files                      |
 
 ---
 
@@ -193,8 +195,15 @@ backend/
 │   ├── models.py                # WatchlistEntry, WatchedEntry, RatingEntry,
 │   │                            #   UserList, UserListItem, EpisodeProgress, FollowedPerson
 │   ├── serializers.py           # DRF serializers (camelCase field aliases)
-│   ├── views.py                 # API views (watchlist, watched, ratings, lists,
-│   │                            #   stats, episode-progress, followed-people, password reset)
+│   ├── views.py                 # Thin re-export barrel — import from domain modules below
+│   ├── auth_views.py            # register, login, profile, password reset + throttle classes
+│   ├── watchlist_views.py       # watchlist CRUD
+│   ├── watched_views.py         # watched CRUD + bulk import
+│   ├── ratings_views.py         # ratings CRUD + TMDB mirror
+│   ├── lists_views.py           # user lists + list items CRUD
+│   ├── tmdb_views.py            # TMDB OAuth (request token, session, disconnect)
+│   ├── stats_views.py           # stats aggregation + genre cache
+│   ├── social_views.py          # episode progress + followed people + recs
 │   ├── urls.py                  # /api/ endpoint routing
 │   ├── recommendations.py       # K-means genre clustering + followed-people recommendations
 │   └── tmdb_client.py           # Server-side TMDB API client
@@ -273,7 +282,8 @@ src/
 │   ├── ResetPasswordPage.tsx    # /reset-password/:uid/:token — set new password from link
 │   └── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
 ├── utils/
-│   └── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
+│   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
+│   └── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
 ├── theme/
 │   └── antdTheme.ts             # Ant Design ConfigProvider tokens: dark / light
 └── types/
@@ -303,6 +313,13 @@ src/
 - **TypeScript** — Strict mode. All TMDB response shapes typed in `src/types/tmdb.ts`.
 - **UI** — Ant Design 5 with `ConfigProvider`. Cinema-dark uses `#0d0f1a` background and `#f5c518` gold accent. Cards use `rgba` glassmorphism (`.glass-card`, `.glass-sidebar`).
 - **Error boundaries** — Root, per-route, and video overlay placements.
+- **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
+- **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.
+- **DB indexes** — Migration `0008_add_indexes.py` adds compound indexes on `(user, *_at)` fields across WatchedEntry, WatchlistEntry, RatingEntry, FollowedPerson, EpisodeProgress, and `(user, release_year)` for stats decade queries.
+- **Image lazy loading** — All off-screen/below-fold `<img>` tags carry `loading="lazy"`. Hero backdrop and main detail-page poster intentionally omitted (LCP images; eager is correct).
+- **Security headers** — `nginx.conf` sets `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, `Referrer-Policy`, and `Permissions-Policy` on every response.
+- **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes.
+- **CI/CD** — `.github/workflows/ci.yml` runs two jobs on every push/PR to main: frontend (lint + Jest + build) and backend (pytest against a live Postgres service container).
 
 ---
 

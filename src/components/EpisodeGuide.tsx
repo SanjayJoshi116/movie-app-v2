@@ -114,6 +114,7 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
                   <img
                     src={`${STILL_URL}${ep.still_path}`}
                     alt={ep.name}
+                    loading="lazy"
                     style={{ width: 140, height: 79, objectFit: "cover", borderRadius: 6, flexShrink: 0 }}
                   />
                 )}

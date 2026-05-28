@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend (lint + test + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --watchAll=false --passWithNoTests
+        env:
+          CI: true
+      - run: npm run build
+        env:
+          CI: false
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: cinedb_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r backend/requirements.txt
+      - run: python backend/manage.py migrate
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DB_NAME: cinedb_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DEBUG: "True"
+          TMDB_API_KEY: dummy
+      - run: pytest backend/ -v --tb=short
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DB_NAME: cinedb_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DEBUG: "True"
+          TMDB_API_KEY: dummy

@@ -403,6 +403,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                         src={actor.profile_path ? `${IMG_URL}${actor.profile_path}` : "https://placehold.co/150x225?text=?"}
                         alt={actor.name}
                         className="cast-card-img-lg"
+                        loading="lazy"
                       />
                     }
                     styles={{ body: { padding: "6px 8px" } }}
@@ -453,6 +454,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                           src={show.poster_path ? `${IMG_URL}${show.poster_path}` : "https://placehold.co/150x225?text=?"}
                           alt={showName}
                           className="rec-card-img"
+                          loading="lazy"
                         />
                       }
                       styles={{ body: { padding: "6px 8px" } }}
@@ -482,6 +484,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                         src={show.poster_path ? `${IMG_URL}${show.poster_path}` : "https://placehold.co/150x225?text=?"}
                         alt={show.name}
                         className="rec-card-img"
+                        loading="lazy"
                       />
                     }
                     styles={{ body: { padding: "6px 8px" } }}

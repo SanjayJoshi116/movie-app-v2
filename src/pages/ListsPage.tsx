@@ -168,6 +168,7 @@ function ListsPage() {
                       <img
                         src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/300x450?text=No+Image"}
                         alt={item.title}
+                        loading="lazy"
                         className="movie-poster-img"
                         onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/lists" } })}
                         style={{ cursor: "pointer" }}

@@ -63,6 +63,7 @@ function FollowingPage() {
                     <img
                       src={`${IMG_URL}${person.profilePath}`}
                       alt={person.name}
+                      loading="lazy"
                       className="movie-poster-img"
                       onClick={() => navigate(`/person/${person.personId}`)}
                       style={{ cursor: "pointer" }}

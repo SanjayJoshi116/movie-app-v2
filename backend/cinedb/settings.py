@@ -103,6 +103,15 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "300/day",
+        "login": "10/min",
+        "register": "5/min",
+        "password_reset": "5/hour",
+    },
 }
 
 SIMPLE_JWT = {

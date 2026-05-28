@@ -269,6 +269,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
                   }
                   alt={item.title}
                   title={item.title}
+                  loading="lazy"
                   style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
                 />
               </div>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty } from "antd";
-import { CalendarOutlined, StarFilled } from "@ant-design/icons";
+import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty, Button } from "antd";
+import { CalendarOutlined, StarFilled, DownloadOutlined } from "@ant-design/icons";
 import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
@@ -57,6 +57,41 @@ function groupByDate(items: CalendarItem[]): DateGroup[] {
       label: formatDateLabel(date),
       items: dateItems,
     }));
+}
+
+function exportIcal(groups: DateGroup[]) {
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//CINE DB//Release Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+  ];
+  for (const group of groups) {
+    const d = group.date.replace(/-/g, "");
+    const nextDay = new Date(group.date + "T12:00:00");
+    nextDay.setDate(nextDay.getDate() + 1);
+    const dEnd = nextDay.toISOString().slice(0, 10).replace(/-/g, "");
+    for (const item of group.items) {
+      const kind = item.type === "movie" ? "Movie" : "TV Show";
+      lines.push(
+        "BEGIN:VEVENT",
+        `DTSTART;VALUE=DATE:${d}`,
+        `DTEND;VALUE=DATE:${dEnd}`,
+        `SUMMARY:${item.title} (${kind})`,
+        `UID:cinedb-${item.type}-${item.id}@cinedb`,
+        "END:VEVENT",
+      );
+    }
+  }
+  lines.push("END:VCALENDAR");
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "cinedb-releases.ics";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function getRatingColor(vote: number): string {
@@ -179,11 +214,16 @@ function CalendarPage() {
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
         <CalendarOutlined style={{ fontSize: 24, color: "#f5c518" }} />
-        <Typography.Title level={2} style={{ margin: 0 }}>
+        <Typography.Title level={2} style={{ margin: 0, flex: 1 }}>
           Release Calendar
         </Typography.Title>
+        {groups.length > 0 && (
+          <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(groups)}>
+            Export iCal
+          </Button>
+        )}
       </div>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 20 }}>
         Upcoming releases in the next 7 days
