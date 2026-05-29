@@ -74,6 +74,8 @@ const csvWriter = createObjectCsvWriter({
   append: true,
 });
 
+app.get("/health", (req, res) => res.sendStatus(200));
+
 app.post("/api/mark-watched", async (req, res) => {
   const { id, name, language, runtime, releaseYear } = req.body;
   if (!id || !name || !language || !runtime || !releaseYear) {

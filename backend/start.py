@@ -30,6 +30,7 @@ conn.close()
 
 # Step 2: Run migrations
 manage = str(base / "manage.py")
+subprocess.run([sys.executable, manage, "makemigrations", "userdata"], check=True)
 subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 
 # Step 3: Start server

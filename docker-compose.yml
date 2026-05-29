@@ -12,6 +12,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   backend:
     build:
@@ -23,25 +24,45 @@ services:
     env_file: .env.docker
     environment:
       DB_HOST: db
+    volumes:
+      - ./backend/userdata/migrations:/app/userdata/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.connect((\"localhost\",8000)); s.close()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: unless-stopped
 
   proxy:
     build:
       context: .
       dockerfile: Dockerfile.proxy
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     env_file: .env.docker
     environment:
       DJANGO_API_URL: http://backend:8000/api
+    healthcheck:
+      test: ["CMD", "node", "-e", "const net=require('net');const s=net.createConnection(3001,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     depends_on:
-      - proxy
+      proxy:
+        condition: service_healthy
     ports:
       - "80:80"
+      - "3000:80"
+    restart: unless-stopped
 
 volumes:
   pgdata:

@@ -21,6 +21,7 @@ interface ParsedCSVEntry {
   title: string;
   type: "movie" | "tv";
   voteAverage: number;
+  posterPath: string | null;
 }
 
 function parseExportCSV(text: string): ParsedCSVEntry[] {
@@ -31,6 +32,7 @@ function parseExportCSV(text: string): ParsedCSVEntry[] {
   const titleCol = headers.indexOf("title");
   const typeCol = headers.indexOf("type");
   const voteCol = headers.indexOf("vote_average");
+  const posterCol = headers.indexOf("poster_path");
   if (idCol === -1 || titleCol === -1) return [];
   const rows: ParsedCSVEntry[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -38,14 +40,34 @@ function parseExportCSV(text: string): ParsedCSVEntry[] {
     const mediaId = parseInt(cols[idCol] ?? "", 10);
     if (isNaN(mediaId) || mediaId <= 0) continue;
     const rawType = (cols[typeCol] ?? "").toLowerCase();
+    const posterPath = posterCol !== -1 ? (cols[posterCol]?.trim() || null) : null;
     rows.push({
       mediaId,
       title: cols[titleCol]?.trim() ?? "",
       type: rawType === "tv" ? "tv" : "movie",
       voteAverage: parseFloat(cols[voteCol] ?? "0") || 0,
+      posterPath,
     });
   }
   return rows;
+}
+
+async function enrichPosterPaths(entries: ParsedCSVEntry[]): Promise<void> {
+  const missing = entries.filter((e) => !e.posterPath);
+  const BATCH = 10;
+  for (let i = 0; i < missing.length; i += BATCH) {
+    await Promise.allSettled(
+      missing.slice(i, i + BATCH).map(async (e) => {
+        try {
+          const res = await fetch(`/api/tmdb/${e.type}/${e.mediaId}`);
+          const data = await res.json();
+          e.posterPath = data.poster_path ?? null;
+        } catch {
+          // leave null
+        }
+      })
+    );
+  }
 }
 
 interface Props {
@@ -98,8 +120,9 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       const wlFile = zip.file("watchlist.csv");
       if (wlFile) {
         const entries = parseExportCSV(await wlFile.async("string"));
+        await enrichPosterPaths(entries);
         for (const e of entries) {
-          addToWatchlist({ id: e.mediaId, type: e.type, title: e.title, posterPath: null, voteAverage: e.voteAverage });
+          addToWatchlist({ id: e.mediaId, type: e.type, title: e.title, posterPath: e.posterPath, voteAverage: e.voteAverage });
         }
       }
 
@@ -107,8 +130,9 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       const wdFile = zip.file("watched.csv");
       if (wdFile) {
         const entries = parseExportCSV(await wdFile.async("string"));
-        const movies = entries.filter((e) => e.type === "movie").map((e) => ({ mediaId: e.mediaId, title: e.title, voteAverage: e.voteAverage }));
-        const tv = entries.filter((e) => e.type === "tv").map((e) => ({ mediaId: e.mediaId, title: e.title, voteAverage: e.voteAverage }));
+        await enrichPosterPaths(entries);
+        const movies = entries.filter((e) => e.type === "movie").map((e) => ({ mediaId: e.mediaId, title: e.title, posterPath: e.posterPath, voteAverage: e.voteAverage }));
+        const tv = entries.filter((e) => e.type === "tv").map((e) => ({ mediaId: e.mediaId, title: e.title, posterPath: e.posterPath, voteAverage: e.voteAverage }));
         if (movies.length > 0) await bulkMarkWatched(movies, "movie");
         if (tv.length > 0) await bulkMarkWatched(tv, "tv");
         if (entries.length > 0) await reloadWatched();
@@ -120,6 +144,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         if (!csvFile) continue;
         const entries = parseExportCSV(await csvFile.async("string"));
         if (entries.length === 0) continue;
+        await enrichPosterPaths(entries);
         const listName = filePath.replace(/^lists\//, "").replace(/\.csv$/, "");
         let list = lists.find((l) => l.name === listName);
         if (!list) {
@@ -137,7 +162,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
                 mediaId: e.mediaId,
                 mediaType: e.type,
                 title: e.title,
-                posterPath: null,
+                posterPath: e.posterPath,
                 voteAverage: e.voteAverage,
               })
             )

@@ -27,14 +27,14 @@ export async function downloadAllAsZip(
   zip.file(
     "watchlist.csv",
     buildCSVString(
-      watchlist.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt }))
+      watchlist.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt, poster_path: i.posterPath ?? "" }))
     ),
   );
 
   zip.file(
     "watched.csv",
     buildCSVString(
-      watchedList.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, watched_at: i.watchedAt }))
+      watchedList.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, watched_at: i.watchedAt, poster_path: i.posterPath ?? "" }))
     ),
   );
 
@@ -45,7 +45,7 @@ export async function downloadAllAsZip(
     listsFolder.file(
       `${safeName}.csv`,
       buildCSVString(
-        list.items.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt }))
+        list.items.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt, poster_path: i.posterPath ?? "" }))
       ),
     );
   }
