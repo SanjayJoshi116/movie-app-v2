@@ -337,7 +337,7 @@ SECRET_KEY=your-long-random-django-secret-key
 JWT_SIGNING_KEY=your-long-random-jwt-signing-key
 DJANGO_API_URL=http://backend:8000/api
 DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+ALLOWED_HOSTS=*
 FRONTEND_URL=http://localhost
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
@@ -346,6 +346,9 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=you@gmail.com
 EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
+
+# Optional: set to your machine's LAN IP so the proxy startup log shows the correct network URL
+# HOST_IP=192.168.x.x
 ```
 
 2. Build and start all services:
@@ -355,6 +358,21 @@ docker compose up --build
 ```
 
 The app will be available at `http://localhost`.
+
+### LAN Access (same network, different device)
+
+When running via **Docker Desktop** on Windows or Mac, Docker properly forwards ports to the host machine's network interface. Other devices on the same network can access the app using the host machine's LAN IP:
+
+```
+http://<host-lan-ip>        # port 80
+http://<host-lan-ip>:3000   # port 3000
+```
+
+Find the host LAN IP:
+- **Windows:** `ipconfig` → look for **IPv4 Address** under Wi-Fi or Ethernet (e.g. `192.168.0.110`)
+- **Mac/Linux:** `ifconfig` or `ip addr` → look for `inet 192.168.x.x`
+
+> **Note:** `ALLOWED_HOSTS=*` in `.env.docker` is required for LAN access so Django accepts requests from any IP. This is safe for local network use. For public deployments, restrict to specific domains.
 
 **Service layout:**
 
@@ -418,10 +436,12 @@ GitHub Actions runs both test suites automatically on every push and pull reques
 | POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
 | POST            | `/api/auth/token/refresh/`                  | Refresh access token                               |
 | GET/PATCH       | `/api/auth/profile/`                        | Get or update profile (requires auth)              |
+| DELETE          | `/api/auth/delete-account/`                 | Permanently delete account and all data            |
 | POST            | `/api/auth/password-reset/`                 | Request email password reset link                  |
 | POST            | `/api/auth/password-reset/confirm/`         | Confirm reset with uid + token + new password      |
 | GET/POST        | `/api/watchlist/`                           | List or add watchlist entries                      |
 | DELETE/PATCH    | `/api/watchlist/<id>/`                      | Remove or update a watchlist entry                 |
+| DELETE          | `/api/watchlist/clear/`                     | Remove all watchlist entries                       |
 | GET/POST        | `/api/watched/`                             | List or add watched entries                        |
 | DELETE          | `/api/watched/<id>/`                        | Remove a watched entry                             |
 | DELETE          | `/api/watched/clear/`                       | Remove all watched entries                         |
@@ -431,6 +451,7 @@ GitHub Actions runs both test suites automatically on every push and pull reques
 | GET/POST        | `/api/lists/`                               | Create and list user lists                         |
 | DELETE          | `/api/lists/<id>/`                          | Delete a list                                      |
 | POST            | `/api/lists/<id>/items/`                    | Add an item to a list                              |
+| DELETE          | `/api/lists/<id>/items/clear/`              | Remove all items from a list (keeps the list)      |
 | DELETE          | `/api/lists/<id>/items/<item_id>/`          | Remove an item from a list                         |
 | GET             | `/api/stats/`                               | Watch history statistics                           |
 | GET/POST/PATCH/DELETE | `/api/episode-progress/<show_id>/`    | Get/set/update/delete episode progress             |
