@@ -33,6 +33,13 @@ def watchlist_list(request):
     )
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def watchlist_clear(request):
+    WatchlistEntry.objects.filter(user=request.user).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @api_view(["DELETE", "PATCH"])
 @permission_classes([IsAuthenticated])
 def watchlist_detail(request, pk):

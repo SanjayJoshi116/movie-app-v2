@@ -6,7 +6,7 @@ import {
   Space, Popconfirm, Tag, Divider, Spin,
 } from "antd";
 import {
-  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined, UploadOutlined,
+  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined, UploadOutlined, ClearOutlined,
 } from "@ant-design/icons";
 
 import { useListsContext } from "../context/useListsContext";
@@ -25,7 +25,7 @@ const SS_SELECTED = "lists_selected_id";
 
 function ListsPage() {
   const navigate = useNavigate();
-  const { lists, isLoading, createList, deleteList, removeFromList } = useListsContext();
+  const { lists, isLoading, createList, deleteList, removeFromList, clearList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importListOpen, setImportListOpen] = useState(false);
   const [selectedListId, setSelectedListId] = useState<number | null>(() => {
@@ -141,23 +141,37 @@ function ListsPage() {
             <Space>
               <Typography.Text strong>{currentSelected.name}</Typography.Text>
               {currentSelected.items.length > 0 && (
-                <Button
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  onClick={() => {
-                    const rows = currentSelected.items.map((i) => ({
-                      list: currentSelected.name,
-                      title: i.title,
-                      type: i.type,
-                      tmdb_id: i.id,
-                      vote_average: i.voteAverage,
-                      added_at: i.addedAt,
-                    }));
-                    downloadCSV(rows, `${currentSelected.name.replace(/\s+/g, "_")}.csv`);
-                  }}
-                >
-                  Export CSV
-                </Button>
+                <Space>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => {
+                      const rows = currentSelected.items.map((i) => ({
+                        list: currentSelected.name,
+                        title: i.title,
+                        type: i.type,
+                        tmdb_id: i.id,
+                        vote_average: i.voteAverage,
+                        added_at: i.addedAt,
+                      }));
+                      downloadCSV(rows, `${currentSelected.name.replace(/\s+/g, "_")}.csv`);
+                    }}
+                  >
+                    Export CSV
+                  </Button>
+                  <Popconfirm
+                    title={`Clear all items from "${currentSelected.name}"?`}
+                    description="The list will remain but all items will be removed."
+                    onConfirm={() => clearList(currentSelected.id)}
+                    okText="Clear All"
+                    okType="danger"
+                    cancelText="Cancel"
+                  >
+                    <Button danger size="small" icon={<ClearOutlined />}>
+                      Clear All
+                    </Button>
+                  </Popconfirm>
+                </Space>
               )}
             </Space>
           </Divider>

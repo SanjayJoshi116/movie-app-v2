@@ -110,10 +110,18 @@ export function useLists() {
     );
   };
 
+  const clearList = async (listId: number) => {
+    if (!isAuthenticated) return;
+    await userApi.delete(`/lists/${listId}/items/clear/`);
+    setLists((prev) =>
+      prev.map((l) => (l.id !== listId ? l : { ...l, items: [] }))
+    );
+  };
+
   const isInList = (listId: number, id: number, type: string): boolean => {
     const list = lists.find((l) => l.id === listId);
     return list ? list.items.some((i) => i.id === id && i.type === type) : false;
   };
 
-  return { lists, isLoading, createList, deleteList, addToList, removeFromList, isInList, reloadLists: fetchLists };
+  return { lists, isLoading, createList, deleteList, addToList, removeFromList, clearList, isInList, reloadLists: fetchLists };
 }

@@ -68,6 +68,13 @@ export function useWatchlist() {
     setWatchlist((prev) => prev.filter((i) => !(i.id === id && i.type === type)));
   }, [isAuthenticated]);
 
+  const clearAll = useCallback(async () => {
+    if (!isAuthenticated) return;
+    await userApi.delete("/watchlist/clear/");
+    dbIdMap.current = {};
+    setWatchlist([]);
+  }, [isAuthenticated]);
+
   const isIn = useCallback((id: number, type: string): boolean =>
     watchlistRef.current.some((i) => i.id === id && i.type === type),
   []);
@@ -90,5 +97,5 @@ export function useWatchlist() {
     );
   }, [isAuthenticated]);
 
-  return { watchlist, isLoading, add, remove, isIn, toggle, markWatched };
+  return { watchlist, isLoading, add, remove, clearAll, isIn, toggle, markWatched };
 }

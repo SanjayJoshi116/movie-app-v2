@@ -91,15 +91,16 @@ app.post("/api/mark-watched", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  const nets = os.networkInterfaces();
-  const ips = Object.values(nets)
-    .flat()
-    .filter((n) => n.family === "IPv4" && !n.internal)
-    .map((n) => n.address);
-
+  const hostIp = process.env.HOST_IP || null;
   console.log(`\nExpress proxy → http://localhost:${PORT}`);
-  ips.forEach((ip) => console.log(`                http://${ip}:${PORT}`));
   console.log(`\nOpen the app at:`);
+  console.log(`  Local:   http://localhost`);
   console.log(`  Local:   http://localhost:3000`);
-  ips.forEach((ip) => console.log(`  Network: http://${ip}:3000`));
+  if (hostIp) {
+    console.log(`  Network: http://${hostIp}`);
+    console.log(`  Network: http://${hostIp}:3000`);
+  } else {
+    console.log(`  Network: run 'ipconfig' on host → use WiFi/Ethernet IPv4 on port 80`);
+    console.log(`           or set HOST_IP=<your-lan-ip> in .env.docker`);
+  }
 });

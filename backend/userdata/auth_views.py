@@ -129,6 +129,13 @@ def login(request):
     return Response({"user": UserSerializer(user).data, **tokens})
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    request.user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def profile(request):

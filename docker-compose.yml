@@ -44,6 +44,7 @@ services:
     env_file: .env.docker
     environment:
       DJANGO_API_URL: http://backend:8000/api
+      HOST_IP: ${HOST_IP:-}
     healthcheck:
       test: ["CMD", "node", "-e", "const net=require('net');const s=net.createConnection(3001,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));"]
       interval: 5s

@@ -57,6 +57,14 @@ def list_items_create(request, list_pk):
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
+def list_items_clear(request, list_pk):
+    user_list = get_object_or_404(UserList, pk=list_pk, user=request.user)
+    user_list.items.all().delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
 def list_items_detail(request, list_pk, item_pk):
     user_list = get_object_or_404(UserList, pk=list_pk, user=request.user)
     item = get_object_or_404(UserListItem, pk=item_pk, user_list=user_list)

@@ -5,7 +5,7 @@ import type { ListsContextType } from "../types";
 export const ListsContext = createContext<ListsContextType | null>(null);
 
 export function ListsProvider({ children }: { children: ReactNode }) {
-  const { lists, isLoading, createList, deleteList, addToList, removeFromList, isInList, reloadLists } = useLists();
+  const { lists, isLoading, createList, deleteList, addToList, removeFromList, clearList, isInList, reloadLists } = useLists();
 
   const value: ListsContextType = {
     lists,
@@ -14,6 +14,7 @@ export function ListsProvider({ children }: { children: ReactNode }) {
     deleteList,
     addToList,
     removeFromList,
+    clearList,
     isInList,
     reloadLists,
   };

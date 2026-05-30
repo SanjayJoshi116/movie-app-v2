@@ -9,11 +9,13 @@ urlpatterns = [
     path("auth/login/", views.login),
     path("auth/token/refresh/", TokenRefreshView.as_view()),
     path("auth/profile/", views.profile),
+    path("auth/delete-account/", views.delete_account),
     path("auth/password-reset/", views.password_reset_request),
     path("auth/password-reset/confirm/", views.password_reset_confirm),
 
     # Watchlist
     path("watchlist/", views.watchlist_list),
+    path("watchlist/clear/", views.watchlist_clear),
     path("watchlist/<int:pk>/", views.watchlist_detail),
 
     # Watched
@@ -30,6 +32,7 @@ urlpatterns = [
     path("lists/", views.lists_list),
     path("lists/<int:pk>/", views.lists_detail),
     path("lists/<int:list_pk>/items/", views.list_items_create),
+    path("lists/<int:list_pk>/items/clear/", views.list_items_clear),
     path("lists/<int:list_pk>/items/<int:item_pk>/", views.list_items_detail),
 
     # Recommendations

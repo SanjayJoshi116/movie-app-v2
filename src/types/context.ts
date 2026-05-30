@@ -30,6 +30,7 @@ export interface AppContextType {
   watchlist: WatchlistEntry[];
   addToWatchlist(entry: WatchlistInput): void;
   removeFromWatchlist(id: number, type: string): void;
+  clearAllWatchlist(): Promise<void>;
   isInWatchlist(id: number, type: string): boolean;
   toggleWatchlist(entry: WatchlistInput): void;
   markWatched(id: number, type: string, watched: boolean): void;
@@ -66,6 +67,7 @@ export interface ListsContextType {
   deleteList(id: number): void;
   addToList(listId: number, entry: WatchlistInput): void;
   removeFromList(listId: number, itemId: number, type: string): void;
+  clearList(listId: number): Promise<void>;
   isInList(listId: number, id: number, type: string): boolean;
   reloadLists(): Promise<void>;
 }

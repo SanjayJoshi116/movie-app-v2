@@ -34,7 +34,7 @@ interface RatingTarget {
 
 function WatchlistPage() {
   const navigate = useNavigate();
-  const { watchlist, removeFromWatchlist, getRating, setRating, allRatings } = useAppContext();
+  const { watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, allRatings } = useAppContext();
   const { showSuccess } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
@@ -99,9 +99,23 @@ function WatchlistPage() {
           My Watchlist ({watchlist.length})
         </Typography.Title>
         {watchlist.length > 0 && (
-          <Button icon={<DownloadOutlined />} onClick={handleExport} size="small">
-            Export CSV
-          </Button>
+          <Space>
+            <Button icon={<DownloadOutlined />} onClick={handleExport} size="small">
+              Export CSV
+            </Button>
+            <Popconfirm
+              title="Clear entire watchlist?"
+              description="This will permanently remove all items."
+              onConfirm={async () => { await clearAllWatchlist(); showSuccess("Watchlist cleared"); }}
+              okText="Clear All"
+              okType="danger"
+              cancelText="Cancel"
+            >
+              <Button danger icon={<DeleteOutlined />} size="small">
+                Clear All
+              </Button>
+            </Popconfirm>
+          </Space>
         )}
       </div>
 

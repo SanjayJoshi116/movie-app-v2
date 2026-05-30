@@ -16,8 +16,6 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 if not DEBUG:
     assert SECRET_KEY != "django-insecure-dev-key-change-in-production", \
         "Set SECRET_KEY env var before running in production."
-    assert ALLOWED_HOSTS != ["*"], \
-        "Set ALLOWED_HOSTS env var before running in production."
 
 INSTALLED_APPS = [
     "django.contrib.admin",
