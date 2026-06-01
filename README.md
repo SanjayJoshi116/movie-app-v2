@@ -47,7 +47,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **User Lists** — Create named lists, add or remove any movie or show, and export each list as CSV
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity (bar chart), and top genres (horizontal bar chart)
-- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`)
+- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); results are pre-computed at backend startup and served instantly from DB cache
 - **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type; one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
@@ -95,7 +95,8 @@ backend/
 │   └── urls.py                  # Root URL config — mounts /api/
 ├── userdata/
 │   ├── models.py                # WatchlistEntry, WatchedEntry, RatingEntry,
-│   │                            #   UserList, UserListItem, EpisodeProgress, FollowedPerson
+│   │                            #   UserList, UserListItem, EpisodeProgress, FollowedPerson,
+│   │                            #   UserRecommendationCache (pre-computed rec cache per user)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases)
 │   ├── views.py                 # Thin re-export barrel — import from domain modules below
 │   ├── auth_views.py            # register, login, profile, password reset + throttle classes
@@ -107,7 +108,13 @@ backend/
 │   ├── stats_views.py           # stats aggregation + genre cache
 │   ├── social_views.py          # episode progress + followed people + recs
 │   ├── urls.py                  # /api/ endpoint routing
-│   ├── recommendations.py       # K-means genre clustering + followed-people recommendations
+│   ├── recommendations.py       # K-means genre clustering + followed-people recommendations;
+│   │                            #   _compute_for_you / _compute_personalized are standalone fns
+│   │                            #   called by views (cache hit) and management command (pre-compute)
+│   ├── management/
+│   │   └── commands/
+│   │       └── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
+│   │                                       #   run at backend startup via start.py
 │   └── tmdb_client.py           # Server-side TMDB API client
 └── manage.py
 
@@ -205,7 +212,7 @@ src/
 - **Stable hook callbacks** — `useWatchlist`, `useRatings`, and `useWatched` use `useCallback` with a ref pattern (`watchlistRef.current = watchlist`) so returned functions only change identity when `isAuthenticated` changes, not on every render. This prevents `AppContext`'s `useMemo` from recomputing on unrelated parent re-renders.
 - **API key security** — The TMDB key lives in `.env` and is only accessed server-side (Express proxy or Django). Frontend requests go through `/api/tmdb/*`.
 - **Backend data** — All user data lives in PostgreSQL, bound to the authenticated user. No localStorage drift.
-- **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag).
+- **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag). Results are pre-computed and stored in `UserRecommendationCache` (PostgreSQL) at backend startup via the `compute_recommendations` management command; endpoints serve from DB in ~1ms. Stale cache (>12 h) triggers a background thread refresh on the next request — the user always gets an instant response.
 - **Filter params by media type** — `filtersToTMDBParams(filters, sortBy, mediaType)` uses `first_air_date` for TV and `primary_release_date` for movies, and remaps `primary_release_date.*` sort options to `first_air_date.*` for TV discover queries.
 - **Episode progress bounds** — The tracker reads `number_of_seasons` and `seasons[].episode_count` from the TMDB TV detail response to cap the +/- controls; no extra API call needed.
 - **CSV import** — Parses CSV in the browser (handles quoted fields and `""` escaped quotes), enriches with TMDB poster data in batches of 20, bulk-saves via `/api/watched/bulk/`, then calls `reloadWatched()` so the watched list in context updates immediately.
@@ -256,7 +263,15 @@ pip install -r backend/requirements.txt
 python backend/manage.py migrate
 ```
 
-5. Start all three servers:
+5. (Optional) Pre-compute recommendation cache:
+
+```bash
+python backend/manage.py compute_recommendations
+```
+
+> This runs automatically at backend startup. Run manually to warm the cache before first use.
+
+6. Start all three servers:
 
 ```bash
 npm run dev

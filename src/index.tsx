@@ -9,6 +9,9 @@ import "./index.css";
 import App from "./App";
 import reportWebVitals from "./reportWebVitals";
 
+// Prevent browser from auto-restoring scroll; our pages handle it explicitly
+window.history.scrollRestoration = "manual";
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");
 

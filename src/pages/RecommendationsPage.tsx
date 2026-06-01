@@ -89,33 +89,88 @@ function SectionRow({ section, navigate }: { section: PersonalizedRecSection; na
   );
 }
 
+const REC_CACHE_KEY = "cinedb_recommendations";
+const REC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface RecCache {
+  sections: PersonalizedRecSection[];
+  personalizedSections: PersonalizedRecSection[];
+  followedSections: PersonalizedRecSection[];
+  scrollY: number;
+  ts: number;
+}
+
+function readRecCache(): RecCache | null {
+  try {
+    const raw = sessionStorage.getItem(REC_CACHE_KEY);
+    if (!raw) return null;
+    const parsed: RecCache = JSON.parse(raw);
+    if (Date.now() - parsed.ts > REC_CACHE_TTL) return null;
+    return parsed;
+  } catch { return null; }
+}
+
 function RecommendationsPage() {
   const navigate = useNavigate();
   const { watchedList, isDataLoading } = useAppContext();
-  const [sections, setSections] = useState<PersonalizedRecSection[]>([]);
-  const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>([]);
-  const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>([]);
-  const [loading, setLoading] = useState(false);
-  const fetchedRef = useRef(false);
+
+  const [cache] = useState<RecCache | null>(readRecCache);
+
+  const [sections, setSections] = useState<PersonalizedRecSection[]>(cache?.sections ?? []);
+  const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>(cache?.personalizedSections ?? []);
+  const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>(cache?.followedSections ?? []);
+  const [loading, setLoading] = useState(!cache);
+  const hasFetched = useRef(Boolean(cache));
+
+  // Restore scroll once on mount if cache hit — rAF fires after browser's own scroll restoration
+  useEffect(() => {
+    if (!cache?.scrollY) return;
+    const id = requestAnimationFrame(() => window.scrollTo(0, cache.scrollY));
+    return () => cancelAnimationFrame(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ref to latest data so unmount cleanup captures current values
+  const latestData = useRef({ sections, personalizedSections, followedSections });
+  useEffect(() => { latestData.current = { sections, personalizedSections, followedSections }; });
+
+  // Save to sessionStorage on unmount
+  useEffect(() => {
+    return () => {
+      const { sections: s, personalizedSections: ps, followedSections: fs } = latestData.current;
+      sessionStorage.setItem(REC_CACHE_KEY, JSON.stringify({
+        sections: s, personalizedSections: ps, followedSections: fs,
+        scrollY: window.scrollY,
+        ts: Date.now(),
+      }));
+    };
+  }, []);
 
   useEffect(() => {
-    if (isDataLoading || watchedList.length === 0 || fetchedRef.current) return;
-    fetchedRef.current = true;
+    if (isDataLoading || watchedList.length === 0 || hasFetched.current) return;
+    hasFetched.current = true;
     let cancelled = false;
-    setLoading(true);
+    let pending = 3;
+    const done = () => { if (--pending === 0 && !cancelled) setLoading(false); };
 
-    Promise.allSettled([
-      fetchForYouRecommendations(),
-      fetchPersonalizedRecommendations(),
-      fetchFollowedPeopleRecommendations(),
-    ]).then(([forYouRes, personalizedRes, followedRes]) => {
-      if (cancelled) return;
-      if (forYouRes.status === "fulfilled") setSections(forYouRes.value.data);
-      if (personalizedRes.status === "fulfilled") setPersonalizedSections(personalizedRes.value.data);
-      if (followedRes.status === "fulfilled") setFollowedSections(followedRes.value.data);
-    }).finally(() => { if (!cancelled) setLoading(false); });
+    fetchForYouRecommendations()
+      .then(res => { if (!cancelled) setSections(res.data); })
+      .catch(() => {})
+      .finally(done);
 
-    return () => { cancelled = true; };
+    fetchPersonalizedRecommendations()
+      .then(res => { if (!cancelled) setPersonalizedSections(res.data); })
+      .catch(() => {})
+      .finally(done);
+
+    fetchFollowedPeopleRecommendations()
+      .then(res => { if (!cancelled) setFollowedSections(res.data); })
+      .catch(() => {})
+      .finally(done);
+
+    return () => {
+      cancelled = true;
+      hasFetched.current = false; // allow retry on StrictMode re-mount
+    };
   }, [isDataLoading, watchedList.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalItems =
@@ -158,16 +213,11 @@ function RecommendationsPage() {
           }
           style={{ padding: "60px 0" }}
         />
-      ) : loading ? (
-        <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
-      ) : totalItems === 0 ? (
-        <Empty
-          image={<BulbOutlined style={{ fontSize: 48, color: "#aaa" }} />}
-          description="No recommendations found for your watched titles."
-          style={{ padding: "60px 0" }}
-        />
       ) : (
         <>
+          {loading && totalItems === 0 && (
+            <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
+          )}
           {followedSections.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
@@ -177,6 +227,13 @@ function RecommendationsPage() {
           {sections.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
+          {!loading && totalItems === 0 && (
+            <Empty
+              image={<BulbOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+              description="No recommendations found for your watched titles."
+              style={{ padding: "60px 0" }}
+            />
+          )}
         </>
       )}
     </motion.div>

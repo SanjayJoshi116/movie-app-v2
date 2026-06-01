@@ -30,8 +30,16 @@ backend/db.sqlite3
 # production
 /build
 
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # misc
 .DS_Store
+Thumbs.db
+desktop.ini
 .env
 .env.local
 .env.development.local

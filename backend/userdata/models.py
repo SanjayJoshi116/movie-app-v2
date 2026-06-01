@@ -98,6 +98,16 @@ class TMDBMediaCache(models.Model):
         return f"{self.media_type}/{self.media_id}"
 
 
+class UserRecommendationCache(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="rec_cache")
+    for_you_json = models.JSONField(default=list)
+    personalized_json = models.JSONField(default=list)
+    computed_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} — rec cache ({self.computed_at:%Y-%m-%d %H:%M})"
+
+
 class TMDBProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tmdb_profile")
     session_id = models.CharField(max_length=200, blank=True, default="")

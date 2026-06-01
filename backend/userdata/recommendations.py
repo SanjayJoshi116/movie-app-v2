@@ -1,5 +1,6 @@
 import logging
 import random
+import threading
 from datetime import timedelta
 
 import numpy as np
@@ -14,10 +15,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WatchedEntry, RatingEntry, TMDBMediaCache
+from .models import WatchedEntry, RatingEntry, TMDBMediaCache, UserRecommendationCache
 from . import tmdb_client
 
 CACHE_TTL_DAYS = 7
+RECOMMENDATIONS_TTL_HOURS = 12
 
 
 def _ensure_cached(entry):
@@ -67,16 +69,28 @@ def _tmdb_item(r, media_type):
     }
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def recommendations_for_you(request):
-    watched = list(WatchedEntry.objects.filter(user=request.user))
+def _fill_genre(entry):
+    """Fetch and cache genre IDs for a single WatchedEntry."""
+    try:
+        ids = tmdb_client.get_genre_ids(entry.media_id, entry.media_type)
+    except Exception:
+        ids = []
+    entry.genre_ids = ids
+    try:
+        entry.save(update_fields=["genre_ids"])
+    except Exception:
+        pass  # best-effort; don't surface DB blips as 500
+
+
+def _compute_for_you(user) -> list:
+    """Compute for-you recommendation sections for a user. Returns list of sections."""
+    watched = list(WatchedEntry.objects.filter(user=user))
     if not watched:
-        return Response([])
+        return []
 
     rating_map = {
         f"{r.media_type}-{r.media_id}": r.user_rating
-        for r in RatingEntry.objects.filter(user=request.user)
+        for r in RatingEntry.objects.filter(user=user)
     }
 
     # ── Cache: parallel fetch for all watched items ──────────────────────────
@@ -84,7 +98,7 @@ def recommendations_for_you(request):
         cache_rows = list(ex.map(_ensure_cached, watched))
 
     cache_by_key = {
-        f"{row.media_type}-{row.media_id}": row for row in cache_rows
+        f"{row.media_type}-{row.media_id}": row for row in cache_rows if row
     }
 
     # ── Build frequency maps ─────────────────────────────────────────────────
@@ -273,33 +287,18 @@ def recommendations_for_you(request):
                 "items": filtered,
             })
 
-    return Response(sections)
+    return sections
 
 
-def _fill_genre(entry):
-    """Fetch and cache genre IDs for a single WatchedEntry."""
-    try:
-        ids = tmdb_client.get_genre_ids(entry.media_id, entry.media_type)
-    except Exception:
-        ids = []
-    entry.genre_ids = ids
-    try:
-        entry.save(update_fields=["genre_ids"])
-    except Exception:
-        pass  # best-effort; don't surface DB blips as 500
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def personalized_recommendations(request):
-    watched = list(WatchedEntry.objects.filter(user=request.user))
+def _compute_personalized(user) -> list:
+    """Compute personalized recommendation sections for a user. Returns list of sections."""
+    watched = list(WatchedEntry.objects.filter(user=user))
     if len(watched) < 3:
-        return Response([])
+        return []
 
-    # Build rating lookup: "type-id" -> user_rating (0..10)
     rating_map = {
         f"{r.media_type}-{r.media_id}": r.user_rating
-        for r in RatingEntry.objects.filter(user=request.user)
+        for r in RatingEntry.objects.filter(user=user)
     }
 
     # --- Fill genre cache concurrently for entries missing it ---
@@ -311,12 +310,12 @@ def personalized_recommendations(request):
                 try:
                     f.result()
                 except Exception:
-                    pass  # best-effort genre fill; don't crash the view
+                    pass  # best-effort genre fill; don't crash
 
     # --- Build genre vocabulary ---
     all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})
     if not all_genre_ids:
-        return Response([])
+        return []
     genre_index = {g: i for i, g in enumerate(all_genre_ids)}
     n_genres = len(all_genre_ids)
 
@@ -410,4 +409,46 @@ def personalized_recommendations(request):
 
         sections.append({"key": f"cluster-{cluster_idx}", "label": label, "items": items})
 
-    return Response(sections)
+    return sections
+
+
+def _refresh_cache(user):
+    """Recompute both recommendation types and save to DB. Safe to run in background thread."""
+    try:
+        for_you = _compute_for_you(user)
+        personalized = _compute_personalized(user)
+        UserRecommendationCache.objects.update_or_create(
+            user=user,
+            defaults={"for_you_json": for_you, "personalized_json": personalized},
+        )
+        logger.info("Recommendation cache refreshed for user %s", user.id)
+    except Exception as e:
+        logger.warning("Rec cache refresh failed for user %s: %s", user.id, e)
+
+
+def _is_stale(cache) -> bool:
+    return (timezone.now() - cache.computed_at).total_seconds() > RECOMMENDATIONS_TTL_HOURS * 3600
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def recommendations_for_you(request):
+    cache = UserRecommendationCache.objects.filter(user=request.user).first()
+    if cache:
+        if _is_stale(cache):
+            threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
+        return Response(cache.for_you_json)
+    threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
+    return Response([])
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def personalized_recommendations(request):
+    cache = UserRecommendationCache.objects.filter(user=request.user).first()
+    if cache:
+        if _is_stale(cache):
+            threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
+        return Response(cache.personalized_json)
+    threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
+    return Response([])

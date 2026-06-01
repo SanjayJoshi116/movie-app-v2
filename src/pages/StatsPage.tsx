@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Typography, Spin, Empty, Tabs } from "antd";
 import {
@@ -291,6 +291,8 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
 function StatsPage() {
   const [data, setData] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeStatsTab = searchParams.get("tab") ?? "top-rated";
 
   useEffect(() => {
     fetchStats()
@@ -536,6 +538,8 @@ function StatsPage() {
           <Title level={4} style={{ marginBottom: 16 }}>Top Items</Title>
           <Card className="glass-card" style={{ marginBottom: 32 }}>
             <Tabs
+              activeKey={activeStatsTab}
+              onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
               items={[
                 {
                   key: "top-rated",

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Card, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
@@ -73,6 +73,8 @@ function PersonPage() {
   const from = locationState?.from;
   const savedScrollY = locationState?.scrollY;
   const savedLoadedPages = locationState?.loadedPages;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeCreditsTab = searchParams.get("tab") ?? "all";
   const { isFollowing, follow, unfollow } = useFollowedPeople();
   const { showSuccess } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
@@ -274,7 +276,11 @@ function PersonPage() {
         </Row>
 
         {tabItems.length > 0 ? (
-          <Tabs items={tabItems} />
+          <Tabs
+            activeKey={tabItems.some(t => t.key === activeCreditsTab) ? activeCreditsTab : tabItems[0]?.key}
+            onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
+            items={tabItems}
+          />
         ) : (
           <Empty description="No credits available" />
         )}

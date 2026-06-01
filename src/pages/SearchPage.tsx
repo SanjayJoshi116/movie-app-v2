@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty } from "antd";
 import { EyeOutlined, EyeFilled, UserOutlined, SearchOutlined } from "@ant-design/icons";
@@ -26,23 +26,71 @@ function getRatingColor(v: number) {
 
 // ── Shared paginated hook ────────────────────────────────────────────────────
 
+interface SearchCache<T> {
+  query: string;
+  adult: boolean;
+  items: T[];
+  page: number;
+  hasMore: boolean;
+  scrollY: number;
+}
+
+function readCache<T>(cacheKey: string, query: string, adult: boolean): SearchCache<T> | null {
+  try {
+    const raw = sessionStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed: SearchCache<T> = JSON.parse(raw);
+    if (parsed.query !== query || parsed.adult !== adult) return null;
+    return parsed;
+  } catch { return null; }
+}
+
 function usePaginatedSearch<T extends { id: number }>(
   fetcher: (query: string, page: number, adult: boolean) => Promise<{ results: T[]; totalPages: number }>,
   query: string,
   adult: boolean,
+  cacheKey: string,
 ) {
-  const [items, setItems] = useState<T[]>([]);
-  const [loading, setLoading] = useState(false);
+  const cache = useState(() => readCache<T>(cacheKey, query, adult))[0];
+
+  const [items, setItems] = useState<T[]>(cache?.items ?? []);
+  const [loading, setLoading] = useState(cache ? false : Boolean(query));
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(cache?.page ?? 1);
+  const [hasMore, setHasMore] = useState(cache?.hasMore ?? false);
+
+  // Keep a ref with latest state so unmount cleanup captures current values
+  const stateRef = useRef({ query, adult, items, page, hasMore });
+  useEffect(() => { stateRef.current = { query, adult, items, page, hasMore }; });
+
+  // Save to sessionStorage on unmount
+  useEffect(() => {
+    return () => {
+      const { query: q, adult: a, items: i, page: p, hasMore: h } = stateRef.current;
+      if (q && i.length > 0) {
+        sessionStorage.setItem(cacheKey, JSON.stringify({ query: q, adult: a, items: i, page: p, hasMore: h, scrollY: window.scrollY }));
+      }
+    };
+  }, [cacheKey]);
+
+  // Restore scroll after cache-restored items render
+  const scrollRestored = useRef(false);
+  useLayoutEffect(() => {
+    if (cache && !scrollRestored.current && items.length > 0) {
+      scrollRestored.current = true;
+      window.scrollTo(0, cache.scrollY);
+    }
+  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!query) {
       setItems([]);
       setHasMore(false);
+      setPage(1);
+      sessionStorage.removeItem(cacheKey);
       return;
     }
+    if (cache) return; // restored from cache, skip initial fetch
     let cancelled = false;
     setLoading(true);
     fetcher(query, 1, adult)
@@ -89,6 +137,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
     },
     query,
     adult,
+    "cinedb_search_movies",
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -178,6 +227,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
     },
     query,
     adult,
+    "cinedb_search_tv",
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -265,6 +315,7 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
     },
     query,
     adult,
+    "cinedb_search_people",
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -314,6 +365,8 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
 
 function SearchPage() {
   const { searchTerm, includeAdult } = useAppContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "movies";
 
   return (
     <motion.div
@@ -340,7 +393,8 @@ function SearchPage() {
         />
       ) : (
         <Tabs
-          defaultActiveKey="movies"
+          activeKey={activeTab}
+          onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
           items={[
             { key: "movies", label: "Movies", children: <MoviesTab query={searchTerm} adult={includeAdult} /> },
             { key: "tv", label: "TV Shows", children: <TVTab query={searchTerm} adult={includeAdult} /> },

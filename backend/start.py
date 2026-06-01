@@ -33,5 +33,8 @@ manage = str(base / "manage.py")
 subprocess.run([sys.executable, manage, "makemigrations", "userdata"], check=True)
 subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 
-# Step 3: Start server
+# Step 3: Pre-compute recommendation cache (best-effort — failure won't block startup)
+subprocess.run([sys.executable, manage, "compute_recommendations"], check=False)
+
+# Step 4: Start server
 subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)
