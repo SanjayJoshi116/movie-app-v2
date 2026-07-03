@@ -20,7 +20,7 @@ const mockPost = userApi.post as jest.Mock;
 const mockDelete = userApi.delete as jest.Mock;
 
 const mockAuthValue = {
-  user: { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "" },
+  user: { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "", is_staff: false },
   isLoading: false,
   isAuthenticated: true,
   login: jest.fn(),

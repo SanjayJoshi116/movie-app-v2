@@ -26,6 +26,7 @@ env/
 htmlcov/
 backend/staticfiles/
 backend/db.sqlite3
+.ruff_cache/
 
 # production
 /build

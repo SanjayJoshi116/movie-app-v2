@@ -47,7 +47,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **User Lists** — Create named lists, add or remove any movie or show, and export each list as CSV
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity (bar chart), and top genres (horizontal bar chart)
-- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); results are pre-computed at backend startup and served instantly from DB cache
+- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
 - **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type; one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
@@ -80,6 +80,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - [djangorestframework-simplejwt](https://django-rest-framework-simplejwt.readthedocs.io/) — JWT auth
 - [scikit-learn](https://scikit-learn.org/) — K-means clustering for recommendations
 - [PostgreSQL](https://www.postgresql.org/) + [psycopg2](https://www.psycopg.org/)
+- [Ruff](https://docs.astral.sh/ruff/) — Python lint/format, config in `pyproject.toml`
 
 **APIs**
 - [TMDB API](https://developer.themoviedb.org/)
@@ -212,7 +213,7 @@ src/
 - **Stable hook callbacks** — `useWatchlist`, `useRatings`, and `useWatched` use `useCallback` with a ref pattern (`watchlistRef.current = watchlist`) so returned functions only change identity when `isAuthenticated` changes, not on every render. This prevents `AppContext`'s `useMemo` from recomputing on unrelated parent re-renders.
 - **API key security** — The TMDB key lives in `.env` and is only accessed server-side (Express proxy or Django). Frontend requests go through `/api/tmdb/*`.
 - **Backend data** — All user data lives in PostgreSQL, bound to the authenticated user. No localStorage drift.
-- **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag). Results are pre-computed and stored in `UserRecommendationCache` (PostgreSQL) at backend startup via the `compute_recommendations` management command; endpoints serve from DB in ~1ms. Stale cache (>12 h) triggers a background thread refresh on the next request — the user always gets an instant response.
+- **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag). Results are pre-computed and stored in `UserRecommendationCache` (PostgreSQL) at backend startup via the `compute_recommendations` management command; endpoints serve from DB in ~1ms. Stale cache (>12 h) triggers a background thread refresh on the next request. The `for-you`/`personalized` endpoints report `{status: "pending" | "ready", sections}` — an in-process set tracks which users have a refresh in flight so concurrent requests don't spawn duplicate threads. While `pending`, `RecommendationsPage` polls every 3s (up to ~1 min) instead of showing a terminal empty state.
 - **Filter params by media type** — `filtersToTMDBParams(filters, sortBy, mediaType)` uses `first_air_date` for TV and `primary_release_date` for movies, and remaps `primary_release_date.*` sort options to `first_air_date.*` for TV discover queries.
 - **Episode progress bounds** — The tracker reads `number_of_seasons` and `seasons[].episode_count` from the TMDB TV detail response to cap the +/- controls; no extra API call needed.
 - **CSV import** — Parses CSV in the browser (handles quoted fields and `""` escaped quotes), enriches with TMDB poster data in batches of 20, bulk-saves via `/api/watched/bulk/`, then calls `reloadWatched()` so the watched list in context updates immediately.
@@ -294,6 +295,7 @@ The React app runs at `http://localhost:3000`. The Express proxy runs at `http:/
 | `npx playwright test`       | Run E2E tests (starts React dev server automatically) |
 | `npx prettier --check src/` | Check formatting (config in `.prettierrc`)            |
 | `npx prettier --write src/` | Auto-format all source files                          |
+| `ruff check backend/`       | Lint Python backend (config in `pyproject.toml`)      |
 
 ---
 
@@ -436,6 +438,32 @@ e2e/
 ```bash
 npx playwright test
 ```
+
+### E2E tests — pytest-playwright (156 tests)
+
+Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
+
+```
+e2e/python/
+├── conftest.py        # Shared fixtures + mock data (users, tokens, movies, TV shows)
+├── test_auth.py       # Login, register, password reset, redirect guards (29)
+├── test_browse.py     # Movie/TV browse, categories, filters (13)
+├── test_detail.py     # Movie/TV detail pages, cast, recommendations (16)
+├── test_lists.py      # User lists CRUD + CSV export (16)
+├── test_profile.py    # Profile edit, password change, TMDB connect (11)
+├── test_ratings.py    # Rate + review flow (11)
+├── test_search.py     # Live search across movies/TV/people (7)
+├── test_stats.py      # Stats dashboard charts (18)
+├── test_watched.py    # Watched list CRUD, CSV import/export (16)
+└── test_watchlist.py  # Watchlist CRUD, sort, export (19)
+```
+
+```bash
+cd e2e/python
+pytest
+```
+
+> Requires `pytest`, `pytest-playwright`, and `playwright install` (browser binaries) in your Python env.
 
 ### CI
 

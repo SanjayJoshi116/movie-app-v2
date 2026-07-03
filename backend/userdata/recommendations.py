@@ -17,9 +17,23 @@ from rest_framework.response import Response
 
 from .models import WatchedEntry, RatingEntry, TMDBMediaCache, UserRecommendationCache
 from . import tmdb_client
+import contextlib
 
 CACHE_TTL_DAYS = 7
 RECOMMENDATIONS_TTL_HOURS = 12
+
+_computing_lock = threading.Lock()
+_computing_users = set()  # user ids currently being (re)computed, in-process only
+
+
+def _start_refresh_if_needed(user):
+    """Start a background refresh for user unless one is already running. Returns True if now computing."""
+    with _computing_lock:
+        if user.id in _computing_users:
+            return True
+        _computing_users.add(user.id)
+    threading.Thread(target=_refresh_cache, args=(user,), daemon=True).start()
+    return True
 
 
 def _ensure_cached(entry):
@@ -172,14 +186,10 @@ def _compute_for_you(user) -> list:
 
     def discover_mixed(genre_id):
         mov, tv = [], []
-        try:
+        with contextlib.suppress(Exception):
             mov = [_tmdb_item(r, "movie") for r in tmdb_client.discover("movie", [genre_id])]
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             tv = [_tmdb_item(r, "tv") for r in tmdb_client.discover("tv", [genre_id])]
-        except Exception:
-            pass
         return _interleave(mov, tv)
 
     # ── 1. More like what you love ───────────────────────────────────────────
@@ -208,7 +218,7 @@ def _compute_for_you(user) -> list:
     # ── 3. Genre sections ─────────────────────────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
         genre_results = list(ex.map(discover_mixed, top_genres))
-    for genre_id, items in zip(top_genres, genre_results):
+    for genre_id, items in zip(top_genres, genre_results, strict=False):
         filtered = filter_new(items)[:12]
         if filtered:
             genre_name = genre_name_map.get(genre_id, f"Genre {genre_id}")
@@ -424,6 +434,9 @@ def _refresh_cache(user):
         logger.info("Recommendation cache refreshed for user %s", user.id)
     except Exception as e:
         logger.warning("Rec cache refresh failed for user %s: %s", user.id, e)
+    finally:
+        with _computing_lock:
+            _computing_users.discard(user.id)
 
 
 def _is_stale(cache) -> bool:
@@ -436,10 +449,11 @@ def recommendations_for_you(request):
     cache = UserRecommendationCache.objects.filter(user=request.user).first()
     if cache:
         if _is_stale(cache):
-            threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
-        return Response(cache.for_you_json)
-    threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
-    return Response([])
+            _start_refresh_if_needed(request.user)
+        computing = request.user.id in _computing_users
+        return Response({"status": "pending" if computing else "ready", "sections": cache.for_you_json})
+    _start_refresh_if_needed(request.user)
+    return Response({"status": "pending", "sections": []})
 
 
 @api_view(["GET"])
@@ -448,7 +462,8 @@ def personalized_recommendations(request):
     cache = UserRecommendationCache.objects.filter(user=request.user).first()
     if cache:
         if _is_stale(cache):
-            threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
-        return Response(cache.personalized_json)
-    threading.Thread(target=_refresh_cache, args=(request.user,), daemon=True).start()
-    return Response([])
+            _start_refresh_if_needed(request.user)
+        computing = request.user.id in _computing_users
+        return Response({"status": "pending" if computing else "ready", "sections": cache.personalized_json})
+    _start_refresh_if_needed(request.user)
+    return Response({"status": "pending", "sections": []})

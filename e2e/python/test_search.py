@@ -1,11 +1,10 @@
 """
 Search tests: navigation, results tabs, edge cases (empty, special chars, no results).
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import (
-    fulfill_json, MOCK_MOVIE_RESPONSE, MOCK_TV_RESPONSE, EMPTY_RESPONSE,
+    fulfill_json, EMPTY_RESPONSE,
     mock_tmdb_movies, MOCK_MOVIES, MOCK_TV_SHOWS,
 )
 

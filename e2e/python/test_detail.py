@@ -1,13 +1,10 @@
 """
 Detail page tests: movie detail, TV detail, episode guide, toggles, error states.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import (
-    fulfill_json, EMPTY_RESPONSE, MOCK_MOVIE_DETAIL, MOCK_TV_DETAIL,
-    MOCK_WATCHLIST_ITEM, MOCK_LIST, MOCK_RATING,
-    mock_movie_detail_routes, mock_tv_detail_routes,
+    fulfill_json, MOCK_LIST, mock_movie_detail_routes, mock_tv_detail_routes,
 )
 
 
@@ -136,8 +133,7 @@ class TestTVDetailPage:
         authed_page.wait_for_timeout(1000)
         # Check for episode-related UI (progress section text)
         progress = authed_page.locator("[class*='episode'], [class*='progress'], button").filter(has_text="S").first
-        # At minimum, the page loads without crashing
-        expect(authed_page.locator("body")).to_be_visible()
+        expect(progress).to_be_visible()
 
     def test_tv_detail_watchlist_toggle_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)

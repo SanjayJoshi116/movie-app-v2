@@ -1,7 +1,6 @@
 """
 Watched list page tests: empty state, items, sort, search, remove, clear all, pagination.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import fulfill_json, MOCK_WATCHED_ITEM

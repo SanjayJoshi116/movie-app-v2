@@ -100,11 +100,16 @@ export type PersonalizedRecSection = {
   items: PersonalizedRecItem[];
 };
 
+export type RecommendationsResponse = {
+  status: "ready" | "pending";
+  sections: PersonalizedRecSection[];
+};
+
 export const fetchPersonalizedRecommendations = () =>
-  userApi.get<PersonalizedRecSection[]>("/recommendations/personalized/");
+  userApi.get<RecommendationsResponse>("/recommendations/personalized/");
 
 export const fetchForYouRecommendations = () =>
-  userApi.get<PersonalizedRecSection[]>("/recommendations/for-you/");
+  userApi.get<RecommendationsResponse>("/recommendations/for-you/");
 
 export const updateProfile = (data: Record<string, string>) =>
   userApi.patch("/auth/profile/", data);

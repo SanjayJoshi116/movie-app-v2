@@ -1,7 +1,6 @@
 """
 Browse tests: movies page, TV page, anime page, sidebar navigation, theme toggle.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import (

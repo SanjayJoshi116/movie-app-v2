@@ -1,7 +1,6 @@
 """
 Profile modal tests: open, show user data, save changes, validation, theme toggle.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import fulfill_json, MOCK_USER, mock_tmdb_movies

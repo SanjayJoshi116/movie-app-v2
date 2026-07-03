@@ -120,6 +120,9 @@ function RecommendationsPage() {
   const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>(cache?.personalizedSections ?? []);
   const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>(cache?.followedSections ?? []);
   const [loading, setLoading] = useState(!cache);
+  const [forYouComputing, setForYouComputing] = useState(false);
+  const [personalizedComputing, setPersonalizedComputing] = useState(false);
+  const computing = forYouComputing || personalizedComputing;
   const hasFetched = useRef(Boolean(cache));
 
   // Restore scroll once on mount if cache hit — rAF fires after browser's own scroll restoration
@@ -150,17 +153,40 @@ function RecommendationsPage() {
     hasFetched.current = true;
     let cancelled = false;
     let pending = 3;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
     const done = () => { if (--pending === 0 && !cancelled) setLoading(false); };
 
-    fetchForYouRecommendations()
-      .then(res => { if (!cancelled) setSections(res.data); })
-      .catch(() => {})
-      .finally(done);
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_POLLS = 20; // ~1 minute of polling before giving up
 
-    fetchPersonalizedRecommendations()
-      .then(res => { if (!cancelled) setPersonalizedSections(res.data); })
-      .catch(() => {})
-      .finally(done);
+    // for-you and personalized are cache-backed and computed in a bg thread on
+    // first request — poll until the backend flips status from "pending" to "ready".
+    function pollRecommendation(
+      fetchFn: () => Promise<{ data: { status: string; sections: PersonalizedRecSection[] } }>,
+      setter: (s: PersonalizedRecSection[]) => void,
+      setComputingFlag: (v: boolean) => void,
+      attempt: number,
+    ) {
+      fetchFn()
+        .then(res => {
+          if (cancelled) return;
+          setter(res.data.sections);
+          if (res.data.status === "pending" && attempt < MAX_POLLS) {
+            setComputingFlag(true);
+            timeouts.push(setTimeout(
+              () => pollRecommendation(fetchFn, setter, setComputingFlag, attempt + 1),
+              POLL_INTERVAL_MS,
+            ));
+          } else {
+            setComputingFlag(false);
+          }
+        })
+        .catch(() => {})
+        .finally(() => { if (attempt === 0) done(); });
+    }
+
+    pollRecommendation(fetchForYouRecommendations, setSections, setForYouComputing, 0);
+    pollRecommendation(fetchPersonalizedRecommendations, setPersonalizedSections, setPersonalizedComputing, 0);
 
     fetchFollowedPeopleRecommendations()
       .then(res => { if (!cancelled) setFollowedSections(res.data); })
@@ -170,6 +196,7 @@ function RecommendationsPage() {
     return () => {
       cancelled = true;
       hasFetched.current = false; // allow retry on StrictMode re-mount
+      timeouts.forEach(clearTimeout);
     };
   }, [isDataLoading, watchedList.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,7 +254,15 @@ function RecommendationsPage() {
           {sections.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
-          {!loading && totalItems === 0 && (
+          {!loading && totalItems === 0 && computing && (
+            <div style={{ textAlign: "center", padding: "60px 0" }}>
+              <Spin size="large" />
+              <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>
+                Crunching your watch history — this can take a minute for large lists.
+              </Typography.Paragraph>
+            </div>
+          )}
+          {!loading && totalItems === 0 && !computing && (
             <Empty
               image={<BulbOutlined style={{ fontSize: 48, color: "#aaa" }} />}
               description="No recommendations found for your watched titles."

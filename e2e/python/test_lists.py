@@ -1,8 +1,6 @@
 """
 Custom lists page tests: empty state, create, delete, items, remove item, edge cases.
 """
-import json
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import fulfill_json, MOCK_LIST

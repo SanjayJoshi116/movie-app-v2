@@ -1,12 +1,11 @@
 """
 Rating modal tests: open, save, cancel, edit existing, validation, network errors.
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import (
     fulfill_json, MOCK_WATCHLIST_ITEM, MOCK_RATING,
-    mock_movie_detail_routes, EMPTY_RESPONSE,
+    mock_movie_detail_routes,
 )
 
 

@@ -29,7 +29,7 @@ export function RatingModal({ title, existing, onSave, onClose }: Props) {
       okText="Save"
       cancelText="Cancel"
       okButtonProps={{ disabled: rating === 0 }}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <div>

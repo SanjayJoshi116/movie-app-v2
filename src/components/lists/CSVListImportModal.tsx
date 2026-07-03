@@ -117,7 +117,7 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
   const preview = parsed.slice(0, 10);
 
   return (
-    <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnClose>
+    <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: 13 }}>
           Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.

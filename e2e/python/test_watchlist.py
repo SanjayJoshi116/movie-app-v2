@@ -1,8 +1,6 @@
 """
 Watchlist page tests: empty state, items, sorting, search, remove, export CSV.
 """
-import json
-import pytest
 from playwright.sync_api import Page, expect
 
 from conftest import fulfill_json, MOCK_WATCHLIST_ITEM, MOCK_RATING

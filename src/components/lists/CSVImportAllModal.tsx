@@ -191,7 +191,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   };
 
   return (
-    <Modal title="Import All Data from Backup" open={open} onCancel={handleClose} footer={null} destroyOnClose>
+    <Modal title="Import All Data from Backup" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: 13 }}>
           Upload a CINE DB backup ZIP file. Existing entries are skipped — no duplicates.
