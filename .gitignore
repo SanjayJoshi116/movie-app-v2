@@ -37,6 +37,9 @@ backend/db.sqlite3
 *.swp
 *.swo
 
+# Claude Code
+.claude/
+
 # misc
 .DS_Store
 Thumbs.db

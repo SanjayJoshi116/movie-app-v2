@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Modal, Form, Input, Typography, Space } from "antd";
 import { StarRating } from "../ui/StarRating";
 import type { RatingEntry } from "../../types";
@@ -6,7 +6,7 @@ import type { RatingEntry } from "../../types";
 interface Props {
   title: string;
   existing: RatingEntry | null;
-  onSave: (rating: number, review: string) => void;
+  onSave: (rating: number, review: string) => void | Promise<void>;
   onClose: () => void;
 }
 

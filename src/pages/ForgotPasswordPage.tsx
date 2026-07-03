@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/userApi";

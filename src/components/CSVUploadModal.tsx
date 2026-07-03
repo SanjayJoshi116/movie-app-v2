@@ -6,6 +6,7 @@ import { fetchMoviePoster, fetchTVPoster } from "../api/tmdb";
 import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
 import { parseCSVForImport } from "../utils/csvParse";
+import { getApiError } from "../utils/apiError";
 
 const { Text } = Typography;
 
@@ -98,8 +99,8 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
       showSuccess(`Import complete: ${data.added} added, ${data.skipped} already watched.`);
       await reloadWatched();
       handleClose();
-    } catch {
-      showError("Failed to import watched movies. Please try again.");
+    } catch (err) {
+      showError(getApiError(err, "Failed to import watched movies. Please try again."));
     } finally {
       setLoading(false);
     }

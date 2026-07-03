@@ -1,11 +1,10 @@
+import logging
 import time as _time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import date, timedelta
 from threading import Thread
 
-from django.db.models import Count, Avg, Q
-from django.db.models.functions import TruncMonth, TruncDate
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +13,7 @@ from rest_framework.response import Response
 from .models import WatchedEntry, RatingEntry
 from . import tmdb_client
 
+logger = logging.getLogger(__name__)
 
 _genre_name_cache: dict[int, str] = {}
 _genre_cache_ts: float = 0.0
@@ -34,12 +34,14 @@ def _get_cached_genre_names() -> dict[int, str]:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def stats(request):
-    watched = WatchedEntry.objects.filter(user=request.user)
+    # Single fetch of the user's watched entries — every section below is
+    # derived from this one list instead of re-querying `watched` per section.
+    watched_list = list(WatchedEntry.objects.filter(user=request.user))
     ratings_qs = RatingEntry.objects.filter(user=request.user)
 
-    total_watched = watched.count()
-    movies_count = watched.filter(media_type="movie").count()
-    tv_count = watched.filter(media_type="tv").count()
+    total_watched = len(watched_list)
+    movies_count = sum(1 for w in watched_list if w.media_type == "movie")
+    tv_count = sum(1 for w in watched_list if w.media_type == "tv")
 
     all_ratings = list(ratings_qs.values_list("user_rating", flat=True))
     total_ratings = len(all_ratings)
@@ -51,19 +53,17 @@ def stats(request):
         dist[bucket] += 1
     rating_distribution = [{"rating": k, "count": v} for k, v in dist.items()]
 
-    monthly_qs = (
-        watched.annotate(month=TruncMonth("watched_at"))
-        .values("month")
-        .annotate(count=Count("id"))
-        .order_by("month")
-    )
+    monthly_counts: dict[tuple[int, int], int] = {}
+    for entry in watched_list:
+        month_key = (entry.watched_at.year, entry.watched_at.month)
+        monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
     monthly_activity = [
-        {"month": m["month"].strftime("%b %Y"), "count": m["count"]}
-        for m in monthly_qs
+        {"month": date(year, month, 1).strftime("%b %Y"), "count": monthly_counts[(year, month)]}
+        for year, month in sorted(monthly_counts)
     ]
 
     genre_counts: dict[int, int] = {}
-    for entry in watched.only("genre_ids"):
+    for entry in watched_list:
         for gid in (entry.genre_ids or []):
             genre_counts[gid] = genre_counts.get(gid, 0) + 1
 
@@ -73,13 +73,11 @@ def stats(request):
         for gid, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
     ]
 
-    avg_tmdb = watched.aggregate(Avg("vote_average"))["vote_average__avg"]
-    avg_tmdb_rating = round(avg_tmdb, 1) if avg_tmdb else None
-
-    missing = list(
-        watched.filter(Q(original_language__isnull=True) | Q(release_year__isnull=True))
-        .only("id", "media_id", "media_type")
+    avg_tmdb_rating = (
+        round(sum(w.vote_average for w in watched_list) / total_watched, 1) if watched_list else None
     )
+
+    missing = [w for w in watched_list if w.original_language is None or w.release_year is None]
 
     if missing:
         def _fetch_and_update(entry):
@@ -94,7 +92,7 @@ def stats(request):
                     release_year=year,
                 )
             except Exception:
-                pass
+                logger.exception("Failed to backfill language/year for WatchedEntry %s", entry.pk)
 
         def _run_backfill():
             with ThreadPoolExecutor(max_workers=20) as ex:
@@ -102,7 +100,7 @@ def stats(request):
         Thread(target=_run_backfill, daemon=True).start()
 
     lang_counter = Counter(
-        e.original_language for e in watched.only("original_language")
+        e.original_language for e in watched_list
         if e.original_language and e.original_language not in ("??", "")
     )
     language_breakdown = [
@@ -111,7 +109,7 @@ def stats(request):
     ]
 
     decade_counts: dict[str, int] = {}
-    for entry in watched.only("release_year"):
+    for entry in watched_list:
         if entry.release_year and entry.release_year > 0:
             decade = f"{(entry.release_year // 10) * 10}s"
             decade_counts[decade] = decade_counts.get(decade, 0) + 1
@@ -121,16 +119,14 @@ def stats(request):
     ]
 
     cutoff = timezone.now() - timedelta(days=364)
-    daily_qs = (
-        watched.filter(watched_at__gte=cutoff)
-        .annotate(date=TruncDate("watched_at"))
-        .values("date")
-        .annotate(count=Count("id"))
-        .order_by("date")
-    )
+    daily_counts: dict[date, int] = {}
+    for entry in watched_list:
+        if entry.watched_at >= cutoff:
+            day = entry.watched_at.date()
+            daily_counts[day] = daily_counts.get(day, 0) + 1
     daily_activity = [
-        {"date": d["date"].strftime("%Y-%m-%d"), "count": d["count"]}
-        for d in daily_qs
+        {"date": day.strftime("%Y-%m-%d"), "count": cnt}
+        for day, cnt in sorted(daily_counts.items())
     ]
 
     rating_map = {
@@ -138,7 +134,7 @@ def stats(request):
         for r in ratings_qs.only("media_id", "media_type", "user_rating")
     }
     top_rated: list[dict] = []
-    for entry in watched.only("media_id", "media_type", "title", "poster_path"):
+    for entry in watched_list:
         user_rating = rating_map.get((entry.media_id, entry.media_type))
         if user_rating is not None:
             top_rated.append({
@@ -150,6 +146,7 @@ def stats(request):
     top_rated.sort(key=lambda x: -x["userRating"])
     top_rated_items = top_rated[:8]
 
+    recent_sorted = sorted(watched_list, key=lambda e: e.watched_at, reverse=True)
     recent_items = [
         {
             "title": e.title,
@@ -157,7 +154,7 @@ def stats(request):
             "watchedAt": e.watched_at.strftime("%Y-%m-%d"),
             "mediaType": e.media_type,
         }
-        for e in watched.order_by("-watched_at")[:8]
+        for e in recent_sorted[:8]
     ]
 
     return Response({

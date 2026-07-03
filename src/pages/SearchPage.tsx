@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty } from "antd";
@@ -9,14 +9,7 @@ import SkeletonCard from "../components/SkeletonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 function getRatingColor(v: number) {
   if (v >= 8) return "#52c41a";

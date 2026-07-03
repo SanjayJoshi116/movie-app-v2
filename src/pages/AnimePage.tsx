@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Space, Button, Alert, Radio } from "antd";
@@ -16,6 +16,7 @@ import {
   filtersToTMDBParams,
 } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
+import { pageVariants } from "../constants/ui";
 
 const ANIME_KEYWORD = 210024;
 
@@ -36,12 +37,6 @@ const SORT_MAP: Record<string, string> = {
   "anime-tv-airing":        "first_air_date.desc",
   "anime-movies-popular":   "popularity.desc",
   "anime-movies-top-rated": "vote_average.desc",
-};
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit:    { opacity: 0, y: -16 },
 };
 
 interface Props {

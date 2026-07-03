@@ -14,7 +14,12 @@ from .ratings_views import ratings_list, ratings_detail
 from .lists_views import lists_list, lists_detail, list_items_create, list_items_detail, list_items_clear
 from .tmdb_views import tmdb_request_token, tmdb_create_session, tmdb_auth_status, tmdb_disconnect
 from .stats_views import stats
-from .social_views import episode_progress, followed_people_list, followed_people_detail, followed_people_recommendations
+from .social_views import (
+    episode_progress,
+    followed_people_detail,
+    followed_people_list,
+    followed_people_recommendations,
+)
 
 __all__ = [
     "bulk_watched",

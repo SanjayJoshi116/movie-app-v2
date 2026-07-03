@@ -7,6 +7,7 @@ import { useListsContext } from "../../context/useListsContext";
 import { parseCSVForImport } from "../../utils/csvParse";
 import type { ParsedEntry } from "../../utils/csvParse";
 import userApi from "../../api/userApi";
+import { getApiError } from "../../utils/apiError";
 
 const { Text } = Typography;
 
@@ -97,8 +98,8 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
       showSuccess(`Import complete: ${added} added, ${skipped} already in list.`);
       await reloadLists();
       handleClose();
-    } catch {
-      showError("Import failed. Please try again.");
+    } catch (err) {
+      showError(getApiError(err, "Import failed. Please try again."));
     } finally {
       setLoading(false);
     }

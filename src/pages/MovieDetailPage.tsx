@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Skeleton, Result, Button, Row, Col } from "antd";
-import axios from "axios";
 import MovieDetails from "../components/MovieDetails";
+import type { MovieDetailData } from "../components/MovieDetails";
 import {
   fetchMovieDetails,
   fetchMovieReviews,
@@ -11,19 +11,11 @@ import {
   fetchMovieProviders,
   fetchMovieReleaseDates,
 } from "../api/tmdb";
-import type { TMDBPerson } from "../types";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
-
-const PROXY_BASE = process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:3001/api/tmdb`;
+import { pageVariants } from "../constants/ui";
 
 function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [movie, setMovie] = useState<any>(null);
+  const [movie, setMovie] = useState<MovieDetailData | null>(null);
   // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,15 +39,6 @@ function MovieDetailPage() {
           ]);
 
         const movieData = detailsRes.data;
-        const castTop10 = (movieData.credits?.cast ?? []).slice(0, 10);
-        const castDetails = await Promise.all(
-          castTop10.map((actor) =>
-            axios
-              .get<TMDBPerson>(`${PROXY_BASE}/person/${actor.id}`)
-              .then((res) => ({ ...res.data, character: actor.character }))
-              .catch(() => ({ ...actor }))
-          )
-        );
 
         const rawRecs = (movieData as any).recommendations;
         setMovie({
@@ -63,7 +46,6 @@ function MovieDetailPage() {
           credits: {
             ...movieData.credits,
             cast: movieData.credits?.cast ?? [],
-            detailedCast: castDetails,
           },
           recommendations: rawRecs?.results ?? [],
           reviews: reviewsRes.data.results,

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Skeleton, Result, Button, Row, Col } from "antd";
 import TVShowDetails from "../components/TVShowDetails";
+import type { TVShowDetailData } from "../components/TVShowDetails";
 import {
   fetchTVDetails,
   fetchTVCredits,
@@ -10,16 +11,11 @@ import {
   fetchTVImages,
   fetchTVWatchProviders,
 } from "../api/tmdb";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants } from "../constants/ui";
 
 function TVDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [tvShow, setTVShow] = useState<any>(null);
+  const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

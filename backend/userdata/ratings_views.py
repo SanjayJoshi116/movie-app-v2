@@ -1,12 +1,16 @@
+import logging
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import RatingEntry, TMDBProfile
+from .models import RatingEntry
 from .serializers import RatingEntrySerializer
 from . import tmdb_client
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET", "POST"])
@@ -37,8 +41,8 @@ def ratings_list(request):
                 tmdb_profile.session_id,
                 entry.user_rating,
             )
-    except (TMDBProfile.DoesNotExist, AttributeError, Exception):
-        pass
+    except Exception:
+        logger.exception("Failed to sync rating to TMDB for user %s", request.user.pk)
 
     return Response(
         RatingEntrySerializer(entry).data,
@@ -55,8 +59,8 @@ def ratings_detail(request, pk):
             tmdb_profile = request.user.tmdb_profile
             if tmdb_profile.session_id:
                 tmdb_client.delete_rating(entry.media_type, entry.media_id, tmdb_profile.session_id)
-        except (TMDBProfile.DoesNotExist, AttributeError, Exception):
-            pass
+        except Exception:
+            logger.exception("Failed to delete rating on TMDB for user %s", request.user.pk)
         entry.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     serializer = RatingEntrySerializer(entry, data=request.data, partial=True)

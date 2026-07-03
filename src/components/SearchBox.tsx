@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Input, Dropdown, Typography, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Row, Col } from "antd";
 import { CheckCircleOutlined, DownloadOutlined, UploadOutlined, DeleteOutlined, UserOutlined, LockOutlined, DatabaseOutlined } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
@@ -10,6 +10,7 @@ import CSVImportAllModal from "./lists/CSVImportAllModal";
 import { downloadAllAsZip } from "../utils/export";
 import { getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB } from "../api/userApi";
 import userApi from "../api/userApi";
+import { getApiError } from "../utils/apiError";
 
 interface Props {
   open: boolean;
@@ -54,13 +55,8 @@ const ProfileModal = ({ open, onClose }: Props) => {
       await updateProfile(payload);
       showSuccess("Profile updated successfully.");
       onClose();
-    } catch (err: any) {
-      const detail =
-        err?.response?.data?.current_password?.[0] ||
-        err?.response?.data?.username?.[0] ||
-        err?.response?.data?.detail ||
-        "Failed to update profile.";
-      showError(detail);
+    } catch (err) {
+      showError(getApiError(err, "Failed to update profile."));
     } finally {
       setLoading(false);
     }
@@ -181,12 +177,12 @@ const ProfileModal = ({ open, onClose }: Props) => {
                   label="New Password"
                   name="new_password"
                   rules={[
-                    ({ getFieldValue }) => ({
+                    {
                       validator(_, value) {
                         if (!value || value.length >= 6) return Promise.resolve();
                         return Promise.reject(new Error("Min 6 characters."));
                       },
-                    }),
+                    },
                   ]}
                   style={{ marginBottom: 16 }}
                 >

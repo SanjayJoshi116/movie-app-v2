@@ -1,4 +1,7 @@
+import logging
+
 from django.contrib.auth.models import User
+from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,6 +10,8 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .serializers import RegisterSerializer, UserSerializer, UserProfileUpdateSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class LoginThrottle(AnonRateThrottle):
@@ -59,10 +64,9 @@ def password_reset_request(request):
                 fail_silently=False,
             )
         except Exception:
-            return Response(
-                {"detail": "Failed to send reset email. Please try again later."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            # Log but don't surface a distinct response — a different status
+            # here vs. the unregistered-email path would leak account existence.
+            logger.exception("Failed to send password reset email to user %s", user.pk)
     except User.DoesNotExist:
         pass  # Don't reveal whether the email is registered
 
@@ -106,7 +110,10 @@ def password_reset_confirm(request):
 def register(request):
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    user = serializer.save()
+    try:
+        user = serializer.save()
+    except IntegrityError:
+        return Response({"detail": "Username is already taken."}, status=status.HTTP_400_BAD_REQUEST)
     tokens = _tokens_for_user(user)
     return Response(
         {"user": UserSerializer(user).data, **tokens},

@@ -1,4 +1,3 @@
-import React from "react";
 import { motion } from "framer-motion";
 import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
@@ -6,8 +5,7 @@ import type { TMDBMovieSummary } from "../types";
 import MarqueeTitle from "./MarqueeTitle";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
+import { IMG_URL } from "../constants/ui";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";

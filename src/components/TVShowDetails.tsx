@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import EpisodeGuide from "./EpisodeGuide";
 import { motion } from "framer-motion";
@@ -15,7 +15,9 @@ import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { useEpisodeProgress } from "../hooks/useEpisodeProgress";
 import { RatingModal } from "./watchlist/RatingModal";
+import { getApiError } from "../utils/apiError";
 import type { TMDBTVDetail, TMDBProvider, TMDBProviderRegion } from "../types";
+import { IMG_URL } from "../constants/ui";
 
 const PROVIDER_SEARCH_URLS: Record<number, (title: string) => string> = {
   8:    (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`,
@@ -69,18 +71,19 @@ function WatchProviders({ providers, title }: { providers: Record<string, TMDBPr
   );
 }
 
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
+export type TVShowDetailData = TMDBTVDetail & {
+  watchProviders?: Record<string, TMDBProviderRegion>;
+  external_ids?: { imdb_id?: string };
+  last_air_date?: string;
+  next_episode_to_air?: { air_date: string };
+  aggregate_credits?: TMDBTVDetail["aggregateCredits"];
+  similar?: { results: TMDBTVDetail["recommendations"] };
+};
+
 interface Props {
-  tvShow: TMDBTVDetail & {
-    watchProviders?: Record<string, TMDBProviderRegion>;
-    external_ids?: { imdb_id?: string };
-    last_air_date?: string;
-    next_episode_to_air?: { air_date: string };
-    aggregate_credits?: TMDBTVDetail["aggregateCredits"];
-    similar?: { results: TMDBTVDetail["recommendations"] };
-  };
+  tvShow: TVShowDetailData;
 }
 
 const TVShowDetails = ({ tvShow }: Props) => {
@@ -90,7 +93,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const from = locationState?.from;
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
   const { lists, addToList, removeFromList, isInList } = useListsContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
@@ -331,9 +334,13 @@ const TVShowDetails = ({ tvShow }: Props) => {
         <RatingModal
           title={name}
           existing={myRating}
-          onSave={(r, rev) => {
-            setRating(id, "tv", name, r, rev);
-            showSuccess(`Rated ${name} ${r}/10`);
+          onSave={async (r, rev) => {
+            try {
+              await setRating(id, "tv", name, r, rev);
+              showSuccess(`Rated ${name} ${r}/10`);
+            } catch (err) {
+              showError(getApiError(err, "Failed to save rating."));
+            }
           }}
           onClose={() => setShowRatingModal(false)}
         />

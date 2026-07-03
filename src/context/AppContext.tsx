@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
+import { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useWatchlist } from "../hooks/useWatchlist";
 import { useRatings } from "../hooks/useRatings";

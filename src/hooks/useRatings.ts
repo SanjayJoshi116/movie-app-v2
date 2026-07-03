@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
-import type { RatingEntry, RatingsMap } from "../types";
+import type { RatingEntry, RatingEntryDTO, RatingsMap } from "../types";
 
 function ratingKey(id: number, type: string) { return `${type}-${id}`; }
 
@@ -21,11 +21,11 @@ export function useRatings() {
     }
     setIsLoading(true);
     userApi
-      .get("/ratings/")
+      .get<RatingEntryDTO[]>("/ratings/")
       .then(({ data }) => {
         const map: Record<string, number> = {};
         const ratingsMap: RatingsMap = {};
-        data.forEach((item: any) => {
+        data.forEach((item) => {
           const k = ratingKey(item.mediaId, item.mediaType);
           map[k] = item.id;
           ratingsMap[k] = {
@@ -51,7 +51,7 @@ export function useRatings() {
     review = ""
   ) => {
     if (!isAuthenticated) return;
-    const { data } = await userApi.post("/ratings/", {
+    const { data } = await userApi.post<RatingEntryDTO>("/ratings/", {
       mediaId: id,
       mediaType: type,
       title,

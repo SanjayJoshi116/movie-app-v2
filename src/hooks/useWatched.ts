@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
-import type { WatchedEntry, WatchedInput } from "../types";
+import type { WatchedEntry, WatchedEntryDTO, WatchedInput } from "../types";
 
 function mkKey(id: number, type: string) { return `${type}-${id}`; }
 
@@ -21,10 +21,10 @@ export function useWatched() {
     }
     setIsLoading(true);
     userApi
-      .get("/watched/")
+      .get<WatchedEntryDTO[]>("/watched/")
       .then(({ data }) => {
         const map: Record<string, number> = {};
-        const entries: WatchedEntry[] = data.map((item: any) => {
+        const entries: WatchedEntry[] = data.map((item) => {
           map[mkKey(item.mediaId, item.mediaType)] = item.id;
           return {
             id: item.mediaId,
@@ -44,7 +44,7 @@ export function useWatched() {
   const add = useCallback(async (entry: WatchedInput) => {
     if (!isAuthenticated) return;
     if (watchedRef.current.some((i) => i.id === entry.id && i.type === entry.type)) return;
-    const { data } = await userApi.post("/watched/", {
+    const { data } = await userApi.post<WatchedEntryDTO>("/watched/", {
       mediaId: entry.id,
       mediaType: entry.type,
       title: entry.title,
@@ -88,9 +88,9 @@ export function useWatched() {
 
   const reload = useCallback(async () => {
     if (!isAuthenticated) return;
-    const { data } = await userApi.get("/watched/");
+    const { data } = await userApi.get<WatchedEntryDTO[]>("/watched/");
     const map: Record<string, number> = {};
-    const entries: WatchedEntry[] = data.map((item: any) => {
+    const entries: WatchedEntry[] = data.map((item) => {
       map[mkKey(item.mediaId, item.mediaType)] = item.id;
       return {
         id: item.mediaId,

@@ -21,6 +21,21 @@ import type {
 
 const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:3001/api/tmdb` });
 
+// Retry once on 500 after a brief pause — handles transient proxy/network blips,
+// matching the retry behavior in src/api/userApi.ts.
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const original = error.config;
+    if (error.response?.status === 500 && original && !original._retry500) {
+      original._retry500 = true;
+      await new Promise((r) => setTimeout(r, 2000));
+      return api(original);
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ─── Movies ───────────────────────────────────────────────────────────────────
 
 export const discoverMovies = (

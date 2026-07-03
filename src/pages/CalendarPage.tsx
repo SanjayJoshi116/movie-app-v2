@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty, Button } from "antd";
@@ -6,14 +6,7 @@ import { CalendarOutlined, StarFilled, DownloadOutlined } from "@ant-design/icon
 import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 type MediaFilter = "both" | "movies" | "tv";
 

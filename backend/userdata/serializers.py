@@ -67,19 +67,31 @@ class WatchedEntrySerializer(serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True)
     voteAverage = serializers.FloatField(source="vote_average")
     watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
-    originalLanguage = serializers.CharField(source="original_language", allow_null=True, allow_blank=True, required=False)
+    originalLanguage = serializers.CharField(
+        source="original_language", allow_null=True, allow_blank=True, required=False
+    )
     releaseYear = serializers.IntegerField(source="release_year", allow_null=True, required=False)
 
     class Meta:
         model = WatchedEntry
-        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "watchedAt", "originalLanguage", "releaseYear")
+        fields = (
+            "id",
+            "mediaId",
+            "mediaType",
+            "title",
+            "posterPath",
+            "voteAverage",
+            "watchedAt",
+            "originalLanguage",
+            "releaseYear",
+        )
         read_only_fields = ("id", "watchedAt")
 
 
 class RatingEntrySerializer(serializers.ModelSerializer):
     mediaId = serializers.IntegerField(source="media_id")
     mediaType = serializers.CharField(source="media_type")
-    userRating = serializers.FloatField(source="user_rating")
+    userRating = serializers.FloatField(source="user_rating", min_value=0.5, max_value=10)
     ratedAt = serializers.DateTimeField(source="rated_at", read_only=True)
 
     class Meta:

@@ -1,4 +1,3 @@
-import React from "react";
 import { Row, Col, Card, Skeleton } from "antd";
 
 interface Props {

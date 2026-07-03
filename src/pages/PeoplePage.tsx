@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Typography } from "antd";
@@ -9,14 +9,7 @@ import MarqueeTitle from "../components/MarqueeTitle";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 function PeoplePage() {
   const navigate = useNavigate();

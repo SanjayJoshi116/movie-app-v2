@@ -1,4 +1,3 @@
-import React from "react";
 import { Space, Tooltip } from "antd";
 import type { TMDBProviderRegion } from "../types";
 

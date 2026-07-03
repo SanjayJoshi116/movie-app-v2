@@ -80,7 +80,7 @@ def create_session(request_token):
 
 
 def post_rating(media_type, media_id, session_id, value):
-    """Post a rating (0.5–10) to TMDB for a movie or TV show."""
+    """Post a rating (0.5-10) to TMDB for a movie or TV show."""
     return _post(
         f"/{media_type}/{media_id}/rating",
         {"value": value},

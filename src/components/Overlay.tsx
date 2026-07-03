@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Modal, Spin, Typography, Empty } from "antd";
 import axios from "axios";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBVideo } from "../types";

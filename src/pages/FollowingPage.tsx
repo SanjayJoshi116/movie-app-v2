@@ -1,20 +1,14 @@
-import React from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Button, Typography, Empty, Avatar, Spin, Popconfirm } from "antd";
 import { UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
+import { pageVariants } from "../constants/ui";
 
 const { Title, Text } = Typography;
 
 const IMG_URL = "https://image.tmdb.org/t/p/w185";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
 
 function FollowingPage() {
   const navigate = useNavigate();

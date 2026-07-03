@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, Row, Col, Statistic, Divider, Progress, Typography } from "antd";
 import { StarFilled } from "@ant-design/icons";
 import type { WatchlistEntry, RatingsMap } from "../../types";

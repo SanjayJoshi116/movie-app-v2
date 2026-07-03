@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -10,19 +10,12 @@ import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import WatchlistStats from "../components/watchlist/WatchlistStats";
 import { downloadCSV } from "../utils/export";
+import { getApiError } from "../utils/apiError";
+import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
 
 const SS_SCROLL = "watchlist_scroll";
 const SS_SEARCH = "watchlist_search";
 const SS_SORT   = "watchlist_sort";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-const NO_IMAGE = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450'%3E%3Crect width='300' height='450' fill='%231a1a2e'/%3E%3Ctext x='150' y='225' text-anchor='middle' dominant-baseline='middle' fill='%23555' font-size='14' font-family='sans-serif'%3ENo Image%3C/text%3E%3C/svg%3E`;
 
 type SortKey = "added-desc" | "added-asc" | "title-asc" | "rating-desc";
 
@@ -35,7 +28,7 @@ interface RatingTarget {
 function WatchlistPage() {
   const navigate = useNavigate();
   const { watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, allRatings } = useAppContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "added-desc");
@@ -221,9 +214,13 @@ function WatchlistPage() {
         <RatingModal
           title={ratingTarget.title}
           existing={getRating(ratingTarget.id, ratingTarget.type)}
-          onSave={(r, review) => {
-            setRating(ratingTarget.id, ratingTarget.type, ratingTarget.title, r, review);
-            showSuccess("Rating saved");
+          onSave={async (r, review) => {
+            try {
+              await setRating(ratingTarget.id, ratingTarget.type, ratingTarget.title, r, review);
+              showSuccess("Rating saved");
+            } catch (err) {
+              showError(getApiError(err, "Failed to save rating."));
+            }
           }}
           onClose={() => setRatingTarget(null)}
         />

@@ -1,4 +1,3 @@
-import React from "react";
 import { Tag } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import { genres } from "../constants/genres";

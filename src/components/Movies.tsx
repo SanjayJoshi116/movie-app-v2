@@ -1,4 +1,3 @@
-import React from "react";
 import { Row, Col, Empty } from "antd";
 import { SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
 import Movie from "./Movie";

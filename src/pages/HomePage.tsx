@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Space, Button, Alert, Typography } from "antd";
@@ -18,6 +18,7 @@ import {
   filtersToTMDBParams,
 } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
+import { pageVariants } from "../constants/ui";
 
 const MOVIE_CATEGORIES = [
   { key: "discover", label: "Discover" },
@@ -33,12 +34,6 @@ const TV_CATEGORIES = [
   { key: "tv-on-the-air", label: "On The Air" },
   { key: "tv-airing-today", label: "Airing Today" },
 ];
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
 
 interface Props {
   tab: "movies" | "tv";

@@ -20,14 +20,7 @@ import type {
   TMDBPersonImages,
   TMDBPersonCombinedCredit,
 } from "../types";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 function CreditCard({
   credit,

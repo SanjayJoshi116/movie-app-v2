@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type SetValue<T> = (value: T | ((prev: T) => T)) => void;
 
@@ -11,6 +11,21 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, SetValue<T
       return initialValue;
     }
   });
+
+  // Sync across tabs: another tab writing to this key updates our state too.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key) return;
+      try {
+        setStoredValue(e.newValue !== null ? (JSON.parse(e.newValue) as T) : initialValue);
+      } catch {
+        // ignore malformed data written by another tab
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   const setValue: SetValue<T> = (value) => {
     setStoredValue((current) => {

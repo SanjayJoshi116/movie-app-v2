@@ -194,6 +194,9 @@ src/
 ├── utils/
 │   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
 │   └── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
+├── constants/
+│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, NO_IMAGE — shared across pages
+│   └── genres.ts                # Static TMDB genre list for filter UI
 ├── theme/
 │   └── antdTheme.ts             # Ant Design ConfigProvider tokens: dark / light
 └── types/
@@ -207,7 +210,7 @@ src/
 
 - **Auth** — JWT via `djangorestframework-simplejwt`. Access (60 min) + refresh (7 days) tokens stored in `localStorage`. `userApi.ts` intercepts 401s and silently refreshes before retrying failed requests. Password reset uses Django's built-in token generator sent via email; the link encodes a base64 uid and a one-use HMAC token.
 - **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
-- **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. When `DEBUG=False`, the app asserts that `SECRET_KEY` and `ALLOWED_HOSTS` are properly set, preventing accidental production runs with insecure defaults.
+- **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. `ALLOWED_HOSTS` fails closed (empty by default) rather than defaulting to `*`. When `DEBUG=False`, an unset `SECRET_KEY` raises `ImproperlyConfigured` at startup instead of a silent fallback. `CORS_ALLOW_ALL_ORIGINS` is only enabled in `DEBUG`; production reads explicit origins from `CORS_ALLOWED_ORIGINS`.
 - **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.
 - **DB indexes** — Migration `0008_add_indexes.py` adds compound indexes on `(user, *_at)` fields across WatchedEntry, WatchlistEntry, RatingEntry, FollowedPerson, EpisodeProgress, and `(user, release_year)` for stats decade queries.
 - **Stable hook callbacks** — `useWatchlist`, `useRatings`, and `useWatched` use `useCallback` with a ref pattern (`watchlistRef.current = watchlist`) so returned functions only change identity when `isAuthenticated` changes, not on every render. This prevents `AppContext`'s `useMemo` from recomputing on unrelated parent re-renders.
@@ -224,7 +227,8 @@ src/
 - **Layout** — `App.tsx` uses a plain flex `div.app-shell`: `<Sidebar>` (desktop) + `<main>` + `<BottomNav>` (mobile). No Ant Design Layout wrapper.
 - **State** — `AppContext` for global UI state; `AuthContext` for auth; `ListsContext` for lists. Ephemeral page state (loading, pagination) stays local to each page component.
 - **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page. On back-navigation, the pages re-fetch the required pages sequentially and restore the scroll position via `useLayoutEffect`. WatchlistPage persists scroll position, search query, and sort key in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
-- **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes.
+- **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes. Used consistently across catch blocks (rating save, CSV import, list/watched actions) so failures surface a real message instead of a generic or silently-swallowed one.
+- **Ratings** — Validated 0.5–10 on both `RatingEntry.user_rating` (model `MinValueValidator`/`MaxValueValidator`) and the serializer field, matching TMDB's own rating scale.
 - **CI/CD** — `.github/workflows/ci.yml` runs two jobs on every push/PR to main: frontend (lint + Jest + build) and backend (pytest against a live Postgres service container).
 - **Routing** — React Router v6. Every movie, show, and person has its own URL.
 - **TypeScript** — Strict mode. All TMDB response shapes typed in `src/types/tmdb.ts`.
@@ -516,6 +520,8 @@ GitHub Actions runs both test suites automatically on every push and pull reques
 - [ ] Backend API tests (pytest + DRF `APITestCase`) — CI config ready, test files not yet written
 - [ ] In-app notifications for new releases from followed people
 - [ ] Auto-next episode workflow on TV detail pages
+- [ ] Pagination on list endpoints (`/watchlist/`, `/watched/`, `/ratings/`, `/lists/`) — currently unbounded
+- [ ] Shared `MediaGrid` component + filter/sort hook to de-duplicate `WatchedPage`/`WatchlistPage`
 
 **Considering:**
 - [ ] PWA / offline support (Service Workers for poster caching)

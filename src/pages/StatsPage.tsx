@@ -25,14 +25,9 @@ import {
   Area,
 } from "recharts";
 import { fetchStats, type StatsData } from "../api/userApi";
+import { pageVariants } from "../constants/ui";
 
 const { Title, Text } = Typography;
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
 
 const GOLD = "#f5c518";
 const BLUE = "#4096ff";

@@ -1,5 +1,6 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
 
 
 MEDIA_TYPES = [("movie", "Movie"), ("tv", "TV Show")]
@@ -32,7 +33,7 @@ class WatchedEntry(models.Model):
     genre_ids = models.JSONField(default=list)
     original_language = models.CharField(max_length=10, null=True, blank=True)
     release_year = models.IntegerField(null=True, blank=True)
-    watched_at = models.DateTimeField(auto_now_add=True)
+    watched_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")
@@ -46,7 +47,7 @@ class RatingEntry(models.Model):
     media_id = models.IntegerField()
     media_type = models.CharField(max_length=10, choices=MEDIA_TYPES)
     title = models.CharField(max_length=500)
-    user_rating = models.FloatField()
+    user_rating = models.FloatField(validators=[MinValueValidator(0.5), MaxValueValidator(10)])
     review = models.TextField(blank=True, default="")
     rated_at = models.DateTimeField(auto_now_add=True)
 

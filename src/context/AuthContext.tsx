@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import userApi from "../api/userApi";
 
 interface AuthUser {
@@ -50,42 +50,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     const { data } = await userApi.post("/auth/login/", { username, password });
     OLD_KEYS.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem("cinedb_access", data.access);
     localStorage.setItem("cinedb_refresh", data.refresh);
     localStorage.setItem("cinedb_user", JSON.stringify(data.user));
     setUser(data.user);
-  };
+  }, []);
 
-  const register = async (username: string, email: string, password: string) => {
+  const register = useCallback(async (username: string, email: string, password: string) => {
     const { data } = await userApi.post("/auth/register/", { username, email, password });
     OLD_KEYS.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem("cinedb_access", data.access);
     localStorage.setItem("cinedb_refresh", data.refresh);
     localStorage.setItem("cinedb_user", JSON.stringify(data.user));
     setUser(data.user);
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem("cinedb_access");
     localStorage.removeItem("cinedb_refresh");
     localStorage.removeItem("cinedb_user");
     setUser(null);
-  };
+  }, []);
 
-  const updateProfile = async (data: ProfileUpdateData) => {
+  const updateProfile = useCallback(async (data: ProfileUpdateData) => {
     const { data: updated } = await userApi.patch("/auth/profile/", data);
     localStorage.setItem("cinedb_user", JSON.stringify(updated));
     setUser(updated);
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextType>(
+    () => ({ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile }),
+    [user, isLoading, login, register, logout, updateProfile]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

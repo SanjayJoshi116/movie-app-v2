@@ -1,6 +1,8 @@
-from pathlib import Path
 import os
 from datetime import timedelta
+from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -11,11 +13,12 @@ TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+# Fail closed: an unset ALLOWED_HOSTS env var means no hosts are allowed in
+# production (DEBUG=True still auto-allows localhost/127.0.0.1 via Django).
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 
-if not DEBUG:
-    assert SECRET_KEY != "django-insecure-dev-key-change-in-production", \
-        "Set SECRET_KEY env var before running in production."
+if not DEBUG and SECRET_KEY == "django-insecure-dev-key-change-in-production":
+    raise ImproperlyConfigured("Set SECRET_KEY env var before running in production.")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -101,7 +104,10 @@ USE_TZ = True
 STATIC_URL = "/static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOW_ALL_ORIGINS = True
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

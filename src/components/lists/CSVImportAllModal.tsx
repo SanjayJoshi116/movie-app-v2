@@ -7,6 +7,7 @@ import { useListsContext } from "../../context/useListsContext";
 import { bulkMarkWatched } from "../../api/userApi";
 import userApi from "../../api/userApi";
 import { parseRow } from "../../utils/csvParse";
+import { getApiError } from "../../utils/apiError";
 
 const { Text } = Typography;
 
@@ -175,8 +176,8 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         `Import complete: ${summary.watchlistCount} watchlist, ${summary.watchedCount} watched, ${summary.listFiles.length} list(s).`
       );
       handleClose();
-    } catch {
-      showError("Import failed. Please try again.");
+    } catch (err) {
+      showError(getApiError(err, "Import failed. Please try again."));
     } finally {
       setLoading(false);
     }

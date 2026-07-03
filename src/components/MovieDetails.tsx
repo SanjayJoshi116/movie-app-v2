@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -12,9 +12,10 @@ import { useAppContext } from "../context/useAppContext";
 import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
+import { getApiError } from "../utils/apiError";
 import type { TMDBMovieDetail, TMDBProvider, TMDBProviderRegion } from "../types";
+import { IMG_URL } from "../constants/ui";
 
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
 interface ReleaseDateEntry {
@@ -24,14 +25,19 @@ interface ReleaseDateEntry {
 
 type RecommendationItem = { id: number; poster_path: string | null; title: string };
 
+export type MovieDetailData = Omit<
+  TMDBMovieDetail,
+  "recommendations" | "reviews" | "similarMovies" | "watchProviders" | "certifications"
+> & {
+  reviews: Array<{ id: string; author: string; content: string }>;
+  recommendations: RecommendationItem[];
+  similarMovies: RecommendationItem[];
+  watchProviders: Record<string, TMDBProviderRegion>;
+  certifications: ReleaseDateEntry[] | string;
+};
+
 interface Props {
-  movie: Omit<TMDBMovieDetail, "recommendations"> & {
-    reviews: Array<{ id: string; author: string; content: string }>;
-    recommendations: RecommendationItem[];
-    similarMovies: RecommendationItem[];
-    watchProviders: Record<string, TMDBProviderRegion>;
-    certifications: ReleaseDateEntry[] | string;
-  };
+  movie: MovieDetailData;
 }
 
 function renderCertifications(certs: ReleaseDateEntry[] | string): string {
@@ -101,7 +107,7 @@ const MovieDetails = ({ movie }: Props) => {
   const from = locationState?.from;
   const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
   const { lists, addToList, removeFromList, isInList } = useListsContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
 
@@ -248,9 +254,13 @@ const MovieDetails = ({ movie }: Props) => {
         <RatingModal
           title={title}
           existing={myRating}
-          onSave={(r, rev) => {
-            setRating(id, "movie", title, r, rev);
-            showSuccess(`Rated ${title} ${r}/10`);
+          onSave={async (r, rev) => {
+            try {
+              await setRating(id, "movie", title, r, rev);
+              showSuccess(`Rated ${title} ${r}/10`);
+            } catch (err) {
+              showError(getApiError(err, "Failed to save rating."));
+            }
           }}
           onClose={() => setShowRatingModal(false)}
         />

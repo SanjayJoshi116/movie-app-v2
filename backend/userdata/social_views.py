@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from rest_framework import status
@@ -7,6 +8,8 @@ from rest_framework.response import Response
 
 from .models import EpisodeProgress, FollowedPerson, WatchedEntry
 from . import tmdb_client
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(["GET", "POST", "PATCH", "DELETE"])
@@ -113,6 +116,7 @@ def followed_people_recommendations(request):
             items.sort(key=lambda x: -x["voteAverage"])
             return fp.name, items[:12]
         except Exception:
+            logger.exception("Failed to fetch combined credits for person %s", fp.person_id)
             return fp.name, []
 
     sections = []

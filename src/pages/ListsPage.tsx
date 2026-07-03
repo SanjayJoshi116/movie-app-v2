@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -12,14 +12,7 @@ import {
 import { useListsContext } from "../context/useListsContext";
 import { downloadCSV } from "../utils/export";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 const SS_SELECTED = "lists_selected_id";
 
@@ -33,7 +26,6 @@ function ListsPage() {
     return saved ? Number(saved) : null;
   });
   const [form] = Form.useForm();
-
 
   const handleCreate = () => {
     form.validateFields().then((values) => {

@@ -65,3 +65,60 @@ export interface UserList {
   items: WatchlistEntry[];
   createdAt: string;
 }
+
+// ─── Raw API response shapes (as returned by the Django serializers) ──────────
+// These mirror backend/userdata/serializers.py field-for-field; the hooks that
+// fetch them map into the frontend-normalized shapes above (id/type instead of
+// mediaId/mediaType, etc).
+
+export interface WatchlistEntryDTO {
+  id: number;
+  mediaId: number;
+  mediaType: MediaType;
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+  addedAt: string;
+  watched: boolean;
+}
+
+export interface WatchedEntryDTO {
+  id: number;
+  mediaId: number;
+  mediaType: MediaType;
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+  watchedAt: string;
+  originalLanguage: string | null;
+  releaseYear: number | null;
+}
+
+export interface RatingEntryDTO {
+  id: number;
+  mediaId: number;
+  mediaType: MediaType;
+  title: string;
+  userRating: number;
+  review: string;
+  ratedAt: string;
+}
+
+export interface UserListItemDTO {
+  id: number;
+  mediaId: number;
+  mediaType: MediaType;
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+  addedAt: string;
+  watched: boolean;
+}
+
+export interface UserListDTO {
+  id: number;
+  name: string;
+  description: string;
+  items: UserListItemDTO[];
+  createdAt: string;
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider } from "antd";
@@ -10,20 +10,13 @@ import {
   fetchFollowedPeopleRecommendations,
   type PersonalizedRecSection,
 } from "../api/userApi";
-
-const IMG_URL = "https://image.tmdb.org/t/p/w500";
+import { pageVariants, IMG_URL } from "../constants/ui";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";
   if (vote >= 5) return "#faad14";
   return "#ff4d4f";
 }
-
-const pageVariants = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -16 },
-};
 
 function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
@@ -100,12 +93,22 @@ interface RecCache {
   ts: number;
 }
 
+function hasAnyItems(c: RecCache): boolean {
+  return [c.sections, c.personalizedSections, c.followedSections].some(
+    list => list.some(s => s.items.length > 0),
+  );
+}
+
 function readRecCache(): RecCache | null {
   try {
     const raw = sessionStorage.getItem(REC_CACHE_KEY);
     if (!raw) return null;
     const parsed: RecCache = JSON.parse(raw);
     if (Date.now() - parsed.ts > REC_CACHE_TTL) return null;
+    // An empty snapshot means we left mid-computation last time — treat as a
+    // cache miss so the fetch/poll effect runs again instead of showing a
+    // permanent empty state.
+    if (!hasAnyItems(parsed)) return null;
     return parsed;
   } catch { return null; }
 }
@@ -122,6 +125,7 @@ function RecommendationsPage() {
   const [loading, setLoading] = useState(!cache);
   const [forYouComputing, setForYouComputing] = useState(false);
   const [personalizedComputing, setPersonalizedComputing] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const computing = forYouComputing || personalizedComputing;
   const hasFetched = useRef(Boolean(cache));
 
@@ -151,6 +155,7 @@ function RecommendationsPage() {
   useEffect(() => {
     if (isDataLoading || watchedList.length === 0 || hasFetched.current) return;
     hasFetched.current = true;
+    setFetchError(false);
     let cancelled = false;
     let pending = 3;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -181,7 +186,7 @@ function RecommendationsPage() {
             setComputingFlag(false);
           }
         })
-        .catch(() => {})
+        .catch(() => { if (!cancelled) setFetchError(true); })
         .finally(() => { if (attempt === 0) done(); });
     }
 
@@ -190,7 +195,7 @@ function RecommendationsPage() {
 
     fetchFollowedPeopleRecommendations()
       .then(res => { if (!cancelled) setFollowedSections(res.data); })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setFetchError(true); })
       .finally(done);
 
     return () => {
@@ -262,7 +267,21 @@ function RecommendationsPage() {
               </Typography.Paragraph>
             </div>
           )}
-          {!loading && totalItems === 0 && !computing && (
+          {!loading && totalItems === 0 && !computing && fetchError && (
+            <Empty
+              image={<BulbOutlined style={{ fontSize: 48, color: "#ff4d4f" }} />}
+              description={
+                <span>
+                  Failed to load recommendations.{" "}
+                  <Button type="link" onClick={() => window.location.reload()} style={{ padding: 0 }}>
+                    Try again
+                  </Button>
+                </span>
+              }
+              style={{ padding: "60px 0" }}
+            />
+          )}
+          {!loading && totalItems === 0 && !computing && !fetchError && (
             <Empty
               image={<BulbOutlined style={{ fontSize: 48, color: "#aaa" }} />}
               description="No recommendations found for your watched titles."

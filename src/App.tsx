@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from "react";
+import { useState, Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { ConfigProvider, App as AntApp } from "antd";

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
-import type { WatchlistEntry, WatchlistInput } from "../types";
+import type { WatchlistEntry, WatchlistEntryDTO, WatchlistInput } from "../types";
 
 function mkKey(id: number, type: string) { return `${type}-${id}`; }
 
@@ -21,10 +21,10 @@ export function useWatchlist() {
     }
     setIsLoading(true);
     userApi
-      .get("/watchlist/")
+      .get<WatchlistEntryDTO[]>("/watchlist/")
       .then(({ data }) => {
         const map: Record<string, number> = {};
-        const entries: WatchlistEntry[] = data.map((item: any) => {
+        const entries: WatchlistEntry[] = data.map((item) => {
           map[mkKey(item.mediaId, item.mediaType)] = item.id;
           return {
             id: item.mediaId,
@@ -45,7 +45,7 @@ export function useWatchlist() {
   const add = useCallback(async (entry: WatchlistInput) => {
     if (!isAuthenticated) return;
     if (watchlistRef.current.some((i) => i.id === entry.id && i.type === entry.type)) return;
-    const { data } = await userApi.post("/watchlist/", {
+    const { data } = await userApi.post<WatchlistEntryDTO>("/watchlist/", {
       mediaId: entry.id,
       mediaType: entry.type,
       title: entry.title,

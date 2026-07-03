@@ -1,23 +1,26 @@
+import contextlib
 import logging
+import operator
 import random
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
+from functools import partial, reduce
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.db import IntegrityError
+from django.db.models import Q
 from django.utils import timezone
-from sklearn.cluster import KMeans
-from sklearn.metrics.pairwise import cosine_similarity
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
 
-from .models import WatchedEntry, RatingEntry, TMDBMediaCache, UserRecommendationCache
 from . import tmdb_client
-import contextlib
+from .models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
+
+logger = logging.getLogger(__name__)
 
 CACHE_TTL_DAYS = 7
 RECOMMENDATIONS_TTL_HOURS = 12
@@ -36,12 +39,20 @@ def _start_refresh_if_needed(user):
     return True
 
 
-def _ensure_cached(entry):
-    """Return a TMDBMediaCache row for entry, fetching from TMDB if stale/missing."""
+def _ensure_cached(entry, prefetched=None):
+    """Return a TMDBMediaCache row for entry, fetching from TMDB if stale/missing.
+
+    `prefetched` is an optional {(media_id, media_type): row} dict built with a
+    single bulk query, to avoid one DB lookup per entry when called from a loop.
+    """
     cutoff = timezone.now() - timedelta(days=CACHE_TTL_DAYS)
-    cached = TMDBMediaCache.objects.filter(
-        media_id=entry.media_id, media_type=entry.media_type
-    ).first()
+    key = (entry.media_id, entry.media_type)
+    if prefetched is not None:
+        cached = prefetched.get(key)
+    else:
+        cached = TMDBMediaCache.objects.filter(
+            media_id=entry.media_id, media_type=entry.media_type
+        ).first()
     if cached and cached.cached_at >= cutoff:
         return cached
     try:
@@ -93,7 +104,7 @@ def _fill_genre(entry):
     try:
         entry.save(update_fields=["genre_ids"])
     except Exception:
-        pass  # best-effort; don't surface DB blips as 500
+        logger.exception("Failed to save genre_ids for WatchedEntry %s", entry.pk)
 
 
 def _compute_for_you(user) -> list:
@@ -107,9 +118,13 @@ def _compute_for_you(user) -> list:
         for r in RatingEntry.objects.filter(user=user)
     }
 
-    # ── Cache: parallel fetch for all watched items ──────────────────────────
+    # ── Cache: bulk-prefetch existing rows, then parallel fetch/refresh ──────
+    pairs_q = reduce(operator.or_, (Q(media_id=w.media_id, media_type=w.media_type) for w in watched))
+    prefetched = {
+        (row.media_id, row.media_type): row for row in TMDBMediaCache.objects.filter(pairs_q)
+    }
     with ThreadPoolExecutor(max_workers=10) as ex:
-        cache_rows = list(ex.map(_ensure_cached, watched))
+        cache_rows = list(ex.map(partial(_ensure_cached, prefetched=prefetched), watched))
 
     cache_by_key = {
         f"{row.media_type}-{row.media_id}": row for row in cache_rows if row
@@ -320,7 +335,7 @@ def _compute_personalized(user) -> list:
                 try:
                     f.result()
                 except Exception:
-                    pass  # best-effort genre fill; don't crash
+                    logger.exception("Failed to fill genre for a watched entry")
 
     # --- Build genre vocabulary ---
     all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})
@@ -329,7 +344,7 @@ def _compute_personalized(user) -> list:
     genre_index = {g: i for i, g in enumerate(all_genre_ids)}
     n_genres = len(all_genre_ids)
 
-    # --- Build rating-weighted feature matrix (N_items × N_genres) ---
+    # --- Build rating-weighted feature matrix (N_items x N_genres) ---
     X = np.zeros((len(watched), n_genres))
     for i, entry in enumerate(watched):
         key = f"{entry.media_type}-{entry.media_id}"
