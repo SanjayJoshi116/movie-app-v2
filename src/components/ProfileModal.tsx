@@ -28,6 +28,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const [importAllOpen, setImportAllOpen] = useState(false);
   const [tmdbConnected, setTmdbConnected] = useState(false);
   const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -65,12 +66,12 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const handleDeleteAccount = async () => {
     setDeleteLoading(true);
     try {
-      await userApi.delete("/auth/delete-account/");
+      await userApi.delete("/auth/delete-account/", { data: { password: deletePassword } });
       showSuccess("Account deleted.");
       onClose();
       logout();
-    } catch {
-      showError("Failed to delete account. Try again.");
+    } catch (err) {
+      showError(getApiError(err, "Failed to delete account. Try again."));
     } finally {
       setDeleteLoading(false);
     }
@@ -179,8 +180,8 @@ const ProfileModal = ({ open, onClose }: Props) => {
                   rules={[
                     {
                       validator(_, value) {
-                        if (!value || value.length >= 6) return Promise.resolve();
-                        return Promise.reject(new Error("Min 6 characters."));
+                        if (!value || value.length >= 8) return Promise.resolve();
+                        return Promise.reject(new Error("Min 8 characters."));
                       },
                     },
                   ]}
@@ -218,6 +219,12 @@ const ProfileModal = ({ open, onClose }: Props) => {
           </Form>
 
           <Divider style={{ margin: "16px 0 12px" }}>Danger Zone</Divider>
+          <Input.Password
+            placeholder="Enter password to confirm"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
           <Popconfirm
             title="Delete your account?"
             description="This permanently deletes your account and all data. This cannot be undone."
@@ -225,8 +232,9 @@ const ProfileModal = ({ open, onClose }: Props) => {
             okText="Delete My Account"
             okType="danger"
             cancelText="Cancel"
+            disabled={!deletePassword}
           >
-            <Button block danger icon={<DeleteOutlined />} loading={deleteLoading}>
+            <Button block danger icon={<DeleteOutlined />} loading={deleteLoading} disabled={!deletePassword}>
               Delete Account
             </Button>
           </Popconfirm>

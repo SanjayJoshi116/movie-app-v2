@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import EpisodeProgress, FollowedPerson, WatchedEntry
+from .pagination import DefaultPagination
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -47,10 +48,13 @@ def episode_progress(request, show_id: int):
 def followed_people_list(request):
     if request.method == "GET":
         people = FollowedPerson.objects.filter(user=request.user).order_by("-followed_at")
-        return Response([
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(people, request)
+        data = [
             {"id": p.id, "personId": p.person_id, "name": p.name, "profilePath": p.profile_path}
-            for p in people
-        ])
+            for p in page
+        ]
+        return paginator.get_paginated_response(data)
 
     person_id = request.data.get("personId")
     name = request.data.get("name", "")

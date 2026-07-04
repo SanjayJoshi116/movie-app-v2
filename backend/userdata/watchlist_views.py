@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import WatchlistEntry
+from .pagination import DefaultPagination
 from .serializers import WatchlistEntrySerializer
 
 
@@ -13,7 +14,9 @@ from .serializers import WatchlistEntrySerializer
 def watchlist_list(request):
     if request.method == "GET":
         entries = WatchlistEntry.objects.filter(user=request.user).order_by("-added_at")
-        return Response(WatchlistEntrySerializer(entries, many=True).data)
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(entries, request)
+        return paginator.get_paginated_response(WatchlistEntrySerializer(page, many=True).data)
 
     serializer = WatchlistEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
             label="New Password"
             rules={[
               { required: true, message: "Enter a new password" },
-              { min: 6, message: "Password must be at least 6 characters" },
+              { min: 8, message: "Password must be at least 8 characters" },
             ]}
           >
             <Input.Password size="large" autoComplete="new-password" />

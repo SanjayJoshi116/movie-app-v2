@@ -26,6 +26,8 @@ function TVDetailPage() {
     setLoading(true);
     setError(null);
 
+    let cancelled = false;
+
     const load = async () => {
       try {
         const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, providersRes] =
@@ -36,6 +38,7 @@ function TVDetailPage() {
             fetchTVImages(id),
             fetchTVWatchProviders(id),
           ]);
+        if (cancelled) return;
 
         setTVShow({
           ...detailsRes.data,
@@ -45,14 +48,18 @@ function TVDetailPage() {
           watchProviders: providersRes.data.results,
         });
       } catch (err) {
+        if (cancelled) return;
         console.error("Error fetching TV show details:", err);
         setError("Failed to load TV show details.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (loading)

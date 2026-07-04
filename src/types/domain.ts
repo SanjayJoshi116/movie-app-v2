@@ -1,6 +1,13 @@
 export type MediaType = "movie" | "tv";
 export type Theme = "dark" | "light";
 
+export interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export interface WatchlistEntry {
   id: number;
   type: MediaType;

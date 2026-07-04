@@ -77,6 +77,8 @@ def password_reset_request(request):
 @permission_classes([AllowAny])
 def password_reset_confirm(request):
     from django.contrib.auth.tokens import default_token_generator
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError as DjangoValidationError
     from django.utils.http import urlsafe_base64_decode
     from django.utils.encoding import force_str
 
@@ -87,9 +89,6 @@ def password_reset_confirm(request):
     if not uid or not token or not new_password:
         return Response({"detail": "uid, token, and new_password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if len(new_password) < 6:
-        return Response({"detail": "Password must be at least 6 characters."}, status=status.HTTP_400_BAD_REQUEST)
-
     try:
         user_id = force_str(urlsafe_base64_decode(uid))
         user = User.objects.get(pk=user_id)
@@ -98,6 +97,11 @@ def password_reset_confirm(request):
 
     if not default_token_generator.check_token(user, token):
         return Response({"detail": "Reset link is invalid or has expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        validate_password(new_password, user=user)
+    except DjangoValidationError as exc:
+        return Response({"detail": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
     user.set_password(new_password)
     user.save()
@@ -139,6 +143,9 @@ def login(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_account(request):
+    password = request.data.get("password", "")
+    if not password or not request.user.check_password(password):
+        return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
     request.user.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -37,7 +37,7 @@ export default function RegisterPage() {
           <Form.Item
             name="password"
             label="Password"
-            rules={[{ required: true, min: 6, message: "At least 6 characters" }]}
+            rules={[{ required: true, min: 8, message: "At least 8 characters" }]}
           >
             <Input.Password size="large" autoComplete="new-password" />
           </Form.Item>

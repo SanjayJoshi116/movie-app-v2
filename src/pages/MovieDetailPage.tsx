@@ -27,6 +27,8 @@ function MovieDetailPage() {
     setLoading(true);
     setError(null);
 
+    let cancelled = false;
+
     const load = async () => {
       try {
         const [detailsRes, reviewsRes, similarRes, providersRes, releasesRes] =
@@ -37,6 +39,7 @@ function MovieDetailPage() {
             fetchMovieProviders(id),
             fetchMovieReleaseDates(id),
           ]);
+        if (cancelled) return;
 
         const movieData = detailsRes.data;
 
@@ -54,14 +57,18 @@ function MovieDetailPage() {
           certifications: releasesRes.data.results,
         });
       } catch (err) {
+        if (cancelled) return;
         console.error("Error fetching movie details:", err);
         setError("Failed to load movie details.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (loading)

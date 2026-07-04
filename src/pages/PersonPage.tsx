@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { memo, useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -22,7 +22,7 @@ import type {
 } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
 
-function CreditCard({
+const CreditCard = memo(function CreditCard({
   credit,
   onClick,
 }: {
@@ -56,7 +56,7 @@ function CreditCard({
       )}
     </Card>
   );
-}
+});
 
 function PersonPage() {
   const { id } = useParams<{ id: string }>();

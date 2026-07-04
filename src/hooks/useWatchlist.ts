@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
+import { fetchAllPages } from "../utils/fetchAllPages";
 import type { WatchlistEntry, WatchlistEntryDTO, WatchlistInput } from "../types";
 
 function mkKey(id: number, type: string) { return `${type}-${id}`; }
@@ -20,9 +21,8 @@ export function useWatchlist() {
       return;
     }
     setIsLoading(true);
-    userApi
-      .get<WatchlistEntryDTO[]>("/watchlist/")
-      .then(({ data }) => {
+    fetchAllPages<WatchlistEntryDTO>(userApi, "/watchlist/")
+      .then((data) => {
         const map: Record<string, number> = {};
         const entries: WatchlistEntry[] = data.map((item) => {
           map[mkKey(item.mediaId, item.mediaType)] = item.id;

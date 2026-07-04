@@ -26,7 +26,7 @@ jobs:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
 
   backend:
-    name: Backend (pytest)
+    name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -48,7 +48,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -r backend/requirements.txt
+      - run: pip install ruff
+      - run: ruff check backend/
+      - run: pip install -r backend/requirements-test.txt
       - run: python backend/manage.py migrate
         env:
           SECRET_KEY: ci-test-secret-key-not-for-production
@@ -69,3 +71,26 @@ jobs:
           DB_PORT: 5432
           DEBUG: "True"
           TMDB_API_KEY: dummy
+
+  e2e-python:
+    name: E2E (pytest-playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - run: npx react-scripts start &
+        env:
+          BROWSER: none
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r e2e/python/requirements.txt
+      - run: playwright install --with-deps chromium
+      - run: npx wait-on http://localhost:3000 -t 120000
+      - run: pytest e2e/python
+

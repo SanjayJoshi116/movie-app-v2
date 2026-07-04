@@ -22,8 +22,10 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
   const [loading, setLoading] = useState(false);
   const cache = useRef<Record<number, TMDBSeasonDetail>>({});
   const [seasonData, setSeasonData] = useState<TMDBSeasonDetail | null>(null);
+  const requestedSeason = useRef<number | null>(null);
 
   const loadSeason = async (seasonNumber: number) => {
+    requestedSeason.current = seasonNumber;
     if (cache.current[seasonNumber]) {
       setSeasonData(cache.current[seasonNumber]);
       return;
@@ -32,9 +34,10 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
     try {
       const res = await fetchTVSeason(tvId, seasonNumber);
       cache.current[seasonNumber] = res.data;
+      if (requestedSeason.current !== seasonNumber) return;
       setSeasonData(res.data);
     } finally {
-      setLoading(false);
+      if (requestedSeason.current === seasonNumber) setLoading(false);
     }
   };
 

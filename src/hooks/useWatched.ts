@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
+import { fetchAllPages } from "../utils/fetchAllPages";
 import type { WatchedEntry, WatchedEntryDTO, WatchedInput } from "../types";
 
 function mkKey(id: number, type: string) { return `${type}-${id}`; }
@@ -20,9 +21,8 @@ export function useWatched() {
       return;
     }
     setIsLoading(true);
-    userApi
-      .get<WatchedEntryDTO[]>("/watched/")
-      .then(({ data }) => {
+    fetchAllPages<WatchedEntryDTO>(userApi, "/watched/")
+      .then((data) => {
         const map: Record<string, number> = {};
         const entries: WatchedEntry[] = data.map((item) => {
           map[mkKey(item.mediaId, item.mediaType)] = item.id;
@@ -88,7 +88,7 @@ export function useWatched() {
 
   const reload = useCallback(async () => {
     if (!isAuthenticated) return;
-    const { data } = await userApi.get<WatchedEntryDTO[]>("/watched/");
+    const data = await fetchAllPages<WatchedEntryDTO>(userApi, "/watched/");
     const map: Record<string, number> = {};
     const entries: WatchedEntry[] = data.map((item) => {
       map[mkKey(item.mediaId, item.mediaType)] = item.id;

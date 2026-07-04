@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider } from "antd";
@@ -18,7 +18,7 @@ function getRatingColor(vote: number): string {
   return "#ff4d4f";
 }
 
-function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
+const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
   return (
     <motion.div
@@ -63,7 +63,7 @@ function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][num
       </Card>
     </motion.div>
   );
-}
+});
 
 function SectionRow({ section, navigate }: { section: PersonalizedRecSection; navigate: (path: string, opts?: object) => void }) {
   return (

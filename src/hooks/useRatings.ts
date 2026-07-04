@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
+import { fetchAllPages } from "../utils/fetchAllPages";
 import type { RatingEntry, RatingEntryDTO, RatingsMap } from "../types";
 
 function ratingKey(id: number, type: string) { return `${type}-${id}`; }
@@ -20,9 +21,8 @@ export function useRatings() {
       return;
     }
     setIsLoading(true);
-    userApi
-      .get<RatingEntryDTO[]>("/ratings/")
-      .then(({ data }) => {
+    fetchAllPages<RatingEntryDTO>(userApi, "/ratings/")
+      .then((data) => {
         const map: Record<string, number> = {};
         const ratingsMap: RatingsMap = {};
         data.forEach((item) => {

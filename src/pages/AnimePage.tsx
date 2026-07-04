@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Space, Button, Alert, Radio } from "antd";
@@ -8,6 +8,7 @@ import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
+import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
   discoverMovies,
   discoverTV,
@@ -66,13 +67,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   const [activeCategory, setActiveCategory] = useState(
     isReturning && savedActiveCategory ? savedActiveCategory : "anime-tv-popular"
   );
-  const [allItems, setAllItems] = useState<TMDBMovieSummary[] | TMDBTVSummary[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const didRestoreRef = useRef(false);
   const isRestoringRef = useRef(isReturning);
 
   useEffect(() => {
@@ -87,14 +82,12 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       // User manually switched tab — reset category and clear results
       setActiveCategory(animeTab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
       setAllItems([]);
-      setCurrentPage(1);
-      setHasMore(true);
     }
     onMediaTypeChange(animeTab);
   }, [animeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPage = useCallback(
-    async (page: number): Promise<{ results: TMDBMovieSummary[] | TMDBTVSummary[]; totalPages: number }> => {
+    async (page: number): Promise<{ results: (TMDBMovieSummary | TMDBTVSummary)[]; totalPages: number }> => {
       const isTV = animeTab === "tv";
       const genreString = selectedGenres.join(",");
       const baseParams: Record<string, string | number> = {
@@ -130,86 +123,28 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       }
 
       return {
-        results: response.data.results as TMDBMovieSummary[] | TMDBTVSummary[],
+        results: response.data.results as (TMDBMovieSummary | TMDBTVSummary)[],
         totalPages: response.data.total_pages,
       };
     },
     [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy, includeAdult]
   );
 
+  const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore } =
+    usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
+      fetchPage,
+      restore: { isReturning, savedLoadedPages, savedScrollY },
+    });
+
+  // Once the first load (including any restore) finishes, treat later tab
+  // switches as user-initiated rather than part of a restore.
+  const prevLoadingRef = useRef(loading);
   useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      if (isRestoringRef.current && savedLoadedPages > 1) {
-        setLoading(true);
-        try {
-          const pages = Array.from({ length: savedLoadedPages }, (_, i) => i + 1);
-          const results: (TMDBMovieSummary | TMDBTVSummary)[] = [];
-          let totalPages = 1;
-          for (const p of pages) {
-            const { results: r, totalPages: tp } = await fetchPage(p);
-            results.push(...r);
-            totalPages = tp;
-          }
-          if (!cancelled) {
-            setAllItems(results as TMDBMovieSummary[] | TMDBTVSummary[]);
-            setCurrentPage(savedLoadedPages);
-            setHasMore(savedLoadedPages < totalPages);
-          }
-        } catch (err) {
-          console.error("Error restoring anime pages:", err);
-        } finally {
-          if (!cancelled) setLoading(false);
-          isRestoringRef.current = false;
-        }
-      } else {
-        setLoading(true);
-        try {
-          const { results, totalPages } = await fetchPage(1);
-          if (!cancelled) {
-            setAllItems(results as TMDBMovieSummary[] | TMDBTVSummary[]);
-            setCurrentPage(1);
-            setHasMore(1 < totalPages);
-          }
-        } catch (err) {
-          console.error("Error fetching anime data:", err);
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
-      }
-    };
-
-    load();
-    return () => { cancelled = true; };
-  }, [fetchPage]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useLayoutEffect(() => {
-    if (isReturning && savedScrollY > 0 && !didRestoreRef.current && allItems.length > 0) {
-      didRestoreRef.current = true;
-      window.scrollTo(0, savedScrollY);
+    if (prevLoadingRef.current && !loading) {
+      isRestoringRef.current = false;
     }
-  }, [allItems, isReturning, savedScrollY]);
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    try {
-      const nextPage = currentPage + 1;
-      const { results, totalPages } = await fetchPage(nextPage);
-      setAllItems((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        const deduped = results.filter((item) => !existingIds.has(item.id));
-        return [...prev, ...deduped] as TMDBMovieSummary[] | TMDBTVSummary[];
-      });
-      setCurrentPage(nextPage);
-      setHasMore(nextPage < totalPages);
-    } catch (err) {
-      console.error("Error loading more anime:", err);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [fetchPage, currentPage, hasMore, loadingMore]);
+    prevLoadingRef.current = loading;
+  }, [loading]);
 
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading);
 

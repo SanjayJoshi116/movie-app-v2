@@ -1,8 +1,8 @@
 import { memo } from "react";
-import { motion } from "framer-motion";
 import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
-import type { TMDBMovieSummary } from "../types";
+import { motion } from "framer-motion";
+import type { TMDBTVSummary } from "../types";
 import MarqueeTitle from "./MarqueeTitle";
 import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
@@ -17,12 +17,11 @@ function getRatingColor(vote: number): string {
 }
 
 interface Props {
-  movie: TMDBMovieSummary;
+  tvShow: TMDBTVSummary;
   onKnowMore: (id: number) => void;
 }
 
-const Movie = ({ movie, onKnowMore }: Props) => {
-  const { title, poster_path, vote_average } = movie;
+const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
   const { theme } = useUIContext();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
@@ -34,15 +33,19 @@ const Movie = ({ movie, onKnowMore }: Props) => {
       whileHover={{ scale: 1.04, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
       style={{ cursor: "pointer" }}
-      onClick={() => onKnowMore(movie.id)}
+      onClick={() => onKnowMore(tvShow.id)}
     >
       <Card
         hoverable
         className="glass-card"
         cover={
           <img
-            src={poster_path ? `${IMG_URL}${poster_path}` : "https://placehold.co/500x750?text=No+Image"}
-            alt={title}
+            src={
+              tvShow.poster_path
+                ? `${IMG_URL}${tvShow.poster_path}`
+                : "https://placehold.co/500x750?text=No+Image"
+            }
+            alt={tvShow.name}
             loading="lazy"
             className="movie-poster-img"
           />
@@ -52,42 +55,42 @@ const Movie = ({ movie, onKnowMore }: Props) => {
       >
         <Card.Meta
           title={
-            <MarqueeTitle style={{ fontSize: 14, lineHeight: "1.3" }}>{title}</MarqueeTitle>
+            <MarqueeTitle style={{ fontSize: 14, lineHeight: "1.3" }}>{tvShow.name}</MarqueeTitle>
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Tag color={getRatingColor(vote_average)} style={{ margin: 0 }}>
-                ★ {vote_average.toFixed(1)}
+              <Tag color={getRatingColor(tvShow.vote_average)} style={{ margin: 0 }}>
+                ★ {tvShow.vote_average.toFixed(1)}
               </Tag>
               <div style={{ display: "flex", gap: 4 }}>
-                <Tooltip title={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}>
+                <Tooltip title={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}>
                   <Button
                     size="small"
                     type="text"
-                    icon={isWatched(movie.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(movie.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    icon={isWatched(tvShow.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
+                    style={{ color: isWatched(tvShow.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const alreadyWatched = isWatched(movie.id, "movie");
-                      toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      const alreadyWatched = isWatched(tvShow.id, "tv");
+                      toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
                       showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
                     }}
-                    aria-label={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}
+                    aria-label={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}
                   />
                 </Tooltip>
-                <Tooltip title={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}>
+                <Tooltip title={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}>
                   <Button
                     size="small"
                     type="text"
-                    icon={isInWatchlist(movie.id, "movie") ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(movie.id, "movie") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    icon={isInWatchlist(tvShow.id, "tv") ? <BookFilled /> : <BookOutlined />}
+                    style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const inList = isInWatchlist(movie.id, "movie");
-                      toggleWatchlist({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      const inList = isInWatchlist(tvShow.id, "tv");
+                      toggleWatchlist({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
                       showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
                     }}
-                    aria-label={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-label={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}
                   />
                 </Tooltip>
                 <Button
@@ -96,9 +99,9 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                   ghost
                   onClick={(e) => {
                     e.stopPropagation();
-                    onKnowMore(movie.id);
+                    onKnowMore(tvShow.id);
                   }}
-                  aria-label={`Know more about ${title}`}
+                  aria-label={`Know more about ${tvShow.name}`}
                 >
                   Details
                 </Button>
@@ -111,4 +114,4 @@ const Movie = ({ movie, onKnowMore }: Props) => {
   );
 };
 
-export default memo(Movie);
+export default memo(TVShowCard);

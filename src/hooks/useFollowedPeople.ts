@@ -16,7 +16,7 @@ export function useFollowedPeople() {
     if (!isAuthenticated) { setFollowed([]); return; }
     setLoading(true);
     getFollowedPeople()
-      .then((res) => setFollowed(res.data))
+      .then((data) => setFollowed(data))
       .catch(() => setFollowed([]))
       .finally(() => setLoading(false));
   }, [isAuthenticated]);

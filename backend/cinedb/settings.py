@@ -125,6 +125,8 @@ REST_FRAMEWORK = {
         "register": "5/min",
         "password_reset": "5/hour",
     },
+    "DEFAULT_PAGINATION_CLASS": "userdata.pagination.DefaultPagination",
+    "PAGE_SIZE": 100,
 }
 
 SIMPLE_JWT = {

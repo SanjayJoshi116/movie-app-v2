@@ -1,4 +1,5 @@
 import axios from "axios";
+import { fetchAllPages } from "../utils/fetchAllPages";
 
 const API_HOST = window.location.hostname;
 const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:3001/api/django`;
@@ -182,7 +183,7 @@ export interface FollowedPersonEntry {
 }
 
 export const getFollowedPeople = () =>
-  userApi.get<FollowedPersonEntry[]>("/followed-people/");
+  fetchAllPages<FollowedPersonEntry>(userApi, "/followed-people/");
 
 export const followPerson = (personId: number, name: string, profilePath: string | null) =>
   userApi.post<FollowedPersonEntry>("/followed-people/", { personId, name, profilePath });

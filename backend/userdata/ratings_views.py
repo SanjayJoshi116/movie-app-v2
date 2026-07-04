@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import RatingEntry
+from .pagination import DefaultPagination
 from .serializers import RatingEntrySerializer
 from . import tmdb_client
 
@@ -18,7 +19,9 @@ logger = logging.getLogger(__name__)
 def ratings_list(request):
     if request.method == "GET":
         entries = RatingEntry.objects.filter(user=request.user).order_by("-rated_at")
-        return Response(RatingEntrySerializer(entries, many=True).data)
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(entries, request)
+        return paginator.get_paginated_response(RatingEntrySerializer(page, many=True).data)
 
     serializer = RatingEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

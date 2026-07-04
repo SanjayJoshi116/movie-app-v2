@@ -9,6 +9,7 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY . .
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 8000
-CMD ["python", "start.py"]
+CMD ["./docker-entrypoint.sh"]

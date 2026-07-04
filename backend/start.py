@@ -29,8 +29,9 @@ cur.close()
 conn.close()
 
 # Step 2: Run migrations
+# To generate new migrations after changing models, run this explicitly:
+#   python backend/manage.py makemigrations userdata
 manage = str(base / "manage.py")
-subprocess.run([sys.executable, manage, "makemigrations", "userdata"], check=True)
 subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 
 # Step 3: Pre-compute recommendation cache (best-effort — failure won't block startup)

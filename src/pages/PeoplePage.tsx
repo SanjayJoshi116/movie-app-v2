@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Typography } from "antd";
@@ -7,6 +7,7 @@ import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
 import MarqueeTitle from "../components/MarqueeTitle";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
+import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
@@ -21,15 +22,6 @@ function PeoplePage() {
   const savedScrollY = locationState?.scrollY ?? 0;
   const savedLoadedPages = locationState?.loadedPages ?? 1;
 
-  const [allPeople, setAllPeople] = useState<TMDBPersonSummary[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const didRestoreRef = useRef(false);
-  const isRestoringRef = useRef(isReturning);
-
   const fetchPage = useCallback(
     async (page: number): Promise<{ results: TMDBPersonSummary[]; totalPages: number }> => {
       const res = searchTerm
@@ -43,62 +35,10 @@ function PeoplePage() {
     [searchTerm, includeAdult]
   );
 
-  // Initial load / refetch when search term or adult filter changes
-  useEffect(() => {
-    isRestoringRef.current = isReturning;
-    let cancelled = false;
-
-    const initialPages = isReturning ? savedLoadedPages : 1;
-
-    const load = async () => {
-      setLoading(true);
-      try {
-        const pages = await Promise.all(
-          Array.from({ length: initialPages }, (_, i) => fetchPage(i + 1))
-        );
-        if (cancelled) return;
-        const combined = pages.flatMap((p) => p.results);
-        const totalPages = pages[pages.length - 1]?.totalPages ?? 1;
-        setAllPeople(combined);
-        setCurrentPage(initialPages);
-        setHasMore(initialPages < totalPages);
-      } catch {
-        if (!cancelled) setAllPeople([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    load();
-    return () => { cancelled = true; };
-  }, [fetchPage]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Restore scroll position when returning from a person page
-  useLayoutEffect(() => {
-    if (isReturning && !loading && allPeople.length > 0 && !didRestoreRef.current) {
-      didRestoreRef.current = true;
-      window.scrollTo(0, savedScrollY);
-    }
-  }, [loading, allPeople.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    const nextPage = currentPage + 1;
-    setLoadingMore(true);
-    try {
-      const { results, totalPages } = await fetchPage(nextPage);
-      setAllPeople((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        return [...prev, ...results.filter((p) => !existingIds.has(p.id))];
-      });
-      setCurrentPage(nextPage);
-      setHasMore(nextPage < totalPages);
-    } catch {
-      // ignore
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [loadingMore, hasMore, currentPage, fetchPage]);
+  const { items: allPeople, currentPage, hasMore, loading, loadingMore, loadMore } = usePaginatedFetch<TMDBPersonSummary>({
+    fetchPage,
+    restore: { isReturning, savedLoadedPages, savedScrollY },
+  });
 
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
