@@ -66,7 +66,7 @@ function TVDetailPage() {
     return (
       <div>
         <Skeleton.Image active style={{ width: "100%", height: 340, borderRadius: 0, display: "block" }} />
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
+        <div className="detail-container" style={{ padding: "24px 16px" }}>
           <Row gutter={[24, 24]}>
             <Col xs={24} sm={8} md={6}>
               <Skeleton.Image active style={{ width: "100%", height: 280, borderRadius: 12 }} />

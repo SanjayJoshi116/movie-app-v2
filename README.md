@@ -151,6 +151,9 @@ src/
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
 │   ├── StreamingBadges.tsx      # JustWatch provider logos
+│   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
+│   ├── WatchProviders.tsx       # Streaming/rent provider logos with deep links, shared by Movie/TV detail pages
+│   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar), shared by Movie/TV detail pages
 │   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages
 │   ├── CSVUploadModal.tsx       # CSV import modal with preview + TMDB poster enrichment
 │   ├── ProfileModal.tsx         # Edit profile + change password + delete account (password-confirmed) + TMDB OAuth connect
@@ -209,8 +212,10 @@ src/
 │   └── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
 │                                #   (falls back to a plain array response transparently)
 ├── constants/
-│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, NO_IMAGE — shared across pages
-│   └── genres.ts                # Static TMDB genre list for filter UI
+│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, BACKDROP_URL, NO_IMAGE,
+│   │                            #   RATING_GOLD, WATCHED_GREEN — shared across pages
+│   ├── genres.ts                # Static TMDB genre list for filter UI
+│   └── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
 ├── theme/
 │   └── antdTheme.ts             # Ant Design ConfigProvider tokens: dark / light
 └── types/
@@ -257,6 +262,7 @@ src/
 - **Typography** — `src/constants/typography.ts` exports `FONT_SIZE.caption/body/emphasis/display`; every inline `fontSize` in the app sources from this scale instead of a hardcoded number (icon-scaling `fontSize` props on antd icons are the one exception). Heading sizes are set once via antd theme tokens in `src/theme/antdTheme.ts`.
 - **Date formatting** — `src/utils/formatDate.ts` (`formatDateDMY`) renders dates as `dd-mm-yyyy` regardless of the viewer's locale, used anywhere a date is shown to the user (Watched, Lists, Movie/TV Detail).
 - **Info tooltips** — `src/components/InfoTooltip.tsx` wraps antd `Tooltip` + `InfoCircleOutlined` into one reusable `<InfoTooltip title="..." />`.
+- **Movie/TV detail parity** — `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader`, `WatchProviders`, and `MediaCardGrid` (all in `src/components/`) instead of each carrying its own copy. Both fetch `videos` via `append_to_response` and render a Trailers section from it.
 
 ---
 

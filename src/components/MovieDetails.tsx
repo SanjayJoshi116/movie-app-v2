@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image, Modal, Checkbox,
+  Statistic, Card, Space, Image, Modal, Checkbox,
 } from "antd";
 import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
@@ -15,11 +15,12 @@ import { RatingModal } from "./watchlist/RatingModal";
 import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "./InfoTooltip";
+import { SectionHeader } from "./SectionHeader";
+import { WatchProviders } from "./WatchProviders";
+import { MediaCardGrid } from "./MediaCardGrid";
 import { FONT_SIZE } from "../constants/typography";
-import type { TMDBMovieDetail, TMDBProvider, TMDBProviderRegion } from "../types";
-import { IMG_URL } from "../constants/ui";
-
-const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
+import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
+import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 
 interface ReleaseDateEntry {
   iso_3166_1: string;
@@ -49,58 +50,6 @@ function renderCertifications(certs: ReleaseDateEntry[] | string): string {
   if (!us) return "Not Rated";
   const cert = us.release_dates.find((r) => r.certification);
   return cert?.certification || "Not Rated";
-}
-
-const PROVIDER_SEARCH_URLS: Record<number, (title: string) => string> = {
-  8:    (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`,
-  9:    (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
-  119:  (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
-  337:  (t) => `https://www.disneyplus.com/search/${encodeURIComponent(t)}`,
-  384:  (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,
-  1899: (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,
-  350:  (t) => `https://tv.apple.com/search?term=${encodeURIComponent(t)}`,
-  15:   (t) => `https://www.hulu.com/search?q=${encodeURIComponent(t)}`,
-  386:  (t) => `https://www.peacocktv.com/search?q=${encodeURIComponent(t)}`,
-  531:  (t) => `https://www.paramountplus.com/search/${encodeURIComponent(t)}/`,
-  283:  (t) => `https://www.crunchyroll.com/search?q=${encodeURIComponent(t)}`,
-};
-
-function WatchProviders({ providers, title }: { providers: Record<string, TMDBProviderRegion>; title: string }) {
-  const us = providers["US"];
-  if (!us) return <Typography.Text type="secondary">No watch provider info available for your region.</Typography.Text>;
-
-  const getProviderUrl = (p: TMDBProvider) =>
-    PROVIDER_SEARCH_URLS[p.provider_id]?.(title) ?? us.link ?? "#";
-
-  const renderSection = (sectionTitle: string, list: TMDBProvider[]) => (
-    <div key={sectionTitle} style={{ marginBottom: 12 }}>
-      <Typography.Text strong style={{ display: "block", marginBottom: 6 }}>{sectionTitle}</Typography.Text>
-      <Space wrap>
-        {list.map((p) => (
-          <a
-            key={p.provider_id}
-            href={getProviderUrl(p)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={`Watch on ${p.provider_name}`}
-          >
-            <img
-              src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
-              alt={p.provider_name}
-              style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", display: "block" }}
-            />
-          </a>
-        ))}
-      </Space>
-    </div>
-  );
-
-  return (
-    <>
-      {us.flatrate && renderSection("Streaming", us.flatrate)}
-      {us.rent && renderSection("Rent", us.rent)}
-    </>
-  );
 }
 
 const MovieDetails = ({ movie }: Props) => {
@@ -148,8 +97,8 @@ const MovieDetails = ({ movie }: Props) => {
 
       {/* Glass info card */}
       <div
-        className={hasBackdrop ? "detail-glass-card glass-overlay-card" : ""}
-        style={!hasBackdrop ? { maxWidth: 1200, margin: "0 auto", paddingBottom: 16 } : undefined}
+        className={hasBackdrop ? "detail-glass-card glass-overlay-card" : "detail-container"}
+        style={!hasBackdrop ? { paddingBottom: 16 } : undefined}
       >
         <Button
           icon={<LeftOutlined />}
@@ -162,10 +111,9 @@ const MovieDetails = ({ movie }: Props) => {
         <Row gutter={[24, 24]}>
           <Col xs={24} sm={8} md={6}>
             <img
-              src={poster_path ? `${IMG_URL}${poster_path}` : "https://placehold.co/500x750?text=No+Image"}
+              src={poster_path ? `${IMG_URL}${poster_path}` : NO_IMAGE}
               alt={title}
-              className="person-profile-img"
-              style={{ width: "100%", maxWidth: "100%", borderRadius: 12 }}
+              className="detail-poster-img"
             />
           </Col>
           <Col xs={24} sm={16} md={18}>
@@ -180,7 +128,7 @@ const MovieDetails = ({ movie }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
                   aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#f5c518", fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: RATING_GOLD, fontSize: "1.5rem" }}
                 >
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
@@ -192,12 +140,12 @@ const MovieDetails = ({ movie }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000", fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000", fontSize: "1.5rem" }}
                 >
                   {watched ? <EyeFilled /> : <EyeOutlined />}
                 </motion.button>
                 <Button
-                  icon={myRating ? <StarFilled style={{ color: "#f5c518" }} /> : <StarOutlined />}
+                  icon={myRating ? <StarFilled style={{ color: RATING_GOLD }} /> : <StarOutlined />}
                   onClick={() => setShowRatingModal(true)}
                   aria-label="Rate this movie"
                 >
@@ -217,7 +165,7 @@ const MovieDetails = ({ movie }: Props) => {
                   <Statistic
                     title={<>TMDB Rating<InfoTooltip title="Score from The Movie Database (TMDB) community, not a critic score." /></>}
                     value={vote_average?.toFixed(1)}
-                    prefix={<StarFilled style={{ color: "#f5c518" }} />}
+                    prefix={<StarFilled style={{ color: RATING_GOLD }} />}
                   />
                 </Col>
                 {runtime && (
@@ -308,11 +256,11 @@ const MovieDetails = ({ movie }: Props) => {
       </Modal>
 
       {/* Sections below the glass card */}
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="detail-container">
         {/* Watch Providers */}
         {watchProviders && (
           <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Where to Watch</Typography.Title></Divider>
+            <SectionHeader title="Where to Watch" />
             <WatchProviders providers={watchProviders} title={title} />
           </>
         )}
@@ -320,7 +268,7 @@ const MovieDetails = ({ movie }: Props) => {
         {/* Cast - horizontal scroll */}
         {cast.length > 0 && (
           <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Cast</Typography.Title></Divider>
+            <SectionHeader title="Cast" />
             <div className="cast-scroll-container">
               {cast.slice(0, 15).map((actor) => (
                 <div key={actor.id} className="cast-scroll-item">
@@ -330,7 +278,7 @@ const MovieDetails = ({ movie }: Props) => {
                     onClick={() => navigate(`/person/${actor.id}`)}
                     cover={
                       <img
-                        src={actor.profile_path ? `${IMG_URL}${actor.profile_path}` : "https://placehold.co/150x225?text=?"}
+                        src={actor.profile_path ? `${IMG_URL}${actor.profile_path}` : NO_IMAGE}
                         alt={actor.name}
                         className="cast-card-img-lg"
                         loading="lazy"
@@ -348,68 +296,22 @@ const MovieDetails = ({ movie }: Props) => {
           </>
         )}
 
-        {/* Recommendations */}
-        {recommendations?.length > 0 && (
-          <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Recommendations</Typography.Title></Divider>
-            <Row gutter={[12, 16]}>
-              {recommendations.slice(0, 10).map((rec) => (
-                <Col key={rec.id} xs={8} sm={6} md={4} lg={3}>
-                  <Card
-                    hoverable
-                    size="small"
-                    onClick={() => navigate(`/movie/${rec.id}`)}
-                    cover={
-                      <img
-                        src={rec.poster_path ? `${IMG_URL}${rec.poster_path}` : "https://placehold.co/150x225?text=?"}
-                        alt={rec.title}
-                        className="rec-card-img"
-                        loading="lazy"
-                      />
-                    }
-                    styles={{ body: { padding: "6px 8px" } }}
-                  >
-                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{rec.title}</Typography.Text>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </>
-        )}
+        <MediaCardGrid
+          title="Recommendations"
+          items={(recommendations ?? []).map((rec) => ({ id: rec.id, posterPath: rec.poster_path, name: rec.title }))}
+          mediaType="movie"
+        />
 
-        {/* Similar Movies */}
-        {similarMovies?.length > 0 && (
-          <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Similar Movies</Typography.Title></Divider>
-            <Row gutter={[12, 16]}>
-              {similarMovies.slice(0, 10).map((m) => (
-                <Col key={m.id} xs={8} sm={6} md={4} lg={3}>
-                  <Card
-                    hoverable
-                    size="small"
-                    onClick={() => navigate(`/movie/${m.id}`)}
-                    cover={
-                      <img
-                        src={m.poster_path ? `${IMG_URL}${m.poster_path}` : "https://placehold.co/150x225?text=?"}
-                        alt={m.title}
-                        className="rec-card-img"
-                        loading="lazy"
-                      />
-                    }
-                    styles={{ body: { padding: "6px 8px" } }}
-                  >
-                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{m.title}</Typography.Text>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </>
-        )}
+        <MediaCardGrid
+          title="Similar Movies"
+          items={(similarMovies ?? []).map((m) => ({ id: m.id, posterPath: m.poster_path, name: m.title }))}
+          mediaType="movie"
+        />
 
         {/* Videos — trailers only */}
         {videos?.results?.filter((v) => v.type === "Trailer").length > 0 && (
           <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Trailers</Typography.Title></Divider>
+            <SectionHeader title="Trailers" />
             <Row gutter={[16, 16]}>
               {videos.results.filter((v) => v.type === "Trailer").map((video) => (
                 <Col key={video.id} xs={24} md={12}>
@@ -430,7 +332,7 @@ const MovieDetails = ({ movie }: Props) => {
         {/* Backdrops */}
         {images?.backdrops?.length > 0 && (
           <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Images</Typography.Title></Divider>
+            <SectionHeader title="Images" />
             <Image.PreviewGroup>
               <Row gutter={[12, 12]}>
                 {images.backdrops.slice(0, 10).map((image) => (
@@ -451,7 +353,7 @@ const MovieDetails = ({ movie }: Props) => {
         {/* Reviews */}
         {reviews?.length > 0 && (
           <>
-            <Divider orientation="left"><Typography.Title level={4} style={{ margin: 0 }}>Reviews</Typography.Title></Divider>
+            <SectionHeader title="Reviews" />
             <Space direction="vertical" size={16} style={{ width: "100%" }}>
               {reviews.map((review) => (
                 <Card key={review.id} size="small">

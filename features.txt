@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.2.0)
+CINE DB — Feature List (v0.3.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime

@@ -4,6 +4,8 @@ import { StarFilled, CalendarOutlined, ClockCircleOutlined } from "@ant-design/i
 import { fetchTVSeason } from "../api/tmdb";
 import type { TMDBTVSeason, TMDBSeasonDetail } from "../types";
 import { FONT_SIZE } from "../constants/typography";
+import { RATING_GOLD } from "../constants/ui";
+import { formatDateDMY } from "../utils/formatDate";
 
 const STILL_URL = "https://image.tmdb.org/t/p/w300";
 
@@ -96,7 +98,7 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
                 <Space size={8} wrap>
                   {ep.air_date && (
                     <Tag icon={<CalendarOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
-                      {ep.air_date}
+                      {formatDateDMY(ep.air_date)}
                     </Tag>
                   )}
                   {ep.runtime != null && ep.runtime > 0 && (
@@ -105,7 +107,7 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
                     </Tag>
                   )}
                   {ep.vote_average > 0 && (
-                    <Tag icon={<StarFilled style={{ color: "#f5c518" }} />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
+                    <Tag icon={<StarFilled style={{ color: RATING_GOLD }} />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                       {ep.vote_average.toFixed(1)}
                     </Tag>
                   )}

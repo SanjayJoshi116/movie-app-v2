@@ -235,6 +235,19 @@ body:not(.dark-theme) .app-bottom-nav {
   z-index: 2;
 }
 
+.detail-poster-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+}
+
+.detail-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
 /* Cast horizontal scroll */
 .cast-scroll-container {
   display: flex;

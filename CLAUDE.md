@@ -12,6 +12,8 @@ Guidance for Claude Code when working in this repo. See `README.md` for full fea
 - **Info tooltips**: use `<InfoTooltip title="..." />` from `src/components/InfoTooltip.tsx` (wraps antd `Tooltip` + `InfoCircleOutlined`) next to any label/stat that needs a one-line explanation. Don't hand-roll a new `Tooltip`+icon pairing.
 - **Dates**: render with `formatDateDMY()` from `src/utils/formatDate.ts` — fixed `dd-mm-yyyy`, not locale-dependent `toLocaleDateString()`.
 - **Fonts**: Poppins is set once via `commonTokens.fontFamily` in `src/theme/antdTheme.ts`. Never add a per-component `fontFamily` override.
+- **Detail-page sections**: `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader` (section divider+title), `WatchProviders` (streaming/rent logos), and `MediaCardGrid` (poster-card grid for recommendations/similar) from `src/components/`. Don't re-inline a copy in one of the two detail components — fix/extend the shared one.
+- **Shared UI constants**: `IMG_URL`, `BACKDROP_URL`, `NO_IMAGE`, `RATING_GOLD`, `WATCHED_GREEN` live in `src/constants/ui.ts`; provider deep-links (`PROVIDER_SEARCH_URLS`) live in `src/constants/providers.ts`. Don't hardcode hex colors or TMDB image URLs inline.
 
 ## Verification
 - Typecheck: `npx tsc --noEmit` (fast, always run after TSX/TS edits).

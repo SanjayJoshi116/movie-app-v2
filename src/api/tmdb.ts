@@ -133,7 +133,7 @@ export const fetchTVDetails = (
   id: number | string,
 ): Promise<AxiosResponse<TMDBTVDetail>> =>
   api.get(`/tv/${id}`, {
-    params: { append_to_response: "external_ids,similar,recommendations" },
+    params: { append_to_response: "external_ids,similar,recommendations,videos" },
   });
 
 export const fetchTVCredits = (

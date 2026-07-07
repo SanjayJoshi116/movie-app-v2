@@ -199,6 +199,7 @@ MOCK_TV_DETAIL = {
     ],
     "credits": {"cast": [], "crew": []},
     "images": {"backdrops": []},
+    "videos": {"results": []},
     "recommendations": {"results": []},
     "networks": [],
     "created_by": [],
