@@ -13,6 +13,9 @@ import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
 import { getApiError } from "../utils/apiError";
+import { formatDateDMY } from "../utils/formatDate";
+import { InfoTooltip } from "./InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProvider, TMDBProviderRegion } from "../types";
 import { IMG_URL } from "../constants/ui";
 
@@ -207,12 +210,12 @@ const MovieDetails = ({ movie }: Props) => {
                 )}
               </div>
 
-              <Typography.Paragraph style={{ fontSize: 15, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
+              <Typography.Paragraph style={{ fontSize: FONT_SIZE.body, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
 
               <Row gutter={[16, 8]}>
                 <Col>
                   <Statistic
-                    title="TMDB Rating"
+                    title={<>TMDB Rating<InfoTooltip title="Score from The Movie Database (TMDB) community, not a critic score." /></>}
                     value={vote_average?.toFixed(1)}
                     prefix={<StarFilled style={{ color: "#f5c518" }} />}
                   />
@@ -224,18 +227,18 @@ const MovieDetails = ({ movie }: Props) => {
                 )}
                 {budget ? (
                   <Col>
-                    <Statistic title="Budget" value={budget} prefix="$" formatter={(v) => Number(v).toLocaleString()} />
+                    <Statistic title="Budget (USD)" value={budget} prefix="$" formatter={(v) => Number(v).toLocaleString()} />
                   </Col>
                 ) : null}
               </Row>
 
               <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered>
-                <Descriptions.Item label="Release Date">{release_date}</Descriptions.Item>
+                <Descriptions.Item label="Release Date">{release_date ? formatDateDMY(release_date) : "-"}</Descriptions.Item>
                 <Descriptions.Item label="Status">{status}</Descriptions.Item>
                 <Descriptions.Item label="Language">{original_language?.toUpperCase()}</Descriptions.Item>
-                <Descriptions.Item label="Certification">{renderCertifications(certifications)}</Descriptions.Item>
+                <Descriptions.Item label={<>Certification<InfoTooltip title="US content rating (MPAA-style); may not reflect ratings in other regions." /></>}>{renderCertifications(certifications)}</Descriptions.Item>
                 {directors && <Descriptions.Item label="Director">{directors}</Descriptions.Item>}
-                {revenue ? <Descriptions.Item label="Revenue">${revenue.toLocaleString()}</Descriptions.Item> : null}
+                {revenue ? <Descriptions.Item label="Revenue (USD)">${revenue.toLocaleString()}</Descriptions.Item> : null}
               </Descriptions>
 
               {genres && genres.length > 0 && (
@@ -282,7 +285,7 @@ const MovieDetails = ({ movie }: Props) => {
               >
                 <div>
                   <Typography.Text strong>{list.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: FONT_SIZE.caption }}>
                     {list.items.length} item{list.items.length !== 1 ? "s" : ""}
                   </Typography.Text>
                 </div>
@@ -336,8 +339,8 @@ const MovieDetails = ({ movie }: Props) => {
                     styles={{ body: { padding: "6px 8px" } }}
                     aria-label={`View details for ${actor.name}`}
                   >
-                    <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{actor.name}</Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 10 }}>{actor.character}</Typography.Text>
+                    <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{actor.name}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>{actor.character}</Typography.Text>
                   </Card>
                 </div>
               ))}
@@ -366,7 +369,7 @@ const MovieDetails = ({ movie }: Props) => {
                     }
                     styles={{ body: { padding: "6px 8px" } }}
                   >
-                    <Typography.Text style={{ fontSize: 11 }}>{rec.title}</Typography.Text>
+                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{rec.title}</Typography.Text>
                   </Card>
                 </Col>
               ))}
@@ -395,7 +398,7 @@ const MovieDetails = ({ movie }: Props) => {
                     }
                     styles={{ body: { padding: "6px 8px" } }}
                   >
-                    <Typography.Text style={{ fontSize: 11 }}>{m.title}</Typography.Text>
+                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{m.title}</Typography.Text>
                   </Card>
                 </Col>
               ))}
@@ -417,7 +420,7 @@ const MovieDetails = ({ movie }: Props) => {
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
-                  <Typography.Text style={{ display: "block", marginTop: 4, fontSize: 12 }}>{video.name}</Typography.Text>
+                  <Typography.Text style={{ display: "block", marginTop: 4, fontSize: FONT_SIZE.caption }}>{video.name}</Typography.Text>
                 </Col>
               ))}
             </Row>

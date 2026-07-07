@@ -3,6 +3,7 @@ import { Select, Typography, Skeleton, Tag, Space, Collapse } from "antd";
 import { StarFilled, CalendarOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import { fetchTVSeason } from "../api/tmdb";
 import type { TMDBTVSeason, TMDBSeasonDetail } from "../types";
+import { FONT_SIZE } from "../constants/typography";
 
 const STILL_URL = "https://image.tmdb.org/t/p/w300";
 
@@ -86,7 +87,7 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
             key: ep.id,
             label: (
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <Typography.Text type="secondary" style={{ minWidth: 28, fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ minWidth: 28, fontSize: FONT_SIZE.caption }}>
                   E{ep.episode_number}
                 </Typography.Text>
                 <Typography.Text strong style={{ flex: 1 }}>
@@ -94,17 +95,17 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
                 </Typography.Text>
                 <Space size={8} wrap>
                   {ep.air_date && (
-                    <Tag icon={<CalendarOutlined />} color="default" style={{ fontSize: 11 }}>
+                    <Tag icon={<CalendarOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                       {ep.air_date}
                     </Tag>
                   )}
                   {ep.runtime != null && ep.runtime > 0 && (
-                    <Tag icon={<ClockCircleOutlined />} color="default" style={{ fontSize: 11 }}>
+                    <Tag icon={<ClockCircleOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                       {ep.runtime}m
                     </Tag>
                   )}
                   {ep.vote_average > 0 && (
-                    <Tag icon={<StarFilled style={{ color: "#f5c518" }} />} color="default" style={{ fontSize: 11 }}>
+                    <Tag icon={<StarFilled style={{ color: "#f5c518" }} />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                       {ep.vote_average.toFixed(1)}
                     </Tag>
                   )}
@@ -121,7 +122,7 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
                     style={{ width: 140, height: 79, objectFit: "cover", borderRadius: 6, flexShrink: 0 }}
                   />
                 )}
-                <Typography.Text type="secondary" style={{ fontSize: 13, lineHeight: 1.6 }}>
+                <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body, lineHeight: 1.6 }}>
                   {ep.overview || "No description available."}
                 </Typography.Text>
               </div>

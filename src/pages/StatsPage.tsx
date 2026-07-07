@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Typography, Spin, Empty, Tabs } from "antd";
@@ -10,6 +11,8 @@ import {
   StarFilled,
   FormOutlined,
 } from "@ant-design/icons";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 import {
   BarChart,
   Bar,
@@ -40,7 +43,7 @@ const RED = "#ff4d4f";
 const PIE_COLORS = [GOLD, BLUE];
 const PALETTE = [GOLD, BLUE, PURPLE, TEAL, ORANGE, GREEN, RED, "#eb2f96", "#a0d911", "#1890ff"];
 
-const CHART_STYLE = { fontSize: 12 };
+const CHART_STYLE = { fontSize: FONT_SIZE.caption };
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: "English", ko: "Korean", ja: "Japanese", fr: "French", es: "Spanish",
@@ -87,7 +90,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
       border: "1px solid rgba(255,255,255,0.1)",
       borderRadius: 8,
       padding: "8px 12px",
-      fontSize: 13,
+      fontSize: FONT_SIZE.caption,
     }}>
       {label && <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>{label}</div>}
       {payload.map((p, i) => (
@@ -99,13 +102,14 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   );
 }
 
-function StatCard({ title, value, suffix, icon, color, animate = true }: {
+function StatCard({ title, value, suffix, icon, color, animate = true, tooltip }: {
   title: string;
   value: number | string;
   suffix?: string;
   icon: ReactNode;
   color: string;
   animate?: boolean;
+  tooltip?: string;
 }) {
   const numVal = typeof value === "number" ? value : 0;
   const animated = useCountUp(animate ? numVal : 0);
@@ -117,12 +121,13 @@ function StatCard({ title, value, suffix, icon, color, animate = true }: {
       style={{ borderTop: `3px solid ${color}`, height: "100%" }}
       styles={{ body: { padding: "16px 20px", position: "relative", overflow: "hidden" } }}
     >
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.6px" }}>
+      <div style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.6px" }}>
         {title}
+        {tooltip && <InfoTooltip title={tooltip} />}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-        <span style={{ fontSize: 30, fontWeight: 700, color }}>{display}</span>
-        {suffix && <span style={{ fontSize: 13, color: "rgba(255,255,255,0.35)" }}>{suffix}</span>}
+        <span style={{ fontSize: FONT_SIZE.display, fontWeight: 700, color }}>{display}</span>
+        {suffix && <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.35)" }}>{suffix}</span>}
       </div>
       <div style={{ position: "absolute", bottom: 10, right: 14, opacity: 0.1, fontSize: 42, color, lineHeight: 1 }}>
         {icon}
@@ -186,7 +191,7 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
       <div style={{ display: "inline-block", minWidth: weeks.length * (CELL + GAP) }}>
         <div style={{ display: "flex", marginBottom: 4 }}>
           {monthLabels.map((label, i) => (
-            <div key={i} style={{ width: CELL + GAP, fontSize: 10, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
+            <div key={i} style={{ width: CELL + GAP, fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
               {label ?? ""}
             </div>
           ))}
@@ -206,12 +211,16 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
                   }}
                   onMouseEnter={(e) => {
                     if (!day.future) {
-                      const r = e.currentTarget.getBoundingClientRect();
                       setHover({
                         text: `${day.date} — ${day.count} item${day.count !== 1 ? "s" : ""}`,
-                        x: r.left + r.width / 2,
-                        y: r.top,
+                        x: e.clientX,
+                        y: e.clientY,
                       });
+                    }
+                  }}
+                  onMouseMove={(e) => {
+                    if (!day.future) {
+                      setHover((h) => h && { ...h, x: e.clientX, y: e.clientY });
                     }
                   }}
                   onMouseLeave={() => setHover(null)}
@@ -221,31 +230,31 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, justifyContent: "flex-end" }}>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>Less</span>
+          <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)" }}>Less</span>
           {[0, 1, 2, 4, 6].map((v) => (
             <div key={v} style={{ width: CELL, height: CELL, borderRadius: 2, backgroundColor: heatColor(v) }} />
           ))}
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>More</span>
+          <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)" }}>More</span>
         </div>
       </div>
-      {hover && (
+      {hover && createPortal(
         <div style={{
           position: "fixed",
-          left: hover.x,
-          top: hover.y - 34,
-          transform: "translateX(-50%)",
+          left: hover.x + 14,
+          top: hover.y - 30,
           background: "rgba(10,10,20,0.95)",
           border: "1px solid rgba(255,255,255,0.15)",
           borderRadius: 6,
           padding: "3px 8px",
-          fontSize: 12,
+          fontSize: FONT_SIZE.caption,
           color: "#fff",
           pointerEvents: "none",
           zIndex: 9999,
           whiteSpace: "nowrap",
         }}>
           {hover.text}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -269,16 +278,16 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
         <div style={{
           position: "absolute", top: 6, right: 6,
           background: mediaType === "movie" ? GOLD : BLUE,
-          color: "#000", fontSize: 9, fontWeight: 700,
+          color: "#000", fontSize: FONT_SIZE.caption, fontWeight: 700,
           borderRadius: 3, padding: "1px 4px",
         }}>
           {mediaType === "movie" ? "FILM" : "TV"}
         </div>
       </div>
-      <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.7)", lineHeight: 1.3, overflow: "hidden", maxHeight: "2.6em" }}>
+      <div style={{ fontSize: FONT_SIZE.caption, marginTop: 6, color: "rgba(255,255,255,0.7)", lineHeight: 1.3, overflow: "hidden", maxHeight: "2.6em" }}>
         {title}
       </div>
-      <div style={{ fontSize: 12, color: GOLD, fontWeight: 600, marginTop: 2 }}>{badge}</div>
+      <div style={{ fontSize: FONT_SIZE.caption, color: GOLD, fontWeight: 600, marginTop: 2 }}>{badge}</div>
     </div>
   );
 }
@@ -356,6 +365,7 @@ function StatsPage() {
             icon={<StarOutlined />}
             color={GOLD}
             animate={false}
+            tooltip="Average of your personal ratings, across titles you've rated."
           />
         </Col>
         <Col xs={12} sm={8} md={4}>
@@ -369,6 +379,7 @@ function StatsPage() {
             icon={<StarFilled />}
             color={TEAL}
             animate={false}
+            tooltip="Average TMDB community score for titles you've watched (not your own rating)."
           />
         </Col>
       </Row>
@@ -407,7 +418,7 @@ function StatsPage() {
 
         {ratingDist.length > 0 && (
           <Col xs={24} md={mediaTypeData.length > 1 ? 14 : 24}>
-            <Card className="glass-card" title="Your Ratings Distribution">
+            <Card className="glass-card" title={<>Your Ratings Distribution<InfoTooltip title="Your ratings grouped by nearest whole star." /></>}>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={data.ratingDistribution} style={CHART_STYLE}>
                   <XAxis dataKey="rating" tickFormatter={(v) => `${v}★`} />
@@ -429,7 +440,7 @@ function StatsPage() {
       <Title level={4} style={{ marginBottom: 16 }}>Watch History</Title>
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         <Col xs={24}>
-          <Card className="glass-card" title="Activity Heatmap (Last 52 Weeks)">
+          <Card className="glass-card" title={<>Activity Heatmap (Last 52 Weeks)<InfoTooltip title="Counts days you watched, rated, or added a title to a list." /></>}>
             <ActivityHeatmap dailyActivity={data.dailyActivity ?? []} />
           </Card>
         </Col>
@@ -507,7 +518,7 @@ function StatsPage() {
 
             {(data.decadeBreakdown ?? []).length > 0 && (
               <Col xs={24}>
-                <Card className="glass-card" title="By Decade">
+                <Card className="glass-card" title={<>By Decade<InfoTooltip title="Titles grouped by the decade of their release date." /></>}>
                   <ResponsiveContainer width="100%" height={160}>
                     <BarChart data={data.decadeBreakdown} style={CHART_STYLE}>
                       <XAxis dataKey="decade" />

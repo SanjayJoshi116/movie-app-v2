@@ -58,6 +58,9 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Skeleton Loaders** — Content placeholders while data loads
 - **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions
 - **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
+- **Info Tooltips** — `(i)` tooltips next to non-obvious labels/stats (Stats, Calendar, Lists, Watched, Recommendations, Movie/TV Detail)
+- **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
+- **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
 - **Responsive Layout** — Persistent sidebar on desktop; fixed bottom nav with overflow drawer on mobile
 
@@ -251,6 +254,9 @@ src/
 - **TypeScript** — Strict mode. All TMDB response shapes typed in `src/types/tmdb.ts`.
 - **UI** — Ant Design 5 with `ConfigProvider`. Cinema-dark uses `#0d0f1a` background and `#f5c518` gold accent. Cards use `rgba` glassmorphism (`.glass-card`, `.glass-sidebar`).
 - **Error boundaries** — Root, per-route, and video overlay placements.
+- **Typography** — `src/constants/typography.ts` exports `FONT_SIZE.caption/body/emphasis/display`; every inline `fontSize` in the app sources from this scale instead of a hardcoded number (icon-scaling `fontSize` props on antd icons are the one exception). Heading sizes are set once via antd theme tokens in `src/theme/antdTheme.ts`.
+- **Date formatting** — `src/utils/formatDate.ts` (`formatDateDMY`) renders dates as `dd-mm-yyyy` regardless of the viewer's locale, used anywhere a date is shown to the user (Watched, Lists, Movie/TV Detail).
+- **Info tooltips** — `src/components/InfoTooltip.tsx` wraps antd `Tooltip` + `InfoCircleOutlined` into one reusable `<InfoTooltip title="..." />`.
 
 ---
 

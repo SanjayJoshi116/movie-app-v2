@@ -23,6 +23,7 @@ import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
+import { FONT_SIZE } from "../constants/typography";
 
 const BottomNav = () => {
   const location = useLocation();
@@ -168,7 +169,7 @@ const BottomNav = () => {
                 }}
               >
                 <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-                <span style={{ fontSize: 12 }}>{item.label}</span>
+                <span style={{ fontSize: FONT_SIZE.caption }}>{item.label}</span>
                 {item.badge != null && item.badge > 0 && (
                   <span style={{
                     position: "absolute",
@@ -178,7 +179,7 @@ const BottomNav = () => {
                     color: "#000",
                     borderRadius: 10,
                     padding: "0 5px",
-                    fontSize: 10,
+                    fontSize: FONT_SIZE.caption,
                     fontWeight: 700,
                     minWidth: 16,
                     textAlign: "center",
@@ -216,7 +217,7 @@ const BottomNav = () => {
               <span style={{ fontSize: 16, width: 20, display: "flex", justifyContent: "center" }}>
                 <UserOutlined />
               </span>
-              <span style={{ marginLeft: 12, flex: 1, textAlign: "left", fontSize: 14 }}>
+              <span style={{ marginLeft: 12, flex: 1, textAlign: "left", fontSize: FONT_SIZE.body }}>
                 {user?.first_name && user?.last_name
                   ? `${user.first_name} ${user.last_name}`
                   : user?.username}
@@ -244,7 +245,7 @@ const BottomNav = () => {
               <span style={{ fontSize: 16, width: 20, display: "flex", justifyContent: "center" }}>
                 <LogoutOutlined />
               </span>
-              <span style={{ marginLeft: 12, fontSize: 14 }}>Sign Out</span>
+              <span style={{ marginLeft: 12, fontSize: FONT_SIZE.body }}>Sign Out</span>
             </button>
           </>
         ) : (
@@ -265,7 +266,7 @@ const BottomNav = () => {
             <span style={{ fontSize: 16, width: 20, display: "flex", justifyContent: "center" }}>
               <LoginOutlined />
             </span>
-            <span style={{ marginLeft: 12, fontSize: 14 }}>Sign In</span>
+            <span style={{ marginLeft: 12, fontSize: FONT_SIZE.body }}>Sign In</span>
           </button>
         )}
       </Drawer>

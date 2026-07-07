@@ -21,6 +21,7 @@ import type {
   TMDBPersonCombinedCredit,
 } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 const CreditCard = memo(function CreditCard({
   credit,
@@ -50,9 +51,9 @@ const CreditCard = memo(function CreditCard({
       styles={{ body: { padding: "6px 8px" } }}
       aria-label={`View details for ${title}`}
     >
-      <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{title}</Typography.Text>
+      <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{title}</Typography.Text>
       {"character" in credit && credit.character && (
-        <Typography.Text type="secondary" style={{ fontSize: 10 }}>{credit.character}</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>{credit.character}</Typography.Text>
       )}
     </Card>
   );
@@ -260,7 +261,7 @@ function PersonPage() {
             {person.biography && (
               <Typography.Paragraph
                 ellipsis={{ rows: 6, expandable: true, symbol: "Read more" }}
-                style={{ fontSize: 14, lineHeight: 1.7 }}
+                style={{ fontSize: FONT_SIZE.body, lineHeight: 1.7 }}
               >
                 {person.biography}
               </Typography.Paragraph>

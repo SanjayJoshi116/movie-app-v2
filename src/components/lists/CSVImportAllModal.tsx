@@ -8,6 +8,7 @@ import { bulkMarkWatched } from "../../api/userApi";
 import userApi from "../../api/userApi";
 import { parseRow } from "../../utils/csvParse";
 import { getApiError } from "../../utils/apiError";
+import { FONT_SIZE } from "../../constants/typography";
 
 const { Text } = Typography;
 
@@ -194,7 +195,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   return (
     <Modal title="Import All Data from Backup" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
           Upload a CINE DB backup ZIP file. Existing entries are skipped — no duplicates.
         </Text>
       </div>
@@ -207,7 +208,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         style={{ marginBottom: zipFile ? 8 : 16 }}
       />
       {zipFile && (
-        <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+        <Text type="secondary" style={{ display: "block", fontSize: FONT_SIZE.caption, marginBottom: 12 }}>
           {zipFile.name}
         </Text>
       )}

@@ -8,6 +8,7 @@ import { parseCSVForImport } from "../../utils/csvParse";
 import type { ParsedEntry } from "../../utils/csvParse";
 import userApi from "../../api/userApi";
 import { getApiError } from "../../utils/apiError";
+import { FONT_SIZE } from "../../constants/typography";
 
 const { Text } = Typography;
 
@@ -120,7 +121,7 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
   return (
     <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
           Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.
         </Text>
       </div>
@@ -162,7 +163,7 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
         style={{ marginBottom: fileName ? 8 : 16 }}
       />
       {fileName && (
-        <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+        <Text type="secondary" style={{ display: "block", fontSize: FONT_SIZE.caption, marginBottom: 12 }}>
           {fileName}
         </Text>
       )}

@@ -9,6 +9,7 @@ import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { IMG_URL } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";
@@ -55,7 +56,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
       >
         <Card.Meta
           title={
-            <MarqueeTitle style={{ fontSize: 14, lineHeight: "1.3" }}>{tvShow.name}</MarqueeTitle>
+            <MarqueeTitle style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3" }}>{tvShow.name}</MarqueeTitle>
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>

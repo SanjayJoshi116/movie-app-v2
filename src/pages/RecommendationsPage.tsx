@@ -11,6 +11,8 @@ import {
   type PersonalizedRecSection,
 } from "../api/userApi";
 import { pageVariants, IMG_URL } from "../constants/ui";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";
@@ -41,7 +43,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
         style={{ height: "100%" }}
       >
         <Card.Meta
-          title={<span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>{item.title}</span>}
+          title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{item.title}</span>}
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
               <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0 }}>
@@ -69,7 +71,7 @@ function SectionRow({ section, navigate }: { section: PersonalizedRecSection; na
   return (
     <div key={section.key}>
       <Divider orientation="left">
-        <Typography.Text strong style={{ fontSize: 15 }}>{section.label}</Typography.Text>
+        <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis }}>{section.label}</Typography.Text>
       </Divider>
       <Row gutter={[16, 20]} style={{ marginBottom: 8 }}>
         {section.items.map((item) => (
@@ -220,6 +222,7 @@ function RecommendationsPage() {
     >
       <Typography.Title level={2} style={{ marginBottom: 8 }}>
         For You
+        <InfoTooltip title="Blends three sources: titles similar to your watch history, patterns from similar viewers, and activity from people you follow." />
       </Typography.Title>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
         Recommendations based on {watchedList.length} watched title{watchedList.length !== 1 ? "s" : ""}

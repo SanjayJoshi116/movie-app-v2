@@ -6,6 +6,9 @@ const commonTokens = {
   fontFamily: "'Poppins', sans-serif",
   borderRadius: 8,
   borderRadiusLG: 12,
+  fontSize: 14,
+  fontSizeHeading2: 30,
+  fontSizeHeading4: 20,
 };
 
 export const darkThemeConfig: ThemeConfig = {

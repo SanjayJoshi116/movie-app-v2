@@ -11,6 +11,7 @@ import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 function PeoplePage() {
   const navigate = useNavigate();
@@ -97,9 +98,9 @@ function PeoplePage() {
                     styles={{ body: { padding: "8px 10px" } }}
                     aria-label={`View profile of ${person.name}`}
                   >
-                    <MarqueeTitle style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{person.name}</MarqueeTitle>
+                    <MarqueeTitle style={{ fontSize: FONT_SIZE.emphasis, fontWeight: 600, marginBottom: 4 }}>{person.name}</MarqueeTitle>
                     {person.known_for_department && (
-                      <Tag icon={<UserOutlined />} color="default" style={{ fontSize: 11 }}>
+                      <Tag icon={<UserOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                         {person.known_for_department}
                       </Tag>
                     )}

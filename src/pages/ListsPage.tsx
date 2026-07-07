@@ -11,6 +11,9 @@ import {
 
 import { useListsContext } from "../context/useListsContext";
 import { downloadCSV } from "../utils/export";
+import { formatDateDMY } from "../utils/formatDate";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
 import { pageVariants, IMG_URL } from "../constants/ui";
 
@@ -62,6 +65,7 @@ function ListsPage() {
           <Button icon={<UploadOutlined />} onClick={() => setImportListOpen(true)} size="small">
             Import to List
           </Button>
+          <InfoTooltip title={<>CSV needs columns <code>id</code> (TMDB ID) and <code>title</code> — matches the format in the import dialog.</>} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
             New List
           </Button>
@@ -106,18 +110,18 @@ function ListsPage() {
                   </Popconfirm>,
                 ]}
               >
-                <Typography.Text strong style={{ fontSize: 14, display: "block", marginBottom: 4 }}>
+                <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }}>
                   {list.name}
                 </Typography.Text>
                 {list.description && (
-                  <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body, display: "block", marginBottom: 6 }}>
                     {list.description}
                   </Typography.Text>
                 )}
                 <Space size={4}>
                   <Tag color="gold">{list.items.length} item{list.items.length !== 1 ? "s" : ""}</Tag>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    {new Date(list.createdAt).toLocaleDateString()}
+                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>
+                    {formatDateDMY(list.createdAt)}
                   </Typography.Text>
                 </Space>
               </Card>
@@ -206,7 +210,7 @@ function ListsPage() {
                   >
                     <Typography.Text
                       strong
-                      style={{ fontSize: 12, display: "block", marginBottom: 4 }}
+                      style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }}
                       ellipsis={{ tooltip: item.title }}
                     >
                       {item.title}

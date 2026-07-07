@@ -7,6 +7,7 @@ import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
 import { parseCSVForImport } from "../utils/csvParse";
 import { getApiError } from "../utils/apiError";
+import { FONT_SIZE } from "../constants/typography";
 
 const { Text } = Typography;
 
@@ -126,7 +127,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
       destroyOnHidden
     >
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
           Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.
         </Text>
       </div>
@@ -157,7 +158,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         style={{ marginBottom: fileName ? 8 : 16 }}
       />
       {fileName && (
-        <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+        <Text type="secondary" style={{ display: "block", fontSize: FONT_SIZE.caption, marginBottom: 12 }}>
           {fileName}
         </Text>
       )}

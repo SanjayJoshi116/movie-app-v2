@@ -4,6 +4,7 @@ import type { MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/useAppContext";
 import { useRecentSearches } from "../hooks/useRecentSearches";
+import { FONT_SIZE } from "../constants/typography";
 
 const CLEAR_KEY = "__clear__";
 
@@ -40,7 +41,7 @@ const SearchBox = () => {
   const clearItem: MenuItem = {
     key: CLEAR_KEY,
     label: (
-      <Typography.Text type="danger" style={{ fontSize: 12 }}>
+      <Typography.Text type="danger" style={{ fontSize: FONT_SIZE.body }}>
         Clear recent searches
       </Typography.Text>
     ),
@@ -80,7 +81,7 @@ const SearchBox = () => {
       />
     </Dropdown>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingLeft: 4 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 14 }}>Adult content</Typography.Text>
+      <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>Adult content</Typography.Text>
       <Switch checked={includeAdult} onChange={setIncludeAdult} />
     </div>
     </>

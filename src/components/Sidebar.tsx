@@ -25,6 +25,7 @@ import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
+import { FONT_SIZE } from "../constants/typography";
 
 interface Props {
   isBrowsePage: boolean;
@@ -196,7 +197,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
                 {getInitials(user)}
               </Avatar>
             </Tooltip>
-            <Typography.Text style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600 }} ellipsis>
+            <Typography.Text style={{ flex: 1, minWidth: 0, fontSize: FONT_SIZE.body, fontWeight: 600 }} ellipsis>
               {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
             </Typography.Text>
             <Tooltip title="Sign Out">

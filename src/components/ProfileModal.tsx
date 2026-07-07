@@ -11,6 +11,7 @@ import { downloadAllAsZip } from "../utils/export";
 import { getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB } from "../api/userApi";
 import userApi from "../api/userApi";
 import { getApiError } from "../utils/apiError";
+import { FONT_SIZE } from "../constants/typography";
 
 interface Props {
   open: boolean;
@@ -125,7 +126,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
             onFinish={handleSubmit}
           >
             <Divider orientation="left" orientationMargin={0} style={{ margin: "0 0 14px" }}>
-              <span style={{ fontSize: 13, color: "#aaa" }}><UserOutlined /> Account Info</span>
+              <span style={{ fontSize: FONT_SIZE.emphasis, color: "#aaa" }}><UserOutlined /> Account Info</span>
             </Divider>
 
             <Row gutter={10}>
@@ -165,7 +166,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
             </Row>
 
             <Divider orientation="left" orientationMargin={0} style={{ margin: "4px 0 14px" }}>
-              <span style={{ fontSize: 13, color: "#aaa" }}><LockOutlined /> Change Password</span>
+              <span style={{ fontSize: FONT_SIZE.emphasis, color: "#aaa" }}><LockOutlined /> Change Password</span>
             </Divider>
 
             <Form.Item label="Current Password" name="current_password" style={{ marginBottom: 12 }}>
@@ -243,7 +244,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
         {/* Right column — data & TMDB */}
         <Col xs={24} sm={10}>
           <Divider orientation="left" orientationMargin={0} style={{ margin: "0 0 14px" }}>
-            <span style={{ fontSize: 13, color: "#aaa" }}><DatabaseOutlined /> Data</span>
+            <span style={{ fontSize: FONT_SIZE.emphasis, color: "#aaa" }}><DatabaseOutlined /> Data</span>
           </Divider>
           <Space direction="vertical" style={{ width: "100%" }}>
             <Button block icon={<UploadOutlined />} onClick={() => setCsvOpen(true)}>

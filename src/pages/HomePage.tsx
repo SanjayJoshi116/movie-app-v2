@@ -20,6 +20,7 @@ import {
 } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 const MOVIE_CATEGORIES = [
   { key: "discover", label: "Discover" },
@@ -166,7 +167,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
       {recentWatched.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <Typography.Text strong style={{ fontSize: 13, display: "block", marginBottom: 8, opacity: 0.7 }}>
+          <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 8, opacity: 0.7 }}>
             Recently Watched
           </Typography.Text>
           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>

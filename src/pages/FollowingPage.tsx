@@ -5,6 +5,7 @@ import { UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
 import { pageVariants } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 const { Title, Text } = Typography;
 
@@ -100,7 +101,7 @@ function FollowingPage() {
               >
                 <Text
                   strong
-                  style={{ fontSize: 12, display: "block" }}
+                  style={{ fontSize: FONT_SIZE.emphasis, display: "block" }}
                   ellipsis={{ tooltip: person.name }}
                 >
                   {person.name}

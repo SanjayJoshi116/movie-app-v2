@@ -54,6 +54,11 @@ desktop.ini
 enable-lan.ps1
 start.ps1
 
+# ad-hoc verification scratch scripts/screenshots (see CLAUDE.md)
+/verify_*.js
+/typo_*.png
+/*.png
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

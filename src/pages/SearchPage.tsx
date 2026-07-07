@@ -10,6 +10,7 @@ import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 function getRatingColor(v: number) {
   if (v >= 8) return "#52c41a";
@@ -164,7 +165,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                 style={{ height: "100%" }}
               >
                 <Card.Meta
-                  title={<span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>{m.title}</span>}
+                  title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{m.title}</span>}
                   description={
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
                       <Tag color={getRatingColor(m.vote_average)} style={{ margin: 0 }}>
@@ -254,7 +255,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                 style={{ height: "100%" }}
               >
                 <Card.Meta
-                  title={<span style={{ fontSize: 13, lineHeight: "1.3", display: "block" }}>{t.name}</span>}
+                  title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{t.name}</span>}
                   description={
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
                       <Tag color={getRatingColor(t.vote_average)} style={{ margin: 0 }}>
@@ -335,11 +336,11 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
                 }
                 styles={{ body: { padding: "8px 10px" } }}
               >
-                <Typography.Text strong style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+                <Typography.Text strong style={{ display: "block", fontSize: FONT_SIZE.emphasis, marginBottom: 4 }}>
                   {p.name}
                 </Typography.Text>
                 {p.known_for_department && (
-                  <Tag icon={<UserOutlined />} color="default" style={{ fontSize: 11 }}>
+                  <Tag icon={<UserOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
                     {p.known_for_department}
                   </Tag>
                 )}

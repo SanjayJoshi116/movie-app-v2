@@ -12,6 +12,7 @@ import WatchlistStats from "../components/watchlist/WatchlistStats";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 const SS_SCROLL = "watchlist_scroll";
 const SS_SEARCH = "watchlist_search";
@@ -189,7 +190,7 @@ function WatchlistPage() {
                     </Popconfirm>,
                   ]}
                 >
-                  <Typography.Text strong style={{ fontSize: 12, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
+                  <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
                     {item.title}
                   </Typography.Text>
                   <Space size={4} wrap>
@@ -199,7 +200,7 @@ function WatchlistPage() {
                     {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
                   </Space>
                   {rating?.review && (
-                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: 11, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
+                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
                       "{rating.review}"
                     </Typography.Paragraph>
                   )}

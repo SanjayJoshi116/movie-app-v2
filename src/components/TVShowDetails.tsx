@@ -18,6 +18,7 @@ import { RatingModal } from "./watchlist/RatingModal";
 import { getApiError } from "../utils/apiError";
 import type { TMDBTVDetail, TMDBProvider, TMDBProviderRegion } from "../types";
 import { IMG_URL } from "../constants/ui";
+import { FONT_SIZE } from "../constants/typography";
 
 const PROVIDER_SEARCH_URLS: Record<number, (title: string) => string> = {
   8:    (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`,
@@ -202,7 +203,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 )}
               </div>
 
-              <Typography.Paragraph style={{ fontSize: 15, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
+              <Typography.Paragraph style={{ fontSize: FONT_SIZE.body, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
 
               <Row gutter={[16, 8]}>
                 <Col>
@@ -288,16 +289,16 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   </>
                 ) : epEditing ? (
                   <>
-                    <Typography.Text style={{ fontSize: 12 }}>S</Typography.Text>
+                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>S</Typography.Text>
                     <Button size="small" icon={<MinusOutlined />} onClick={() => { setEpSeason((s) => Math.max(1, s - 1)); setEpEpisode(1); }} />
                     <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epSeason}</Typography.Text>
                     <Button size="small" icon={<PlusOutlined />} onClick={() => { setEpSeason((s) => Math.min(s + 1, number_of_seasons ?? 99)); setEpEpisode(1); }} />
-                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>/{number_of_seasons ?? "?"}</Typography.Text>
-                    <Typography.Text style={{ fontSize: 12, marginLeft: 4 }}>E</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{number_of_seasons ?? "?"}</Typography.Text>
+                    <Typography.Text style={{ fontSize: FONT_SIZE.caption, marginLeft: 4 }}>E</Typography.Text>
                     <Button size="small" icon={<MinusOutlined />} onClick={() => setEpEpisode((e) => Math.max(1, e - 1))} />
                     <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epEpisode}</Typography.Text>
                     <Button size="small" icon={<PlusOutlined />} onClick={() => setEpEpisode((e) => Math.min(e + 1, getMaxEpisodes(epSeason)))} />
-                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>/{getMaxEpisodes(epSeason)}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{getMaxEpisodes(epSeason)}</Typography.Text>
                     <Button
                       size="small"
                       type="primary"
@@ -362,7 +363,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
               >
                 <div>
                   <Typography.Text strong>{list.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: FONT_SIZE.caption }}>
                     {list.items.length} item{list.items.length !== 1 ? "s" : ""}
                   </Typography.Text>
                 </div>
@@ -416,8 +417,8 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     styles={{ body: { padding: "6px 8px" } }}
                     aria-label={`View details for ${actor.name}`}
                   >
-                    <Typography.Text strong style={{ fontSize: 11, display: "block" }}>{actor.name}</Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 10 }}>
+                    <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{actor.name}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>
                       {actor.roles?.[0]?.character || ""}
                     </Typography.Text>
                   </Card>
@@ -466,7 +467,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                       }
                       styles={{ body: { padding: "6px 8px" } }}
                     >
-                      <Typography.Text style={{ fontSize: 11 }}>{showName}</Typography.Text>
+                      <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{showName}</Typography.Text>
                     </Card>
                   </Col>
                 );
@@ -496,7 +497,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     }
                     styles={{ body: { padding: "6px 8px" } }}
                   >
-                    <Typography.Text style={{ fontSize: 11 }}>{show.name}</Typography.Text>
+                    <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>{show.name}</Typography.Text>
                   </Card>
                 </Col>
               ))}

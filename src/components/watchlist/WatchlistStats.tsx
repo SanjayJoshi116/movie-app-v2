@@ -1,6 +1,7 @@
 import { Card, Row, Col, Statistic, Divider, Progress, Typography } from "antd";
 import { StarFilled } from "@ant-design/icons";
 import type { WatchlistEntry, RatingsMap } from "../../types";
+import { FONT_SIZE } from "../../constants/typography";
 
 interface Props {
   watchlist: WatchlistEntry[];
@@ -50,7 +51,7 @@ const WatchlistStats = ({ watchlist, allRatings }: Props) => {
 
       <Row gutter={[16, 8]} align="middle">
         <Col xs={24} sm={12}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>
             Watched progress
           </Typography.Text>
           <Progress

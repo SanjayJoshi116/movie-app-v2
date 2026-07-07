@@ -9,6 +9,9 @@ import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
+import { formatDateDMY } from "../utils/formatDate";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
 
 type SortKey = "watched-desc" | "title-asc" | "tmdb-desc" | "my-rating-desc";
@@ -151,6 +154,7 @@ function WatchedPage() {
               { label: "My Rating ↓", value: "my-rating-desc" },
             ]}
           />
+          <InfoTooltip title="TMDB Rating is the public community score; My Rating is your personal rating." />
         </Space>
       )}
 
@@ -196,7 +200,7 @@ function WatchedPage() {
                     </Popconfirm>,
                   ]}
                 >
-                  <Typography.Text strong style={{ fontSize: 12, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
+                  <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
                     {item.title}
                   </Typography.Text>
                   <Space size={4} wrap>
@@ -207,8 +211,8 @@ function WatchedPage() {
                       <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
                     )}
                   </Space>
-                  <Typography.Text type="secondary" style={{ fontSize: 10, display: "block", marginTop: 6 }}>
-                    {new Date(item.watchedAt).toLocaleDateString()}
+                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
+                    {formatDateDMY(item.watchedAt)}
                   </Typography.Text>
                 </Card>
               </Col>

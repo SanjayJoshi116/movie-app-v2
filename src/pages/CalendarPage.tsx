@@ -5,6 +5,8 @@ import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty, Button } from "
 import { CalendarOutlined, StarFilled, DownloadOutlined } from "@ant-design/icons";
 import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
+import { InfoTooltip } from "../components/InfoTooltip";
+import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
 
@@ -213,13 +215,17 @@ function CalendarPage() {
           Release Calendar
         </Typography.Title>
         {groups.length > 0 && (
-          <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(groups)}>
-            Export iCal
-          </Button>
+          <>
+            <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(groups)}>
+              Export iCal
+            </Button>
+            <InfoTooltip title="Downloads an .ics file to import into Google/Apple/Outlook calendar." />
+          </>
         )}
       </div>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 20 }}>
-        Upcoming releases in the next 7 days
+        Upcoming releases in the next 60 days
+        <InfoTooltip title="Release dates are as listed on TMDB and may vary by region/platform." />
       </Typography.Text>
 
       <Radio.Group
@@ -245,7 +251,7 @@ function CalendarPage() {
         groups.map((group) => (
           <div key={group.date}>
             <Divider orientation="left">
-              <Typography.Text strong style={{ fontSize: 14 }}>{group.label}</Typography.Text>
+              <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis }}>{group.label}</Typography.Text>
             </Divider>
             <Row gutter={[12, 16]} style={{ marginBottom: 8 }}>
               {group.items.map((item) => (
@@ -272,17 +278,17 @@ function CalendarPage() {
                     >
                       <Typography.Text
                         strong
-                        style={{ fontSize: 12, display: "block", marginBottom: 4 }}
+                        style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }}
                         ellipsis={{ tooltip: item.title }}
                       >
                         {item.title}
                       </Typography.Text>
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0, fontSize: 10 }}>
+                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0, fontSize: FONT_SIZE.caption }}>
                           {item.type === "movie" ? "Movie" : "TV"}
                         </Tag>
                         {item.voteAverage > 0 && (
-                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: 10 }}>
+                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: FONT_SIZE.caption }}>
                             <StarFilled style={{ marginRight: 2 }} />
                             {item.voteAverage.toFixed(1)}
                           </Tag>

@@ -5,6 +5,7 @@ import { Button, Tag, Typography, Skeleton } from "antd";
 import { StarFilled } from "@ant-design/icons";
 import { fetchTrending } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
+import { FONT_SIZE } from "../constants/typography";
 
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
@@ -83,7 +84,7 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId }: Props) => {
           <Tag
             icon={<StarFilled />}
             color="gold"
-            style={{ fontSize: 13, padding: "2px 8px" }}
+            style={{ fontSize: FONT_SIZE.caption, padding: "2px 8px" }}
           >
             {item.vote_average.toFixed(1)}
           </Tag>

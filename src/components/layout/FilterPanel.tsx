@@ -14,6 +14,7 @@ import {
 import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
 import { genres } from "../../constants/genres";
+import { FONT_SIZE } from "../../constants/typography";
 
 const { CheckableTag } = Tag;
 
@@ -193,7 +194,7 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
                 onChange={() => toggleGenre(genre.id)}
                 aria-pressed={selected}
                 style={{
-                  fontSize: 13,
+                  fontSize: FONT_SIZE.caption,
                   padding: "4px 12px",
                   borderRadius: 50,
                   border: selected ? "1px solid #f5c518" : "1px solid rgba(128,128,128,0.4)",
