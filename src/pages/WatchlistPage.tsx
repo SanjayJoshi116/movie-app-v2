@@ -164,6 +164,19 @@ function WatchlistPage() {
               { label: "Unwatched", value: "unwatched" },
             ]}
           />
+          {(search.trim() !== "" || typeFilter !== "all" || watchedFilter !== "all" || sortKey !== "added-desc") && (
+            <Button
+              type="text"
+              onClick={() => {
+                setSearch("");
+                setSortKey("added-desc");
+                setTypeFilter("all");
+                setWatchedFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
         </Space>
       )}
 

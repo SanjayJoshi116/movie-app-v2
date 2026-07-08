@@ -24,7 +24,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 ## Features
 
 ### Discovery
-- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people
+- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people; the People page also has its own search box
 - **Hero Banner** — Trending title of the week as a full-width backdrop with title, overview, rating, and direct link
 - **Recent Searches** — Search history dropdown (last 5 queries)
 - **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies
@@ -43,13 +43,13 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
-- **Watchlist Filters** — Filter by media type (Movie/TV) and watched status, in addition to search and sort
+- **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes
 - **User Lists** — Create named lists, add or remove any movie or show, and export each list as CSV
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity (bar chart), and top genres (horizontal bar chart)
-- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
+- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
 - **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type; one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
@@ -199,14 +199,15 @@ src/
 │   ├── MovieDetailPage.tsx      # /movie/:id
 │   ├── TVDetailPage.tsx         # /tv/:id
 │   ├── PersonPage.tsx           # /person/:id — bio, filmography, follow button
-│   ├── PeoplePage.tsx           # /people — popular people browse with infinite scroll
-│   ├── WatchlistPage.tsx        # /watchlist — search, sort, export CSV (protected)
-│   ├── WatchedPage.tsx          # /watched — search, sort, export CSV (protected)
+│   ├── PeoplePage.tsx           # /people — popular people browse with infinite scroll + own search box
+│   ├── WatchlistPage.tsx        # /watchlist — search, sort, type/watched filters, export CSV (protected)
+│   ├── WatchedPage.tsx          # /watched — search, sort, type filter, export CSV (protected)
 │   ├── ListsPage.tsx            # /lists — create/delete lists, add items, export CSV (protected)
 │   ├── StatsPage.tsx            # /stats — watch history charts (protected)
 │   ├── FollowingPage.tsx        # /following — manage followed people (protected)
 │   ├── CalendarPage.tsx         # /calendar — 60-day release lookahead + iCal export (protected)
-│   ├── RecommendationsPage.tsx  # /recommendations — personalized + followed-people recs (protected)
+│   ├── RecommendationsPage.tsx  # /recommendations — personalized + followed-people recs, search/type filter,
+│   │                            #   watch/watchlist toggle icons per card (protected)
 │   ├── LoginPage.tsx            # /login
 │   ├── RegisterPage.tsx         # /register
 │   ├── ForgotPasswordPage.tsx   # /forgot-password — email-based reset link request
@@ -248,6 +249,7 @@ src/
 - **API key security** — The TMDB key lives in `.env` and is only accessed server-side (Express proxy or Django). Frontend requests go through `/api/tmdb/*`.
 - **Backend data** — All user data lives in PostgreSQL, bound to the authenticated user. No localStorage drift.
 - **Recommendations** — K-means clustering on rating-weighted genre vectors of the user's watch history (scikit-learn). Followed-people recommendations are fetched in parallel with personal recommendations and shown at the top. Only fetched once on first load (guarded by a `useRef` flag). Results are pre-computed and stored in `UserRecommendationCache` (PostgreSQL) at backend startup via the `compute_recommendations` management command; endpoints serve from DB in ~1ms. Stale cache (>12 h) triggers a background thread refresh on the next request. The `for-you`/`personalized` endpoints report `{status: "pending" | "ready", sections}` — an in-process set tracks which users have a refresh in flight so concurrent requests don't spawn duplicate threads. While `pending`, `RecommendationsPage` polls every 3s (up to ~1 min) instead of showing a terminal empty state.
+- **Adult content toggle** — Single switch, in `FilterPanel.tsx`, bound directly to the shared `includeAdult` UI-context value used by every search/discover call. Previously `SearchBox.tsx` also rendered its own copy backed by the same context while `FilterPanel.tsx` kept an unsynced local copy scoped only to discover params — the two could disagree. Consolidated to one control, one value.
 - **Filter params by media type** — `filtersToTMDBParams(filters, sortBy, mediaType)` uses `first_air_date` for TV and `primary_release_date` for movies, and remaps `primary_release_date.*` sort options to `first_air_date.*` for TV discover queries.
 - **Episode progress bounds** — The tracker reads `number_of_seasons` and `seasons[].episode_count` from the TMDB TV detail response to cap the +/- controls; no extra API call needed.
 - **CSV import** — Parses CSV in the browser (handles quoted fields and `""` escaped quotes), enriches with TMDB poster data in batches of 20, bulk-saves via `/api/watched/bulk/`, then calls `reloadWatched()` so the watched list in context updates immediately.
@@ -257,7 +259,7 @@ src/
 - **Protected routes** — Unauthenticated access to any non-public path redirects to `/login` with `state.from` preserved, handled inline in `AppInner` (`App.tsx`). Public paths: `/login`, `/register`, `/forgot-password`, `/reset-password/*`.
 - **Layout** — `App.tsx` uses a plain flex `div.app-shell`: `<Sidebar>` (desktop) + `<main>` + `<BottomNav>` (mobile). No Ant Design Layout wrapper.
 - **State** — `AppContext` for global UI state; `AuthContext` for auth; `ListsContext` for lists. Ephemeral page state (loading, pagination) stays local to each page component.
-- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page; the shared `usePaginatedFetch` hook (`src/hooks/usePaginatedFetch.ts`) handles fetch-page-1/loadMore/restore-on-return for all three, replacing what used to be ~90% duplicated per-page logic. On back-navigation it re-fetches the required pages in parallel and restores scroll position via `useLayoutEffect`. `SearchPage`'s tab-based search (`usePaginatedSearch`) has different restore mechanics (per-tab `sessionStorage` cache keyed by query, since its tabs mount/unmount independently) and is intentionally not merged into the shared hook. WatchlistPage persists scroll position, search query, sort key, and the type/watched-status filters in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
+- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page; the shared `usePaginatedFetch` hook (`src/hooks/usePaginatedFetch.ts`) handles fetch-page-1/loadMore/restore-on-return for all three, replacing what used to be ~90% duplicated per-page logic. On back-navigation it re-fetches the required pages in parallel and restores scroll position via `useLayoutEffect`. `SearchPage`'s tab-based search (`usePaginatedSearch`) has different restore mechanics (per-tab `sessionStorage` cache keyed by query, since its tabs mount/unmount independently) and is intentionally not merged into the shared hook. WatchlistPage persists scroll position, search query, sort key, and the type/watched-status filters in `sessionStorage`; WatchedPage and RecommendationsPage persist search/sort/type filters the same way (minus scroll position); ListsPage persists the selected list id — all survive full navigation away and back.
 - **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes. Used consistently across catch blocks (rating save, CSV import, list/watched actions) so failures surface a real message instead of a generic or silently-swallowed one.
 - **Ratings** — Validated 0.5–10 on both `RatingEntry.user_rating` (model `MinValueValidator`/`MaxValueValidator`) and the serializer field, matching TMDB's own rating scale.
 - **CI/CD** — `.github/workflows/ci.yml` runs three jobs on every push/PR to main: frontend (Jest + build), backend (`ruff check` + pytest against a live Postgres service container), and `e2e-python` (pytest-playwright against the React dev server, fully network-mocked).

@@ -64,7 +64,7 @@ interface Props {
 }
 
 export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props) {
-  const { selectedGenres, toggleGenre, clearGenres } = useAppContext();
+  const { selectedGenres, toggleGenre, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
   const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
   const [sortBy, setSortBy] = useState<SortOption>("popularity.desc");
 
@@ -72,13 +72,14 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
     setFilters((prev) => ({ ...prev, [key]: val }));
 
   const handleApply = () => {
-    onApply(filters, sortBy);
+    onApply({ ...filters, includeAdult }, sortBy);
   };
 
   const handleReset = () => {
     setFilters(DEFAULT_FILTERS);
     setSortBy("popularity.desc");
     clearGenres();
+    setIncludeAdult(false);
     onReset();
   };
 
@@ -220,8 +221,8 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography.Text>Include Adult Content</Typography.Text>
           <Switch
-            checked={filters.includeAdult}
-            onChange={(v) => setFilters((prev) => ({ ...prev, includeAdult: v }))}
+            checked={includeAdult}
+            onChange={setIncludeAdult}
           />
         </div>
       </Form>

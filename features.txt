@@ -1,8 +1,9 @@
-CINE DB — Feature List (v0.4.0)
+CINE DB — Feature List (v0.5.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
 - Live search across movies, TV, and people; recent-searches dropdown
+- People page has its own search box (in addition to the global search bar)
 - Advanced filters: year range, TMDB rating, language, runtime, sort order
 - Genre tag filtering
 - Infinite scroll (Home, TV, Anime)
@@ -19,12 +20,12 @@ DETAIL PAGES
 
 LIBRARY
 - Watchlist & Watched lists, tied to account
-- Watchlist filters by media type and watched status, in addition to search/sort
+- Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Search/sort/CSV export on Watchlist and Watched
 - Ratings (0.5-10) + written reviews
 - User Lists: create, add/remove items, CSV export, CSV import
 - Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, activity heatmap
-- Recommendations: personal history + "because you watched X" + followed-people picks
+- Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card
 - Release Calendar: 60-day lookahead, grouped by date, iCal export
 
 AUTH

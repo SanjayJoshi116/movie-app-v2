@@ -1,18 +1,28 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider } from "antd";
-import { StarFilled, BulbOutlined } from "@ant-design/icons";
+import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Input, Select, Tooltip, Space } from "antd";
+import { StarFilled, BulbOutlined, SearchOutlined, EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useUIContext } from "../context/UIContext";
+import { useWatchlistContext } from "../context/WatchlistContext";
+import { useWatchedContext } from "../context/WatchedContext";
+import { useToast } from "../hooks/useToast";
 import {
   fetchForYouRecommendations,
   fetchPersonalizedRecommendations,
   fetchFollowedPeopleRecommendations,
   type PersonalizedRecSection,
+  type PersonalizedRecItem,
 } from "../api/userApi";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
+
+const SS_SEARCH = "foryou_search";
+const SS_TYPE_FILTER = "foryou_type_filter";
+
+type TypeFilter = "all" | "movie" | "tv";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";
@@ -22,6 +32,10 @@ function getRatingColor(vote: number): string {
 
 const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
+  const { theme } = useUIContext();
+  const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
+  const { isWatched, toggle: toggleWatched } = useWatchedContext();
+  const { showSuccess } = useToast();
   return (
     <motion.div
       whileHover={{ scale: 1.04, y: -4 }}
@@ -50,15 +64,47 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                 <StarFilled style={{ marginRight: 2 }} />
                 {item.voteAverage.toFixed(1)}
               </Tag>
-              <Button
-                size="small"
-                type="primary"
-                ghost
-                onClick={(e) => { e.stopPropagation(); navigate(path, { state: { from: "/recommendations" } }); }}
-                aria-label={`Details for ${item.title}`}
-              >
-                Details
-              </Button>
+              <div style={{ display: "flex", gap: 4 }}>
+                <Tooltip title={isWatched(item.id, item.type) ? "Unmark watched" : "Mark as watched"}>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={isWatched(item.id, item.type) ? <EyeFilled /> : <EyeOutlined />}
+                    style={{ color: isWatched(item.id, item.type) ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const alreadyWatched = isWatched(item.id, item.type);
+                      toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                      showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
+                    }}
+                    aria-label={isWatched(item.id, item.type) ? "Unmark watched" : "Mark as watched"}
+                  />
+                </Tooltip>
+                <Tooltip title={isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}>
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={isInWatchlist(item.id, item.type) ? <BookFilled /> : <BookOutlined />}
+                    style={{ color: isInWatchlist(item.id, item.type) ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const inList = isInWatchlist(item.id, item.type);
+                      toggleWatchlist({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                      showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                    }}
+                    aria-label={isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}
+                  />
+                </Tooltip>
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  onClick={(e) => { e.stopPropagation(); navigate(path, { state: { from: "/recommendations" } }); }}
+                  aria-label={`Details for ${item.title}`}
+                >
+                  Details
+                </Button>
+              </div>
             </div>
           }
         />
@@ -118,6 +164,18 @@ function readRecCache(): RecCache | null {
 function RecommendationsPage() {
   const navigate = useNavigate();
   const { watchedList, isDataLoading } = useAppContext();
+
+  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
+
+  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
+  useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
+
+  const filterItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (items: PersonalizedRecItem[]) =>
+      items.filter((i) => (typeFilter === "all" || i.type === typeFilter) && (!q || i.title.toLowerCase().includes(q)));
+  }, [search, typeFilter]);
 
   const [cache] = useState<RecCache | null>(readRecCache);
 
@@ -212,6 +270,21 @@ function RecommendationsPage() {
     personalizedSections.reduce((acc, s) => acc + s.items.length, 0) +
     followedSections.reduce((acc, s) => acc + s.items.length, 0);
 
+  const toFilteredSections = (list: PersonalizedRecSection[]) =>
+    list
+      .map((s) => ({ ...s, items: filterItems(s.items) }))
+      .filter((s) => s.items.length > 0);
+
+  const filteredFollowed = toFilteredSections(followedSections);
+  const filteredPersonalized = toFilteredSections(personalizedSections);
+  const filteredForYou = toFilteredSections(sections);
+  const totalFilteredItems =
+    filteredFollowed.reduce((acc, s) => acc + s.items.length, 0) +
+    filteredPersonalized.reduce((acc, s) => acc + s.items.length, 0) +
+    filteredForYou.reduce((acc, s) => acc + s.items.length, 0);
+
+  const hasActiveFilters = search.trim() !== "" || typeFilter !== "all";
+
   return (
     <motion.div
       variants={pageVariants}
@@ -227,6 +300,34 @@ function RecommendationsPage() {
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
         Recommendations based on {watchedList.length} watched title{watchedList.length !== 1 ? "s" : ""}
       </Typography.Text>
+
+      {totalItems > 0 && (
+        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="Search title…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 200 }}
+          />
+          <Select
+            value={typeFilter}
+            onChange={setTypeFilter}
+            style={{ width: 130 }}
+            options={[
+              { label: "All Types", value: "all" },
+              { label: "Movies", value: "movie" },
+              { label: "TV Shows", value: "tv" },
+            ]}
+          />
+          {hasActiveFilters && (
+            <Button type="text" onClick={() => { setSearch(""); setTypeFilter("all"); }}>
+              Clear filters
+            </Button>
+          )}
+        </Space>
+      )}
 
       {isDataLoading ? (
         <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
@@ -253,15 +354,22 @@ function RecommendationsPage() {
           {loading && totalItems === 0 && (
             <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
           )}
-          {followedSections.map((section) => (
+          {filteredFollowed.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
-          {personalizedSections.map((section) => (
+          {filteredPersonalized.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
-          {sections.map((section) => (
+          {filteredForYou.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
+          {!loading && totalItems > 0 && totalFilteredItems === 0 && (
+            <Empty
+              image={<SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+              description="No recommendations match your filters."
+              style={{ padding: "60px 0" }}
+            />
+          )}
           {!loading && totalItems === 0 && computing && (
             <div style={{ textAlign: "center", padding: "60px 0" }}>
               <Spin size="large" />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Input, Dropdown, Typography, Switch } from "antd";
+import { Input, Dropdown, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/useAppContext";
@@ -13,7 +13,7 @@ type MenuItem = Required<MenuProps>["items"][number];
 const SearchBox = () => {
   const [inputValue, setInputValue] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const { setSearchTerm, searchTerm, includeAdult, setIncludeAdult } = useAppContext();
+  const { setSearchTerm, searchTerm } = useAppContext();
   const { recents, addRecent, clearRecents } = useRecentSearches();
   const navigate = useNavigate();
 
@@ -80,10 +80,6 @@ const SearchBox = () => {
         style={{ width: "100%" }}
       />
     </Dropdown>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingLeft: 4 }}>
-      <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>Adult content</Typography.Text>
-      <Switch checked={includeAdult} onChange={setIncludeAdult} />
-    </div>
     </>
   );
 };

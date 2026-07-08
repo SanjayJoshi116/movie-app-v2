@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select, Tooltip,
 } from "antd";
-import { StarFilled, DeleteOutlined, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
@@ -13,9 +13,14 @@ import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
 import { FONT_SIZE } from "../constants/typography";
-import { pageVariants } from "../constants/ui";
+import { pageVariants, WATCHED_GREEN } from "../constants/ui";
+
+const SS_SEARCH = "watched_search";
+const SS_SORT = "watched_sort";
+const SS_TYPE_FILTER = "watched_type_filter";
 
 type SortKey = "watched-desc" | "title-asc" | "tmdb-desc" | "my-rating-desc";
+type TypeFilter = "all" | "movie" | "tv";
 
 function WatchedPage() {
   const navigate = useNavigate();
@@ -23,8 +28,13 @@ function WatchedPage() {
   const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [clearing, setClearing] = useState(false);
-  const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("watched-desc");
+  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
+  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "watched-desc");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
+
+  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
+  useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
+  useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
 
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = Number(searchParams.get("pageSize") ?? "48") || 48;
@@ -48,6 +58,9 @@ function WatchedPage() {
 
   const filtered = useMemo(() => {
     let items = [...watchedList];
+    if (typeFilter !== "all") {
+      items = items.filter((i) => i.type === typeFilter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((i) => i.title.toLowerCase().includes(q));
@@ -66,7 +79,7 @@ function WatchedPage() {
       default: items.sort((a, b) => (b.watchedAt ?? "").localeCompare(a.watchedAt ?? ""));
     }
     return items;
-  }, [watchedList, search, sortKey, getRating]);
+  }, [watchedList, search, sortKey, typeFilter, getRating]);
 
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
   const movies = watchedList.filter((w) => w.type === "movie");
@@ -155,7 +168,30 @@ function WatchedPage() {
               { label: "My Rating ↓", value: "my-rating-desc" },
             ]}
           />
+          <Select
+            value={typeFilter}
+            onChange={(v) => { setTypeFilter(v); setPageState(1, pageSize); }}
+            style={{ width: 130 }}
+            options={[
+              { label: "All Types", value: "all" },
+              { label: "Movies", value: "movie" },
+              { label: "TV Shows", value: "tv" },
+            ]}
+          />
           <InfoTooltip title="TMDB Rating is the public community score; My Rating is your personal rating." />
+          {(search.trim() !== "" || sortKey !== "watched-desc" || typeFilter !== "all") && (
+            <Button
+              type="text"
+              onClick={() => {
+                setSearch("");
+                setSortKey("watched-desc");
+                setTypeFilter("all");
+                setPageState(1, pageSize);
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
         </Space>
       )}
 
@@ -168,7 +204,10 @@ function WatchedPage() {
           <Button type="primary" onClick={() => navigate("/movies")}>Browse Movies</Button>
         </Empty>
       ) : filtered.length === 0 ? (
-        <Empty description={`No results for "${search}"`} style={{ padding: "40px 0" }} />
+        <Empty
+          description={search.trim() ? `No results for "${search}"` : "No items match your filters."}
+          style={{ padding: "40px 0" }}
+        />
       ) : (
         <>
           <Row gutter={[16, 20]}>
@@ -192,19 +231,19 @@ function WatchedPage() {
                   }
                   actionButtons={
                     <Popconfirm
-                      title="Remove from watched?"
-                      onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Removed from watched"); }}
-                      okText="Remove"
+                      title="Mark as unwatched?"
+                      onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Marked as unwatched"); }}
+                      okText="Mark Unwatched"
                       cancelText="Cancel"
                     >
-                      <Tooltip title="Remove">
+                      <Tooltip title="Mark unwatched">
                         <Button
                           type="text"
-                          danger
                           size="small"
-                          icon={<DeleteOutlined />}
+                          icon={<EyeFilled />}
+                          style={{ color: WATCHED_GREEN }}
                           onClick={(e) => e.stopPropagation()}
-                          aria-label="Remove from watched"
+                          aria-label="Mark as unwatched"
                         />
                       </Tooltip>
                     </Popconfirm>

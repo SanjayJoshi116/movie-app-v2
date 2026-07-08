@@ -1,7 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Typography } from "antd";
+import { Row, Col, Typography, Input } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
 import PersonCard from "../components/PersonCard";
@@ -14,7 +14,8 @@ import { pageVariants } from "../constants/ui";
 function PeoplePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { searchTerm, includeAdult } = useAppContext();
+  const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
+  const [inputValue, setInputValue] = useState(searchTerm);
 
   const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
   const isReturning = locationState?.isReturn ?? false;
@@ -63,6 +64,20 @@ function PeoplePage() {
       <Typography.Title level={3} style={{ marginBottom: 20 }}>
         {searchTerm ? `People results for "${searchTerm}"` : "Popular People"}
       </Typography.Title>
+
+      <Input.Search
+        value={inputValue}
+        onChange={(e) => {
+          setInputValue(e.target.value);
+          if (e.target.value === "") setSearchTerm("");
+        }}
+        onSearch={(value) => setSearchTerm(value.trim())}
+        placeholder="Search people…"
+        allowClear
+        size="large"
+        aria-label="Search for people"
+        style={{ marginBottom: 20, maxWidth: 480 }}
+      />
 
       {loading ? (
         <Row gutter={[16, 20]}>
