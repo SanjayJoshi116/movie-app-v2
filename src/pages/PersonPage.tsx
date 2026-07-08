@@ -1,63 +1,28 @@
-import React, { memo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Card, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
+  Row, Col, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
 } from "antd";
 import { LeftOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import {
   fetchPerson,
-  fetchPersonCombinedCredits,
   fetchPersonMovieCredits,
   fetchPersonTVCredits,
   fetchPersonImages,
 } from "../api/tmdb";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
+import { MediaCardGrid } from "../components/MediaCardGrid";
+import { formatDateDMY } from "../utils/formatDate";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
   TMDBPersonImages,
-  TMDBPersonCombinedCredit,
 } from "../types";
-import { pageVariants, IMG_URL } from "../constants/ui";
+import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
-
-const CreditCard = memo(function CreditCard({
-  credit,
-  onClick,
-}: {
-  credit: TMDBPersonCombinedCredit;
-  onClick: () => void;
-}) {
-  const title = "title" in credit ? credit.title : credit.name;
-  return (
-    <Card
-      hoverable
-      size="small"
-      onClick={onClick}
-      cover={
-        <img
-          src={
-            credit.poster_path
-              ? `${IMG_URL}${credit.poster_path}`
-              : "https://placehold.co/200x300?text=?"
-          }
-          alt={title}
-          loading="lazy"
-          className="rec-card-img"
-        />
-      }
-      styles={{ body: { padding: "6px 8px" } }}
-      aria-label={`View details for ${title}`}
-    >
-      <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{title}</Typography.Text>
-      {"character" in credit && credit.character && (
-        <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>{credit.character}</Typography.Text>
-      )}
-    </Card>
-  );
-});
 
 function PersonPage() {
   const { id } = useParams<{ id: string }>();
@@ -68,11 +33,10 @@ function PersonPage() {
   const savedScrollY = locationState?.scrollY;
   const savedLoadedPages = locationState?.loadedPages;
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeCreditsTab = searchParams.get("tab") ?? "all";
+  const activeCreditsTab = searchParams.get("tab") ?? "movies";
   const { isFollowing, follow, unfollow } = useFollowedPeople();
   const { showSuccess } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
-  const [combinedCredits, setCombinedCredits] = useState<TMDBPersonCredits | null>(null);
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
   const [tvCredits, setTvCredits] = useState<TMDBPersonCredits | null>(null);
   const [images, setImages] = useState<TMDBPersonImages | null>(null);
@@ -85,16 +49,14 @@ function PersonPage() {
 
     const load = async () => {
       try {
-        const [personRes, combinedRes, movieRes, tvRes, imagesRes] = await Promise.all([
+        const [personRes, movieRes, tvRes, imagesRes] = await Promise.all([
           fetchPerson(id),
-          fetchPersonCombinedCredits(id),
           fetchPersonMovieCredits(id),
           fetchPersonTVCredits(id),
           fetchPersonImages(id),
         ]);
 
         setPerson(personRes.data);
-        setCombinedCredits(combinedRes.data);
         setMovieCredits(movieRes.data);
         setTvCredits(tvRes.data);
         setImages(imagesRes.data);
@@ -116,44 +78,24 @@ function PersonPage() {
     );
   if (!person) return null;
 
-  type TabItem = { key: string; label: string; children: React.ReactNode };
+  type TabItem = { key: string; label: string; children: ReactNode };
 
   const rawTabItems = ([
-    combinedCredits && combinedCredits.cast.length > 0
-      ? {
-          key: "all",
-          label: `All Credits (${combinedCredits.cast.length})`,
-          children: (
-            <Row gutter={[12, 16]}>
-              {combinedCredits.cast.map((credit) => (
-                <Col key={`cast-${credit.id}-${credit.media_type}`} xs={8} sm={6} md={4} lg={3}>
-                  <CreditCard
-                    credit={credit}
-                    onClick={() =>
-                      navigate(credit.media_type === "movie" ? `/movie/${credit.id}` : `/tv/${credit.id}`)
-                    }
-                  />
-                </Col>
-              ))}
-            </Row>
-          ),
-        }
-      : null,
     movieCredits && movieCredits.cast.length > 0
       ? {
           key: "movies",
           label: `Movies (${movieCredits.cast.length})`,
           children: (
-            <Row gutter={[12, 16]}>
-              {movieCredits.cast.map((credit) => (
-                <Col key={`movie-${credit.id}`} xs={8} sm={6} md={4} lg={3}>
-                  <CreditCard
-                    credit={credit}
-                    onClick={() => navigate(`/movie/${credit.id}`)}
-                  />
-                </Col>
-              ))}
-            </Row>
+            <MediaCardGrid
+              items={movieCredits.cast.map((c) => ({
+                id: c.id,
+                posterPath: c.poster_path,
+                name: "title" in c ? c.title : c.name,
+                subtitle: c.character,
+              }))}
+              mediaType="movie"
+              limit={movieCredits.cast.length}
+            />
           ),
         }
       : null,
@@ -162,16 +104,16 @@ function PersonPage() {
           key: "tv",
           label: `TV Shows (${tvCredits.cast.length})`,
           children: (
-            <Row gutter={[12, 16]}>
-              {tvCredits.cast.map((credit) => (
-                <Col key={`tv-${credit.id}`} xs={8} sm={6} md={4} lg={3}>
-                  <CreditCard
-                    credit={credit}
-                    onClick={() => navigate(`/tv/${credit.id}`)}
-                  />
-                </Col>
-              ))}
-            </Row>
+            <MediaCardGrid
+              items={tvCredits.cast.map((c) => ({
+                id: c.id,
+                posterPath: c.poster_path,
+                name: "name" in c ? c.name : c.title,
+                subtitle: c.character,
+              }))}
+              mediaType="tv"
+              limit={tvCredits.cast.length}
+            />
           ),
         }
       : null,
@@ -180,17 +122,20 @@ function PersonPage() {
           key: "images",
           label: `Photos (${images.profiles.length})`,
           children: (
-            <Row gutter={[12, 12]}>
-              {images.profiles.map((image) => (
-                <Col key={image.file_path} xs={8} sm={6} md={4} lg={3}>
-                  <Image
-                    src={`${IMG_URL}${image.file_path}`}
-                    alt="Profile"
-                    style={{ borderRadius: 8, width: "100%" }}
-                  />
-                </Col>
-              ))}
-            </Row>
+            <Image.PreviewGroup>
+              <Row gutter={[12, 12]}>
+                {images.profiles.map((image) => (
+                  <Col key={image.file_path} xs={12} sm={8} md={6}>
+                    <Image
+                      src={`${IMG_URL}${image.file_path}`}
+                      alt="Profile"
+                      className="backdrop-img"
+                      style={{ borderRadius: 8 }}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            </Image.PreviewGroup>
           ),
         }
       : null,
@@ -205,7 +150,7 @@ function PersonPage() {
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <div className="detail-container" style={{ paddingBottom: 16 }}>
         <Button
           icon={<LeftOutlined />}
           onClick={() => from ? navigate(from, { state: { scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
@@ -217,11 +162,7 @@ function PersonPage() {
         <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
           <Col xs={24} sm={8} md={6}>
             <img
-              src={
-                person.profile_path
-                  ? `${IMG_URL}${person.profile_path}`
-                  : "https://placehold.co/300x450?text=No+Image"
-              }
+              src={person.profile_path ? `${IMG_URL}${person.profile_path}` : NO_IMAGE}
               alt={person.name}
               className="person-profile-img"
               style={{ width: "100%", borderRadius: 12 }}
@@ -250,11 +191,31 @@ function PersonPage() {
             </div>
 
             <Descriptions column={{ xs: 1, sm: 2 }} size="small" bordered style={{ marginBottom: 16 }}>
+              {person.known_for_department && (
+                <Descriptions.Item label="Known For">{person.known_for_department}</Descriptions.Item>
+              )}
               {person.birthday && (
-                <Descriptions.Item label="Birthday">{person.birthday}</Descriptions.Item>
+                <Descriptions.Item label="Birthday">{formatDateDMY(person.birthday)}</Descriptions.Item>
               )}
               {person.place_of_birth && (
                 <Descriptions.Item label="Place of Birth">{person.place_of_birth}</Descriptions.Item>
+              )}
+              {person.deathday && (
+                <Descriptions.Item label="Died">{formatDateDMY(person.deathday)}</Descriptions.Item>
+              )}
+              {person.imdb_id && (
+                <Descriptions.Item label="IMDb">
+                  <a href={`https://www.imdb.com/name/${person.imdb_id}`} target="_blank" rel="noopener noreferrer">
+                    View on IMDb
+                  </a>
+                </Descriptions.Item>
+              )}
+              {person.homepage && (
+                <Descriptions.Item label="Website">
+                  <a href={person.homepage} target="_blank" rel="noopener noreferrer">
+                    {person.homepage}
+                  </a>
+                </Descriptions.Item>
               )}
             </Descriptions>
 

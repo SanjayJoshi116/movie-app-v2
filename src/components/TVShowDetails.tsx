@@ -21,6 +21,7 @@ import { InfoTooltip } from "./InfoTooltip";
 import { SectionHeader } from "./SectionHeader";
 import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
+import { ReviewsSection } from "./ReviewsSection";
 import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -32,6 +33,7 @@ export type TVShowDetailData = TMDBTVDetail & {
   next_episode_to_air?: { air_date: string };
   aggregate_credits?: TMDBTVDetail["aggregateCredits"];
   similar?: { results: TMDBTVDetail["recommendations"] };
+  reviews: Array<{ id: string; author: string; content: string }>;
 };
 
 interface Props {
@@ -63,7 +65,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
     id, name, overview, first_air_date, poster_path, backdrop_path, genres, vote_average,
     number_of_episodes, number_of_seasons, original_language, status,
     last_air_date, next_episode_to_air, networks, external_ids,
-    aggregate_credits, similar, recommendations, images, videos,
+    aggregate_credits, similar, recommendations, images, videos, reviews,
   } = tvShow;
 
   const hasBackdrop = !!backdrop_path;
@@ -396,21 +398,21 @@ const TVShowDetails = ({ tvShow }: Props) => {
         )}
 
         <MediaCardGrid
+          title="Recommendations"
+          items={(
+            (recommendations as { results?: Array<{ id: number; poster_path: string | null; name: string }> })
+              ?.results ?? []
+          ).map((show) => ({ id: show.id, posterPath: show.poster_path, name: show.name }))}
+          mediaType="tv"
+        />
+
+        <MediaCardGrid
           title="Similar TV Shows"
           items={(similar?.results ?? []).map((show) => ({
             id: show.id,
             posterPath: show.poster_path,
             name: "name" in show ? show.name : "",
           }))}
-          mediaType="tv"
-        />
-
-        <MediaCardGrid
-          title="Recommendations"
-          items={(
-            (recommendations as { results?: Array<{ id: number; poster_path: string | null; name: string }> })
-              ?.results ?? []
-          ).map((show) => ({ id: show.id, posterPath: show.poster_path, name: show.name }))}
           mediaType="tv"
         />
 
@@ -455,6 +457,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
             </Image.PreviewGroup>
           </>
         )}
+
+        {/* Reviews */}
+        <ReviewsSection reviews={reviews} />
       </div>
     </div>
   );

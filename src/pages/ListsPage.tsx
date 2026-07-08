@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Typography, Button, Modal, Form, Input, Card, Row, Col, Empty,
-  Space, Popconfirm, Tag, Divider, Spin,
+  Space, Popconfirm, Tag, Divider, Spin, Tooltip,
 } from "antd";
 import {
   PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined, UploadOutlined, ClearOutlined,
@@ -13,9 +13,10 @@ import { useListsContext } from "../context/useListsContext";
 import { downloadCSV } from "../utils/export";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
+import LibraryItemCard from "../components/LibraryItemCard";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
-import { pageVariants, IMG_URL } from "../constants/ui";
+import { pageVariants } from "../constants/ui";
 
 const SS_SELECTED = "lists_selected_id";
 
@@ -92,7 +93,8 @@ function ListsPage() {
             <Col key={list.id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 hoverable
-                style={{ cursor: "pointer", borderColor: currentSelected?.id === list.id ? "#f5c518" : undefined }}
+                className="glass-card"
+                style={{ height: "100%", cursor: "pointer", borderColor: currentSelected?.id === list.id ? "#f5c518" : undefined }}
                 onClick={() => selectList(list.id === currentSelected?.id ? null : list.id)}
                 actions={[
                   <Popconfirm
@@ -181,51 +183,42 @@ function ListsPage() {
             <Row gutter={[16, 20]}>
               {currentSelected.items.map((item) => (
                 <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                  <Card
-                    hoverable
-                    cover={
-                      <img
-                        src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/300x450?text=No+Image"}
-                        alt={item.title}
-                        loading="lazy"
-                        className="movie-poster-img"
-                        onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/lists" } })}
-                        style={{ cursor: "pointer" }}
-                      />
+                  <LibraryItemCard
+                    posterPath={item.posterPath}
+                    title={item.title}
+                    onOpen={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/lists" } })}
+                    tags={
+                      <>
+                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                          {item.type === "movie" ? "Movie" : "TV"}
+                        </Tag>
+                        {item.voteAverage != null && (
+                          <Tag color="gold" style={{ margin: 0 }}>
+                            <StarFilled /> {item.voteAverage.toFixed(1)}
+                          </Tag>
+                        )}
+                      </>
                     }
-                    styles={{ body: { padding: "10px 12px" } }}
-                    actions={[
+                    actionButtons={
                       <Popconfirm
-                        key="remove"
                         title="Remove from list?"
                         onConfirm={() => removeFromList(currentSelected.id, item.id, item.type)}
                         okText="Remove"
                         cancelText="Cancel"
                       >
-                        <Button type="link" danger icon={<DeleteOutlined />} size="small">
-                          Remove
-                        </Button>
-                      </Popconfirm>,
-                    ]}
-                  >
-                    <Typography.Text
-                      strong
-                      style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }}
-                      ellipsis={{ tooltip: item.title }}
-                    >
-                      {item.title}
-                    </Typography.Text>
-                    <Space size={4} wrap>
-                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                        {item.type === "movie" ? "Movie" : "TV"}
-                      </Tag>
-                      {item.voteAverage != null && (
-                        <Tag color="gold" style={{ margin: 0 }}>
-                          <StarFilled /> {item.voteAverage.toFixed(1)}
-                        </Tag>
-                      )}
-                    </Space>
-                  </Card>
+                        <Tooltip title="Remove">
+                          <Button
+                            type="text"
+                            danger
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Remove from list"
+                          />
+                        </Tooltip>
+                      </Popconfirm>
+                    }
+                  />
                 </Col>
               ))}
             </Row>

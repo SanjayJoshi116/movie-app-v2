@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.3.0)
+CINE DB — Feature List (v0.4.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -11,13 +11,15 @@ DISCOVERY
 
 DETAIL PAGES
 - Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability
+- Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a grid (no horizontal scroll)
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
 - Add to / remove from custom lists
-- Episode guide + episode progress tracker (TV)
-- Person pages: bio, filmography, follow button
+- Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle
+- Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button
 
 LIBRARY
 - Watchlist & Watched lists, tied to account
+- Watchlist filters by media type and watched status, in addition to search/sort
 - Search/sort/CSV export on Watchlist and Watched
 - Ratings (0.5-10) + written reviews
 - User Lists: create, add/remove items, CSV export, CSV import

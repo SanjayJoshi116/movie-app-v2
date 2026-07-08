@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Card, Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select,
+  Row, Col, Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select, Tooltip,
 } from "antd";
 import { StarFilled, DeleteOutlined, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
@@ -11,8 +11,9 @@ import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
+import LibraryItemCard from "../components/LibraryItemCard";
 import { FONT_SIZE } from "../constants/typography";
-import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { pageVariants } from "../constants/ui";
 
 type SortKey = "watched-desc" | "title-asc" | "tmdb-desc" | "my-rating-desc";
 
@@ -173,48 +174,47 @@ function WatchedPage() {
           <Row gutter={[16, 20]}>
             {paginated.map((item) => (
               <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                <Card
-                  hoverable
-                  cover={
-                    <img
-                      src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
-                      alt={item.title}
-                      loading="lazy"
-                      className="movie-poster-img"
-                      onClick={() =>
-                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
-                      }
-                      style={{ cursor: "pointer" }}
-                    />
+                <LibraryItemCard
+                  posterPath={item.posterPath}
+                  title={item.title}
+                  onOpen={() =>
+                    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
                   }
-                  styles={{ body: { padding: "10px 12px" } }}
-                  actions={[
+                  tags={
+                    <>
+                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                        {item.type === "movie" ? "Movie" : "TV"}
+                      </Tag>
+                      {item.voteAverage != null && (
+                        <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
+                      )}
+                    </>
+                  }
+                  actionButtons={
                     <Popconfirm
-                      key="remove"
                       title="Remove from watched?"
                       onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Removed from watched"); }}
                       okText="Remove"
                       cancelText="Cancel"
                     >
-                      <Button type="link" danger icon={<DeleteOutlined />} size="small">Remove</Button>
-                    </Popconfirm>,
-                  ]}
-                >
-                  <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
-                    {item.title}
-                  </Typography.Text>
-                  <Space size={4} wrap>
-                    <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                      {item.type === "movie" ? "Movie" : "TV"}
-                    </Tag>
-                    {item.voteAverage != null && (
-                      <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
-                    )}
-                  </Space>
-                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
-                    {formatDateDMY(item.watchedAt)}
-                  </Typography.Text>
-                </Card>
+                      <Tooltip title="Remove">
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Remove from watched"
+                        />
+                      </Tooltip>
+                    </Popconfirm>
+                  }
+                  footer={
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
+                      {formatDateDMY(item.watchedAt)}
+                    </Typography.Text>
+                  }
+                />
               </Col>
             ))}
           </Row>

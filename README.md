@@ -33,15 +33,17 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
 
 ### Detail Pages
-- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; backdrop hero with horizontal cast scroll
+- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; both pages share the same section order and layout, each showing up to 20 recommendation/similar cards; cast displays in a wrapping grid (no horizontal scroll)
+- **Reviews** — TMDB reviews on both Movie and TV detail pages, rendered as a 2-column card grid
 - **Add to List** — Add or remove a title from any custom list directly from the detail page
-- **Episode Guide** — Season/episode breakdown on TV detail pages
+- **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time
-- **Person Pages** — Actor/crew bios with full filmography tabs (all credits, movies, TV, photos)
-- **Follow Actors & Directors** — Follow any person from their detail page; manage followed people at `/following`
+- **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links
+- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
+- **Watchlist Filters** — Filter by media type (Movie/TV) and watched status, in addition to search and sort
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes
 - **User Lists** — Create named lists, add or remove any movie or show, and export each list as CSV
@@ -142,8 +144,7 @@ src/
 │   ├── ui/
 │   │   └── StarRating.tsx       # Ant Design Rate (1–10, gold, keyboard accessible)
 │   ├── watchlist/
-│   │   ├── RatingModal.tsx      # Modal + Form for rating + review
-│   │   └── WatchlistStats.tsx   # Summary stats for the watchlist page
+│   │   └── RatingModal.tsx      # Modal + Form for rating + review
 │   ├── ErrorBoundary.tsx
 │   ├── Sidebar.tsx              # Desktop: 220px left nav — shows username/sign-out when authed
 │   ├── BottomNav.tsx            # Mobile: fixed bottom nav + overflow drawer
@@ -153,8 +154,13 @@ src/
 │   ├── StreamingBadges.tsx      # JustWatch provider logos
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
 │   ├── WatchProviders.tsx       # Streaming/rent provider logos with deep links, shared by Movie/TV detail pages
-│   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar), shared by Movie/TV detail pages
-│   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages
+│   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar/credits), shared by Movie/TV detail
+│   │                            #   and Person pages; optional section title and per-item subtitle, limit=20 default
+│   ├── ReviewsSection.tsx       # 2-column review cards, shared by Movie/TV detail pages
+│   ├── LibraryItemCard.tsx      # Poster + Card.Meta + icon-action card, shared by Watchlist/Watched/Lists pages
+│   ├── PersonCard.tsx           # Browse card for People listing + search results (department tag, Follow button)
+│   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages; episode list for the selected
+│   │                            #   season sits behind its own collapse toggle
 │   ├── CSVUploadModal.tsx       # CSV import modal with preview + TMDB poster enrichment
 │   ├── ProfileModal.tsx         # Edit profile + change password + delete account (password-confirmed) + TMDB OAuth connect
 │   ├── Movie.tsx / Movies.tsx
@@ -251,7 +257,7 @@ src/
 - **Protected routes** — Unauthenticated access to any non-public path redirects to `/login` with `state.from` preserved, handled inline in `AppInner` (`App.tsx`). Public paths: `/login`, `/register`, `/forgot-password`, `/reset-password/*`.
 - **Layout** — `App.tsx` uses a plain flex `div.app-shell`: `<Sidebar>` (desktop) + `<main>` + `<BottomNav>` (mobile). No Ant Design Layout wrapper.
 - **State** — `AppContext` for global UI state; `AuthContext` for auth; `ListsContext` for lists. Ephemeral page state (loading, pagination) stays local to each page component.
-- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page; the shared `usePaginatedFetch` hook (`src/hooks/usePaginatedFetch.ts`) handles fetch-page-1/loadMore/restore-on-return for all three, replacing what used to be ~90% duplicated per-page logic. On back-navigation it re-fetches the required pages in parallel and restores scroll position via `useLayoutEffect`. `SearchPage`'s tab-based search (`usePaginatedSearch`) has different restore mechanics (per-tab `sessionStorage` cache keyed by query, since its tabs mount/unmount independently) and is intentionally not merged into the shared hook. WatchlistPage persists scroll position, search query, and sort key in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
+- **Scroll restoration** — HomePage, AnimePage, and PeoplePage encode `scrollY` and `loadedPages` in `navigate()` state when clicking into a detail or person page; the shared `usePaginatedFetch` hook (`src/hooks/usePaginatedFetch.ts`) handles fetch-page-1/loadMore/restore-on-return for all three, replacing what used to be ~90% duplicated per-page logic. On back-navigation it re-fetches the required pages in parallel and restores scroll position via `useLayoutEffect`. `SearchPage`'s tab-based search (`usePaginatedSearch`) has different restore mechanics (per-tab `sessionStorage` cache keyed by query, since its tabs mount/unmount independently) and is intentionally not merged into the shared hook. WatchlistPage persists scroll position, search query, sort key, and the type/watched-status filters in `sessionStorage`; ListsPage persists the selected list id — both survive full navigation away and back.
 - **API error normalization** — `src/utils/apiError.ts` exports `getApiError(error)` which extracts a human-readable string from axios errors, handling DRF's `detail`, `non_field_errors`, and field-level error shapes. Used consistently across catch blocks (rating save, CSV import, list/watched actions) so failures surface a real message instead of a generic or silently-swallowed one.
 - **Ratings** — Validated 0.5–10 on both `RatingEntry.user_rating` (model `MinValueValidator`/`MaxValueValidator`) and the serializer field, matching TMDB's own rating scale.
 - **CI/CD** — `.github/workflows/ci.yml` runs three jobs on every push/PR to main: frontend (Jest + build), backend (`ruff check` + pytest against a live Postgres service container), and `e2e-python` (pytest-playwright against the React dev server, fully network-mocked).
@@ -262,7 +268,8 @@ src/
 - **Typography** — `src/constants/typography.ts` exports `FONT_SIZE.caption/body/emphasis/display`; every inline `fontSize` in the app sources from this scale instead of a hardcoded number (icon-scaling `fontSize` props on antd icons are the one exception). Heading sizes are set once via antd theme tokens in `src/theme/antdTheme.ts`.
 - **Date formatting** — `src/utils/formatDate.ts` (`formatDateDMY`) renders dates as `dd-mm-yyyy` regardless of the viewer's locale, used anywhere a date is shown to the user (Watched, Lists, Movie/TV Detail).
 - **Info tooltips** — `src/components/InfoTooltip.tsx` wraps antd `Tooltip` + `InfoCircleOutlined` into one reusable `<InfoTooltip title="..." />`.
-- **Movie/TV detail parity** — `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader`, `WatchProviders`, and `MediaCardGrid` (all in `src/components/`) instead of each carrying its own copy. Both fetch `videos` via `append_to_response` and render a Trailers section from it.
+- **Movie/TV detail parity** — `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader`, `WatchProviders`, `MediaCardGrid`, and `ReviewsSection` (all in `src/components/`) instead of each carrying its own copy, and render sections in the same order (Where to Watch → Cast → Recommendations → Similar → Trailers → Images → Reviews, with TV's Episode Guide inserted after Cast). Both fetch `videos` via `append_to_response` and render a Trailers section from it; TV now also fetches reviews (`fetchTVReviews`), previously movie-only.
+- **Library card parity** — `WatchlistPage.tsx`, `WatchedPage.tsx`, and `ListsPage.tsx` share `LibraryItemCard.tsx` for their item grids instead of three near-duplicate `Card`/`Card.Meta` blocks; `PeoplePage.tsx` and `SearchPage.tsx`'s People tab share `PersonCard.tsx` the same way.
 
 ---
 

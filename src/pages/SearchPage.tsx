@@ -6,6 +6,7 @@ import { EyeOutlined, EyeFilled, UserOutlined, SearchOutlined } from "@ant-desig
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";
+import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
@@ -321,31 +322,7 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
       <Row gutter={[16, 20]}>
         {items.map((p: TMDBPersonSummary) => (
           <Col key={p.id} xs={12} sm={8} md={6} lg={4}>
-            <motion.div whileHover={{ scale: 1.04, y: -4 }} transition={{ type: "spring", stiffness: 300, damping: 20 }}>
-              <Card
-                hoverable
-                className="glass-card"
-                onClick={() => navigate(`/person/${p.id}`)}
-                cover={
-                  <img
-                    src={p.profile_path ? `${IMG_URL}${p.profile_path}` : "https://placehold.co/500x750?text=No+Image"}
-                    alt={p.name}
-                    loading="lazy"
-                    className="movie-poster-img"
-                  />
-                }
-                styles={{ body: { padding: "8px 10px" } }}
-              >
-                <Typography.Text strong style={{ display: "block", fontSize: FONT_SIZE.emphasis, marginBottom: 4 }}>
-                  {p.name}
-                </Typography.Text>
-                {p.known_for_department && (
-                  <Tag icon={<UserOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
-                    {p.known_for_department}
-                  </Tag>
-                )}
-              </Card>
-            </motion.div>
+            <PersonCard person={p} onClick={() => navigate(`/person/${p.id}`)} />
           </Col>
         ))}
       </Row>

@@ -2,23 +2,27 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Card, Button, Tag, Typography, Empty, Space, Popconfirm, Input, Select,
+  Row, Col, Button, Tag, Typography, Empty, Space, Popconfirm, Input, Select, Tooltip,
 } from "antd";
-import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, SearchOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
-import WatchlistStats from "../components/watchlist/WatchlistStats";
+import LibraryItemCard from "../components/LibraryItemCard";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
-import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { pageVariants } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
 const SS_SCROLL = "watchlist_scroll";
 const SS_SEARCH = "watchlist_search";
 const SS_SORT   = "watchlist_sort";
+const SS_TYPE_FILTER = "watchlist_type_filter";
+const SS_WATCHED_FILTER = "watchlist_watched_filter";
 
 type SortKey = "added-desc" | "added-asc" | "title-asc" | "rating-desc";
+type TypeFilter = "all" | "movie" | "tv";
+type WatchedFilter = "all" | "watched" | "unwatched";
 
 interface RatingTarget {
   id: number;
@@ -28,11 +32,13 @@ interface RatingTarget {
 
 function WatchlistPage() {
   const navigate = useNavigate();
-  const { watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, allRatings } = useAppContext();
+  const { watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, markWatched } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "added-desc");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
+  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>(() => (sessionStorage.getItem(SS_WATCHED_FILTER) as WatchedFilter) ?? "all");
   const didRestoreScroll = useRef(false);
 
   useEffect(() => {
@@ -48,9 +54,17 @@ function WatchlistPage() {
 
   useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
   useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
+  useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
+  useEffect(() => { sessionStorage.setItem(SS_WATCHED_FILTER, watchedFilter); }, [watchedFilter]);
 
   const filtered = useMemo(() => {
     let items = [...watchlist];
+    if (typeFilter !== "all") {
+      items = items.filter((i) => i.type === typeFilter);
+    }
+    if (watchedFilter !== "all") {
+      items = items.filter((i) => (watchedFilter === "watched" ? i.watched : !i.watched));
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((i) => i.title.toLowerCase().includes(q));
@@ -62,7 +76,7 @@ function WatchlistPage() {
       default:           items.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
     }
     return items;
-  }, [watchlist, search, sortKey]);
+  }, [watchlist, search, sortKey, typeFilter, watchedFilter]);
 
   const handleExport = () => {
     const rows = watchlist.map((i) => ({
@@ -84,10 +98,6 @@ function WatchlistPage() {
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      {watchlist.length > 0 && (
-        <WatchlistStats watchlist={watchlist} allRatings={allRatings} />
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <Typography.Title level={2} style={{ margin: 0, flex: 1 }}>
           My Watchlist ({watchlist.length})
@@ -134,6 +144,26 @@ function WatchlistPage() {
               { label: "TMDB Rating ↓", value: "rating-desc" },
             ]}
           />
+          <Select
+            value={typeFilter}
+            onChange={setTypeFilter}
+            style={{ width: 130 }}
+            options={[
+              { label: "All Types", value: "all" },
+              { label: "Movies", value: "movie" },
+              { label: "TV Shows", value: "tv" },
+            ]}
+          />
+          <Select
+            value={watchedFilter}
+            onChange={setWatchedFilter}
+            style={{ width: 150 }}
+            options={[
+              { label: "All", value: "all" },
+              { label: "Watched", value: "watched" },
+              { label: "Unwatched", value: "unwatched" },
+            ]}
+          />
         </Space>
       )}
 
@@ -146,65 +176,88 @@ function WatchlistPage() {
           <Button type="primary" onClick={() => navigate("/movies")}>Browse Movies</Button>
         </Empty>
       ) : filtered.length === 0 ? (
-        <Empty description={`No results for "${search}"`} style={{ padding: "40px 0" }} />
+        <Empty
+          description={search.trim() ? `No results for "${search}"` : "No items match your filters."}
+          style={{ padding: "40px 0" }}
+        />
       ) : (
         <Row gutter={[16, 20]}>
           {filtered.map((item) => {
             const rating = getRating(item.id, item.type);
             return (
               <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                <Card
-                  hoverable
-                  cover={
-                    <img
-                      src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
-                      alt={item.title}
-                      loading="lazy"
-                      className="movie-poster-img"
-                      onClick={() => {
-                        sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
-                        navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
+                <LibraryItemCard
+                  posterPath={item.posterPath}
+                  title={item.title}
+                  onOpen={() => {
+                    sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
+                    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
+                  }}
+                  tags={
+                    <>
+                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                        {item.type === "movie" ? "Movie" : "TV"}
+                      </Tag>
+                      {item.voteAverage != null && (
+                        <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
+                      )}
+                      {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
+                      {item.watched && <Tag color="cyan" style={{ margin: 0 }}>Watched</Tag>}
+                    </>
                   }
-                  styles={{ body: { padding: "10px 12px" } }}
-                  actions={[
-                    <Button
-                      key="rate"
-                      type="link"
-                      icon={<EditOutlined />}
-                      size="small"
-                      onClick={() => setRatingTarget({ id: item.id, type: item.type, title: item.title })}
-                    >
-                      {rating ? "Edit" : "Rate"}
-                    </Button>,
-                    <Popconfirm
-                      key="remove"
-                      title="Remove from watchlist?"
-                      onConfirm={() => { removeFromWatchlist(item.id, item.type); showSuccess("Removed from watchlist"); }}
-                      okText="Remove"
-                      cancelText="Cancel"
-                    >
-                      <Button type="link" danger icon={<DeleteOutlined />} size="small">Remove</Button>
-                    </Popconfirm>,
-                  ]}
-                >
-                  <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }} ellipsis={{ tooltip: item.title }}>
-                    {item.title}
-                  </Typography.Text>
-                  <Space size={4} wrap>
-                    {item.voteAverage != null && (
-                      <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
-                    )}
-                    {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
-                  </Space>
-                  {rating?.review && (
-                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
-                      "{rating.review}"
-                    </Typography.Paragraph>
-                  )}
-                </Card>
+                  actionButtons={
+                    <>
+                      <Tooltip title={item.watched ? "Mark unwatched" : "Mark watched"}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={item.watched ? <EyeFilled /> : <EyeOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markWatched(item.id, item.type, !item.watched);
+                          }}
+                          aria-label={item.watched ? "Mark unwatched" : "Mark watched"}
+                        />
+                      </Tooltip>
+                      <Tooltip title={rating ? "Edit rating" : "Rate"}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRatingTarget({ id: item.id, type: item.type, title: item.title });
+                          }}
+                          aria-label={rating ? "Edit rating" : "Rate"}
+                        />
+                      </Tooltip>
+                      <Popconfirm
+                        title="Remove from watchlist?"
+                        onConfirm={() => { removeFromWatchlist(item.id, item.type); showSuccess("Removed from watchlist"); }}
+                        okText="Remove"
+                        cancelText="Cancel"
+                      >
+                        <Tooltip title="Remove">
+                          <Button
+                            type="text"
+                            danger
+                            size="small"
+                            icon={<DeleteOutlined />}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Remove from watchlist"
+                          />
+                        </Tooltip>
+                      </Popconfirm>
+                    </>
+                  }
+                  footer={
+                    rating?.review && (
+                      <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
+                        "{rating.review}"
+                      </Typography.Paragraph>
+                    )
+                  }
+                />
               </Col>
             );
           })}

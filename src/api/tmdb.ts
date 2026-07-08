@@ -169,6 +169,21 @@ export const fetchTVWatchProviders = (
 ): Promise<AxiosResponse<TMDBWatchProviderResponse>> =>
   api.get(`/tv/${id}/watch/providers`);
 
+export const fetchTVReviews = (
+  id: number | string,
+  page = 1,
+): Promise<
+  AxiosResponse<
+    TMDBPaginatedResponse<{
+      id: string;
+      author: string;
+      content: string;
+      created_at: string;
+      author_details: { rating: number | null; avatar_path: string | null };
+    }>
+  >
+> => api.get(`/tv/${id}/reviews`, { params: { page } });
+
 export const fetchTVSeason = (
   tvId: number | string,
   seasonNumber: number,

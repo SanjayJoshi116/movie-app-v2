@@ -18,6 +18,7 @@ import { InfoTooltip } from "./InfoTooltip";
 import { SectionHeader } from "./SectionHeader";
 import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
+import { ReviewsSection } from "./ReviewsSection";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
@@ -351,25 +352,7 @@ const MovieDetails = ({ movie }: Props) => {
         )}
 
         {/* Reviews */}
-        {reviews?.length > 0 && (
-          <>
-            <SectionHeader title="Reviews" />
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              {reviews.map((review) => (
-                <Card key={review.id} size="small">
-                  <Typography.Text strong>{review.author}</Typography.Text>
-                  <Typography.Paragraph
-                    style={{ marginTop: 8, marginBottom: 0 }}
-                    ellipsis={{ rows: 4, expandable: true, symbol: "more" }}
-                  >
-                    {review.content}
-                  </Typography.Paragraph>
-                </Card>
-              ))}
-            </Space>
-          </>
-        )}
-
+        <ReviewsSection reviews={reviews} />
       </div>
     </div>
   );

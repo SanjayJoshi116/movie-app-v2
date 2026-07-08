@@ -69,11 +69,6 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
             label: `${s.name} (${s.episode_count} eps)`,
           }))}
         />
-        {seasonData && !loading && (
-          <Typography.Text type="secondary">
-            {seasonData.episodes.length} episode{seasonData.episodes.length !== 1 ? "s" : ""}
-          </Typography.Text>
-        )}
       </div>
 
       {loading ? (
@@ -85,51 +80,64 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
       ) : seasonData ? (
         <Collapse
           ghost
-          items={seasonData.episodes.map((ep) => ({
-            key: ep.id,
+          items={[{
+            key: "episodes",
             label: (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <Typography.Text type="secondary" style={{ minWidth: 28, fontSize: FONT_SIZE.caption }}>
-                  E{ep.episode_number}
-                </Typography.Text>
-                <Typography.Text strong style={{ flex: 1 }}>
-                  {ep.name}
-                </Typography.Text>
-                <Space size={8} wrap>
-                  {ep.air_date && (
-                    <Tag icon={<CalendarOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
-                      {formatDateDMY(ep.air_date)}
-                    </Tag>
-                  )}
-                  {ep.runtime != null && ep.runtime > 0 && (
-                    <Tag icon={<ClockCircleOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
-                      {ep.runtime}m
-                    </Tag>
-                  )}
-                  {ep.vote_average > 0 && (
-                    <Tag icon={<StarFilled style={{ color: RATING_GOLD }} />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
-                      {ep.vote_average.toFixed(1)}
-                    </Tag>
-                  )}
-                </Space>
-              </div>
+              <Typography.Text type="secondary">
+                {seasonData.episodes.length} episode{seasonData.episodes.length !== 1 ? "s" : ""}
+              </Typography.Text>
             ),
             children: (
-              <div style={{ display: "flex", gap: 12, paddingLeft: 40 }}>
-                {ep.still_path && (
-                  <img
-                    src={`${STILL_URL}${ep.still_path}`}
-                    alt={ep.name}
-                    loading="lazy"
-                    style={{ width: 140, height: 79, objectFit: "cover", borderRadius: 6, flexShrink: 0 }}
-                  />
-                )}
-                <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body, lineHeight: 1.6 }}>
-                  {ep.overview || "No description available."}
-                </Typography.Text>
-              </div>
+              <Collapse
+                ghost
+                items={seasonData.episodes.map((ep) => ({
+                  key: ep.id,
+                  label: (
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      <Typography.Text type="secondary" style={{ minWidth: 28, fontSize: FONT_SIZE.caption }}>
+                        E{ep.episode_number}
+                      </Typography.Text>
+                      <Typography.Text strong style={{ flex: 1 }}>
+                        {ep.name}
+                      </Typography.Text>
+                      <Space size={8} wrap>
+                        {ep.air_date && (
+                          <Tag icon={<CalendarOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
+                            {formatDateDMY(ep.air_date)}
+                          </Tag>
+                        )}
+                        {ep.runtime != null && ep.runtime > 0 && (
+                          <Tag icon={<ClockCircleOutlined />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
+                            {ep.runtime}m
+                          </Tag>
+                        )}
+                        {ep.vote_average > 0 && (
+                          <Tag icon={<StarFilled style={{ color: RATING_GOLD }} />} color="default" style={{ fontSize: FONT_SIZE.caption }}>
+                            {ep.vote_average.toFixed(1)}
+                          </Tag>
+                        )}
+                      </Space>
+                    </div>
+                  ),
+                  children: (
+                    <div style={{ display: "flex", gap: 12, paddingLeft: 40 }}>
+                      {ep.still_path && (
+                        <img
+                          src={`${STILL_URL}${ep.still_path}`}
+                          alt={ep.name}
+                          loading="lazy"
+                          style={{ width: 140, height: 79, objectFit: "cover", borderRadius: 6, flexShrink: 0 }}
+                        />
+                      )}
+                      <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.body, lineHeight: 1.6 }}>
+                        {ep.overview || "No description available."}
+                      </Typography.Text>
+                    </div>
+                  ),
+                }))}
+              />
             ),
-          }))}
+          }]}
         />
       ) : null}
     </div>

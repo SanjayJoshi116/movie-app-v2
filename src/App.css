@@ -248,13 +248,11 @@ body:not(.dark-theme) .app-bottom-nav {
   margin: 0 auto;
 }
 
-/* Cast horizontal scroll */
+/* Cast grid (wraps, no horizontal scroll) */
 .cast-scroll-container {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: thin;
 }
 
 .cast-scroll-item {
