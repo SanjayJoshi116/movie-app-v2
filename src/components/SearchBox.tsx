@@ -66,6 +66,9 @@ const SearchBox = () => {
       trigger={[]}
     >
       <Input.Search
+        id="global-search"
+        name="search"
+        autoComplete="off"
         value={inputValue}
         onChange={(e) => {
           setInputValue(e.target.value);

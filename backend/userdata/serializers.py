@@ -28,9 +28,17 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "last_name", "is_staff")
+        fields = ("id", "username", "email", "first_name", "last_name", "is_staff", "avatar_url")
+
+    def get_avatar_url(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile and profile.avatar:
+            return profile.avatar.url
+        return None
 
 
 class UserProfileUpdateSerializer(serializers.Serializer):

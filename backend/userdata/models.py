@@ -119,6 +119,20 @@ class TMDBProfile(models.Model):
         return f"{self.user.username} — TMDB {'connected' if self.session_id else 'disconnected'}"
 
 
+def avatar_upload_path(instance, filename):
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return f"avatars/user_{instance.user_id}.{ext}"
+
+
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    avatar = models.ImageField(upload_to=avatar_upload_path, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} — profile"
+
+
 class FollowedPerson(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="followed_people")
     person_id = models.IntegerField()

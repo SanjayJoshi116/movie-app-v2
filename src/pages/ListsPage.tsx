@@ -80,6 +80,9 @@ function ListsPage() {
       {lists.length > 0 && (
         <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
           <Input
+            id="lists-search"
+            name="search"
+            autoComplete="off"
             prefix={<SearchOutlined />}
             placeholder="Search lists…"
             value={search}

@@ -66,6 +66,9 @@ function PeoplePage() {
       </Typography.Title>
 
       <Input.Search
+        id="people-search"
+        name="search"
+        autoComplete="off"
         value={inputValue}
         onChange={(e) => {
           setInputValue(e.target.value);

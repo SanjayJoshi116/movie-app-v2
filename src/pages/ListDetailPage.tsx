@@ -176,6 +176,9 @@ function ListDetailPage() {
         {list.items.length > 0 && (
           <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
             <Input
+              id="list-detail-search"
+              name="search"
+              autoComplete="off"
               prefix={<SearchOutlined />}
               placeholder="Search title…"
               value={search}

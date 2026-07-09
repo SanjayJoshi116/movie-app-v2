@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
-import userApi from "../api/userApi";
+import userApi, { publicApi } from "../api/userApi";
 
 interface AuthUser {
   id: number;
@@ -8,6 +8,7 @@ interface AuthUser {
   first_name: string;
   last_name: string;
   is_staff: boolean;
+  avatar_url: string | null;
 }
 
 export interface ProfileUpdateData {
@@ -27,6 +28,7 @@ interface AuthContextType {
   register(username: string, email: string, password: string): Promise<void>;
   logout(): void;
   updateProfile(data: ProfileUpdateData): Promise<void>;
+  setUserData(updated: AuthUser): void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -51,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const { data } = await userApi.post("/auth/login/", { username, password });
+    const { data } = await publicApi.post("/auth/login/", { username, password });
     OLD_KEYS.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem("cinedb_access", data.access);
     localStorage.setItem("cinedb_refresh", data.refresh);
@@ -60,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const register = useCallback(async (username: string, email: string, password: string) => {
-    const { data } = await userApi.post("/auth/register/", { username, email, password });
+    const { data } = await publicApi.post("/auth/register/", { username, email, password });
     OLD_KEYS.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem("cinedb_access", data.access);
     localStorage.setItem("cinedb_refresh", data.refresh);
@@ -75,15 +77,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const updateProfile = useCallback(async (data: ProfileUpdateData) => {
-    const { data: updated } = await userApi.patch("/auth/profile/", data);
+  const setUserData = useCallback((updated: AuthUser) => {
     localStorage.setItem("cinedb_user", JSON.stringify(updated));
     setUser(updated);
   }, []);
 
+  const updateProfile = useCallback(async (data: ProfileUpdateData) => {
+    const { data: updated } = await userApi.patch("/auth/profile/", data);
+    setUserData(updated);
+  }, [setUserData]);
+
   const value = useMemo<AuthContextType>(
-    () => ({ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile }),
-    [user, isLoading, login, register, logout, updateProfile]
+    () => ({ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile, setUserData }),
+    [user, isLoading, login, register, logout, updateProfile, setUserData]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

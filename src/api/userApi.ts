@@ -9,7 +9,7 @@ const userApi = axios.create({
 });
 
 // No auth interceptors — for public endpoints (login, register, password reset)
-const publicApi = axios.create({
+export const publicApi = axios.create({
   baseURL: DJANGO_BASE,
 });
 
@@ -112,8 +112,13 @@ export const fetchPersonalizedRecommendations = () =>
 export const fetchForYouRecommendations = () =>
   userApi.get<RecommendationsResponse>("/recommendations/for-you/");
 
-export const updateProfile = (data: Record<string, string>) =>
-  userApi.patch("/auth/profile/", data);
+export const uploadAvatar = (file: File) => {
+  const formData = new FormData();
+  formData.append("avatar", file);
+  return userApi.post("/auth/avatar/", formData);
+};
+
+export const removeAvatar = () => userApi.delete("/auth/avatar/");
 
 export const requestPasswordReset = (email: string) =>
   publicApi.post<{ detail: string }>("/auth/password-reset/", { email });

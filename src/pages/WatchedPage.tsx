@@ -150,6 +150,9 @@ function WatchedPage() {
       {watchedList.length > 0 && (
         <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
           <Input
+            id="watched-search"
+            name="search"
+            autoComplete="off"
             prefix={<SearchOutlined />}
             placeholder="Search title…"
             value={search}

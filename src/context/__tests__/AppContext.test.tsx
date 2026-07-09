@@ -21,13 +21,14 @@ const mockGet = userApi.get as jest.Mock;
 const mockPost = userApi.post as jest.Mock;
 
 const mockAuthValue = {
-  user: { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "", is_staff: false },
+  user: { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "", is_staff: false, avatar_url: null },
   isLoading: false,
   isAuthenticated: true,
   login: jest.fn(),
   register: jest.fn(),
   logout: jest.fn(),
   updateProfile: jest.fn(),
+  setUserData: jest.fn(),
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) =>

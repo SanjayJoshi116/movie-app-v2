@@ -12,6 +12,7 @@ COPY tsconfig.json ./
 ENV CI=false
 ENV REACT_APP_API_BASE_URL=/api/django
 ENV REACT_APP_TMDB_BASE_URL=/api/tmdb
+ENV REACT_APP_MEDIA_BASE_URL=
 
 RUN npm run build
 

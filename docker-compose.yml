@@ -26,6 +26,7 @@ services:
       DB_HOST: db
     volumes:
       - ./backend/userdata/migrations:/app/userdata/migrations
+      - media_data:/app/media
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.connect((\"localhost\",8000)); s.close()'"]
       interval: 10s
@@ -67,3 +68,4 @@ services:
 
 volumes:
   pgdata:
+  media_data:

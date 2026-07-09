@@ -304,7 +304,7 @@ const MovieDetails = ({ movie }: Props) => {
               {videos.results.filter((v) => v.type === "Trailer").map((video) => (
                 <Col key={video.id} xs={24} md={12}>
                   <iframe
-                    src={`https://www.youtube.com/embed/${video.key}`}
+                    src={`https://www.youtube-nocookie.com/embed/${video.key}`}
                     title={video.name}
                     className="embed-frame"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

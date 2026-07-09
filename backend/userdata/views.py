@@ -7,6 +7,7 @@ from .auth_views import (
     login,
     profile,
     delete_account,
+    avatar,
 )
 from .watchlist_views import watchlist_list, watchlist_detail, watchlist_clear
 from .watched_views import watched_list, watched_detail, watched_clear, bulk_watched
@@ -22,6 +23,7 @@ from .social_views import (
 )
 
 __all__ = [
+    "avatar",
     "bulk_watched",
     "delete_account",
     "episode_progress",

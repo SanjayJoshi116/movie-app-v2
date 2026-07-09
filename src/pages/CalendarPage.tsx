@@ -270,6 +270,9 @@ function CalendarPage() {
           <Radio.Button value="tv">TV Shows</Radio.Button>
         </Radio.Group>
         <Input
+          id="calendar-search"
+          name="search"
+          autoComplete="off"
           prefix={<SearchOutlined />}
           placeholder="Search title…"
           value={search}

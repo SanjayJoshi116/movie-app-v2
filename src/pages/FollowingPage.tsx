@@ -78,6 +78,9 @@ function FollowingPage() {
         <>
           <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
             <Input
+              id="following-search"
+              name="search"
+              autoComplete="off"
               prefix={<SearchOutlined />}
               placeholder="Search people…"
               value={search}

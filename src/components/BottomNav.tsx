@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Badge, Button, Drawer, Divider } from "antd";
+import { Avatar, Badge, Button, Drawer, Divider } from "antd";
 import {
   VideoCameraOutlined,
   PlaySquareOutlined,
@@ -24,6 +24,22 @@ import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
 import { FONT_SIZE } from "../constants/typography";
+import { resolveAvatarUrl } from "../constants/media";
+
+function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
+  const f = user.first_name?.trim() ?? "";
+  const l = user.last_name?.trim() ?? "";
+  if (f && l) return (f[0]! + l[0]!).toUpperCase();
+  if (f) return f.slice(0, 2).toUpperCase();
+  return user.username.slice(0, 2).toUpperCase();
+}
+
+const AVATAR_COLORS = ["#e67e22", "#8e44ad", "#2980b9", "#27ae60", "#c0392b", "#16a085"];
+function avatarColor(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? "#e67e22";
+}
 
 const BottomNav = () => {
   const location = useLocation();
@@ -214,8 +230,23 @@ const BottomNav = () => {
                 setProfileOpen(true);
               }}
             >
-              <span style={{ fontSize: 16, width: 20, display: "flex", justifyContent: "center" }}>
-                <UserOutlined />
+              <span style={{ width: 24, display: "flex", justifyContent: "center" }}>
+                {user ? (
+                  <Avatar
+                    size={22}
+                    src={resolveAvatarUrl(user.avatar_url)}
+                    style={{
+                      backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 10,
+                    }}
+                  >
+                    {!user.avatar_url && getInitials(user)}
+                  </Avatar>
+                ) : (
+                  <UserOutlined style={{ fontSize: 16 }} />
+                )}
               </span>
               <span style={{ marginLeft: 12, flex: 1, textAlign: "left", fontSize: FONT_SIZE.body }}>
                 {user?.first_name && user?.last_name

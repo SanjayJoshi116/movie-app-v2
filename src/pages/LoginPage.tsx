@@ -20,6 +20,7 @@ export default function LoginPage() {
     } catch {
       form.resetFields();
       setErrorMsg("Invalid username or password.");
+      setTimeout(() => setErrorMsg(""), 3000);
     } finally {
       setLoading(false);
     }

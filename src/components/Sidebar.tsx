@@ -26,6 +26,7 @@ import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
 import { FONT_SIZE } from "../constants/typography";
+import { resolveAvatarUrl } from "../constants/media";
 
 interface Props {
   isBrowsePage: boolean;
@@ -191,10 +192,17 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             <Tooltip title="Edit Profile">
               <Avatar
                 size={36}
-                style={{ backgroundColor: avatarColor(user.username), color: "#fff", fontWeight: 700, flexShrink: 0, cursor: "pointer" }}
+                src={resolveAvatarUrl(user.avatar_url)}
+                style={{
+                  backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
+                  color: "#fff",
+                  fontWeight: 700,
+                  flexShrink: 0,
+                  cursor: "pointer",
+                }}
                 onClick={() => setProfileOpen(true)}
               >
-                {getInitials(user)}
+                {!user.avatar_url && getInitials(user)}
               </Avatar>
             </Tooltip>
             <Typography.Text style={{ flex: 1, minWidth: 0, fontSize: FONT_SIZE.body, fontWeight: 600 }} ellipsis>

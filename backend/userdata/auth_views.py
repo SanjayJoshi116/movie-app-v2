@@ -2,14 +2,20 @@ import logging
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError
+from PIL import Image, UnidentifiedImageError
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .models import Profile
 from .serializers import RegisterSerializer, UserSerializer, UserProfileUpdateSerializer
+
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 logger = logging.getLogger(__name__)
 
@@ -168,3 +174,36 @@ def profile(request):
         user.set_password(data["new_password"])
     user.save()
     return Response(UserSerializer(user).data)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def avatar(request):
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+
+    if request.method == "DELETE":
+        if profile.avatar:
+            profile.avatar.delete(save=False)
+            profile.avatar = None
+            profile.save()
+        return Response(UserSerializer(request.user).data)
+
+    file = request.FILES.get("avatar")
+    if not file:
+        return Response({"detail": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        return Response({"detail": "Unsupported image type. Use JPEG, PNG, or WebP."}, status=status.HTTP_400_BAD_REQUEST)
+    if file.size > MAX_AVATAR_BYTES:
+        return Response({"detail": "Image must be smaller than 5MB."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        Image.open(file).verify()
+        file.seek(0)
+    except UnidentifiedImageError:
+        return Response({"detail": "File is not a valid image."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if profile.avatar:
+        profile.avatar.delete(save=False)
+    profile.avatar = file
+    profile.save()
+    return Response(UserSerializer(request.user).data)

@@ -63,7 +63,7 @@ function Overlay({ movie, tvShow, onClose }: Props) {
           videos.map((video) => (
             <iframe
               key={video.id}
-              src={`https://www.youtube.com/embed/${video.key}`}
+              src={`https://www.youtube-nocookie.com/embed/${video.key}`}
               title={video.name}
               className="embed-frame"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

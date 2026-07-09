@@ -56,12 +56,14 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 ### Auth
 - **Login / Register** — JWT-based auth; tokens stored in `localStorage`
 - **Password Reset** — Email-based: enter your account email, receive a reset link, set a new password via the link
+- **Profile Photo** — Upload/remove a JPEG/PNG/WebP avatar (5MB max) from the Edit Profile modal; replaces the initials avatar in the sidebar/bottom nav everywhere
 
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
 - **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions
 - **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
 - **Info Tooltips** — `(i)` tooltips next to non-obvious labels/stats (Stats, Calendar, Lists, Watched, Recommendations, Movie/TV Detail)
+- **Password Strength Meter** — Live strength bar under the New Password field when changing your password
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
@@ -103,12 +105,13 @@ backend/
 ├── userdata/
 │   ├── models.py                # WatchlistEntry, WatchedEntry (incl. runtime_minutes, platform),
 │   │                            #   RatingEntry, UserList, UserListItem, EpisodeProgress,
-│   │                            #   FollowedPerson, UserRecommendationCache (pre-computed rec cache per user)
+│   │                            #   FollowedPerson, UserRecommendationCache (pre-computed rec cache per user),
+│   │                            #   TMDBProfile (TMDB OAuth session), Profile (avatar ImageField)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases)
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists
 │   ├── views.py                 # Thin re-export barrel — import from domain modules below
-│   ├── auth_views.py            # register, login, profile, password reset + throttle classes
+│   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list)
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + TMDB mirror
@@ -125,7 +128,7 @@ backend/
 │   │       └── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
 │   │                                       #   run at container startup via docker-entrypoint.sh
 │   ├── tmdb_client.py           # Server-side TMDB API client
-│   └── tests/                   # pytest suite: auth, delete-account, password reset,
+│   └── tests/                   # pytest suite: auth, delete-account, password reset, avatar upload,
 │                                #   watchlist/watched/ratings pagination, bulk_watched
 ├── docker-entrypoint.sh         # Prod container entrypoint: migrate --run-syncdb → gunicorn
 └── manage.py
@@ -170,7 +173,9 @@ src/
 │   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages; episode list for the selected
 │   │                            #   season sits behind its own collapse toggle
 │   ├── CSVUploadModal.tsx       # CSV import modal with preview + TMDB poster enrichment
-│   ├── ProfileModal.tsx         # Edit profile + change password + delete account (password-confirmed) + TMDB OAuth connect
+│   ├── ProfileModal.tsx         # Edit profile, tabbed (Account / Data & TMDB / Danger Zone): avatar upload,
+│   │                            #   change password w/ strength meter, delete account (password-confirmed), TMDB OAuth connect
+│   ├── PasswordStrengthMeter.tsx # Live strength bar + label under New Password, used by ProfileModal
 │   ├── Movie.tsx / Movies.tsx
 │   ├── TVShows.tsx / TVShowCard.tsx  # TVShows maps a memoized per-item TVShowCard (mirrors Movie.tsx)
 │   ├── MovieDetails.tsx         # Includes add-to-list with checkbox toggle (add + remove)
@@ -226,13 +231,17 @@ src/
 ├── utils/
 │   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
 │   ├── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
-│   └── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
-│                                #   (falls back to a plain array response transparently)
+│   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
+│   │                            #   (falls back to a plain array response transparently)
+│   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
+│                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
 │   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, BACKDROP_URL, NO_IMAGE,
 │   │                            #   RATING_GOLD, WATCHED_GREEN — shared across pages
 │   ├── genres.ts                # Static TMDB genre list for filter UI
-│   └── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
+│   ├── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
+│   └── media.ts                 # resolveAvatarUrl() — resolves a user's relative avatar_url against
+│                                #   REACT_APP_MEDIA_BASE_URL (empty/same-origin in prod, :8000 in dev)
 ├── theme/
 │   └── antdTheme.ts             # Ant Design ConfigProvider tokens: dark / light
 └── types/
@@ -246,7 +255,10 @@ src/
 
 - **Auth** — JWT via `djangorestframework-simplejwt`. Access (60 min) + refresh (7 days) tokens stored in `localStorage`. `userApi.ts` intercepts 401s and silently refreshes before retrying failed requests. Password reset uses Django's built-in token generator sent via email; the link encodes a base64 uid and a one-use HMAC token.
 - **Password strength** — Registration, profile password change, and password-reset confirmation all run Django's configured `AUTH_PASSWORD_VALIDATORS` (`validate_password()`) — minimum length 8, rejects common passwords, rejects passwords too similar to the username/email, rejects all-numeric passwords.
-- **Account deletion** — `DELETE /api/auth/delete-account/` requires the user's current password in the request body and re-verifies it with `check_password()` before deleting; the frontend's Danger Zone in `ProfileModal` collects it inline.
+- **Account deletion** — `DELETE /api/auth/delete-account/` requires the user's current password in the request body and re-verifies it with `check_password()` before deleting; the frontend's Danger Zone in `ProfileModal` collects it inline, isolated on its own tab.
+- **Avatar upload** — `POST/DELETE /api/auth/avatar/` (separate from the JSON-only profile PATCH) stores a photo on a new `Profile` model (`OneToOneField` to `User`, `ImageField`, deterministic `avatars/user_<id>.<ext>` path so re-uploads overwrite rather than accumulate). Validates content-type (JPEG/PNG/WebP), size (5MB max), and uses `PIL.Image.verify()` to reject spoofed/corrupt files; deletes the previous file on replace or removal so nothing orphans. `UserSerializer.avatar_url` is relative (not `build_absolute_uri()`), since requests reach Django through the Express proxy without the original `Host` header — the frontend resolves it via `resolveAvatarUrl()`/`REACT_APP_MEDIA_BASE_URL` instead. Media is served by Django directly (`re_path` + `django.views.static.serve`, unconditional — no CDN in this stack) and reverse-proxied at `/media/` in both `server.js` (dev) and `nginx.conf` (prod, via a dedicated `location` straight to the `backend` service).
+- **Multipart proxy passthrough** — `server.js`'s `/api/django` handler previously always forwarded `req.body` (JSON-parsed), so a `multipart/form-data` upload — like the avatar endpoint — would arrive with an empty body, since `express.json()` skips but doesn't consume non-JSON requests. It now detects `multipart/form-data` and streams the raw `req` through to axios instead, forwarding the original `Content-Length` (Gunicorn's sync workers need it exact, not chunked).
+- **Login/register use the unauthenticated API client** — `AuthContext.login`/`register` call `publicApi` (no response interceptor), not the default `userApi`. `userApi`'s 401-refresh interceptor previously intercepted a failed login's 401, found no refresh token yet, and hard-redirected to `/login` before the page's own `catch` could show an "Invalid username or password" message — so bad credentials failed silently.
 - **List pagination** — `/api/watchlist/`, `/api/watched/`, `/api/ratings/`, and `/api/followed-people/` are paginated (`DefaultPagination`, page_size=100) and return `{count, next, previous, results}`. `src/utils/fetchAllPages.ts` transparently walks all pages so the frontend hooks (`useWatchlist`, `useWatched`, `useRatings`, `useFollowedPeople`) still expose the full list — it also accepts a plain array response for back-compat with mocked tests.
 - **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
 - **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. `ALLOWED_HOSTS` fails closed (empty by default) rather than defaulting to `*`. When `DEBUG=False`, an unset `SECRET_KEY` raises `ImproperlyConfigured` at startup instead of a silent fallback. `CORS_ALLOW_ALL_ORIGINS` is only enabled in `DEBUG`; production reads explicit origins from `CORS_ALLOWED_ORIGINS`.
@@ -456,7 +468,7 @@ Find the host LAN IP:
 | `backend`  | Python/Django          | 8000 (internal) |
 | `db`       | postgres:15-alpine     | 5432 (internal) |
 
-Nginx proxies `/api/*` to the Express proxy, which forwards TMDB requests and Django API calls. PostgreSQL data persists in the `pgdata` Docker volume.
+Nginx proxies `/api/*` to the Express proxy (which forwards TMDB requests and Django API calls) and `/media/*` straight to the `backend` service for uploaded avatars. PostgreSQL data persists in the `pgdata` Docker volume; uploaded avatars persist in the `media_data` volume.
 
 ---
 
@@ -480,13 +492,14 @@ src/context/__tests__/
 npm test
 ```
 
-### Unit tests — pytest (Django, 18 tests)
+### Unit tests — pytest (Django, 25 tests)
 
-Covers register/password-validation, delete-account (password re-confirmation), password-reset-confirm validation, and pagination + `bulk_watched` behavior. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers register/password-validation, delete-account (password re-confirmation), password-reset-confirm validation, avatar upload/validation/delete, and pagination + `bulk_watched` behavior. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
 ├── test_auth.py       # Register password strength, delete-account confirmation, reset-confirm
+├── test_avatar.py     # Upload/delete/replace, content-type + size + corrupt-image validation
 ├── test_watchlist.py  # Pagination shape + cross-user isolation
 ├── test_watched.py    # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 └── test_ratings.py    # Pagination shape
@@ -552,6 +565,7 @@ GitHub Actions runs the Jest suite, Django `pytest` suite, `ruff check`, and the
 | POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
 | POST            | `/api/auth/token/refresh/`                  | Refresh access token                               |
 | GET/PATCH       | `/api/auth/profile/`                        | Get or update profile (requires auth)              |
+| POST/DELETE     | `/api/auth/avatar/`                         | Upload or remove profile photo (requires auth)     |
 | DELETE          | `/api/auth/delete-account/`                 | Permanently delete account and all data            |
 | POST            | `/api/auth/password-reset/`                 | Request email password reset link                  |
 | POST            | `/api/auth/password-reset/confirm/`         | Confirm reset with uid + token + new password      |

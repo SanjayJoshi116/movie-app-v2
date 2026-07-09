@@ -27,16 +27,20 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api/django", async (req, res) => {
   const DJANGO_BASE = process.env.DJANGO_API_URL || "http://localhost:8000/api";
   const targetUrl = `${DJANGO_BASE}${req.path}`;
+  const isMultipart = (req.headers["content-type"] || "").startsWith("multipart/form-data");
   try {
     const response = await axios({
       method: req.method,
       url: targetUrl,
       params: req.query,
-      data: req.body,
+      data: isMultipart ? req : req.body,
       headers: {
         "Content-Type": req.headers["content-type"] || "application/json",
+        ...(isMultipart && req.headers["content-length"] ? { "Content-Length": req.headers["content-length"] } : {}),
         ...(req.headers["authorization"] ? { Authorization: req.headers["authorization"] } : {}),
       },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
     });
     res.status(response.status).json(response.data);
   } catch (err) {
