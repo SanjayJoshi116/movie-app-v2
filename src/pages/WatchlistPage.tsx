@@ -134,12 +134,12 @@ function WatchlistPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             allowClear
-            style={{ width: 200 }}
+            style={{ width: "100%", maxWidth: 200 }}
           />
           <Select
             value={sortKey}
             onChange={setSortKey}
-            style={{ width: 170 }}
+            style={{ width: "100%", maxWidth: 170 }}
             options={[
               { label: "Added (newest)", value: "added-desc" },
               { label: "Added (oldest)", value: "added-asc" },
@@ -150,7 +150,7 @@ function WatchlistPage() {
           <Select
             value={typeFilter}
             onChange={setTypeFilter}
-            style={{ width: 130 }}
+            style={{ width: "100%", maxWidth: 130 }}
             options={[
               { label: "All Types", value: "all" },
               { label: "Movies", value: "movie" },
@@ -160,7 +160,7 @@ function WatchlistPage() {
           <Select
             value={watchedFilter}
             onChange={setWatchedFilter}
-            style={{ width: 150 }}
+            style={{ width: "100%", maxWidth: 150 }}
             options={[
               { label: "All", value: "all" },
               { label: "Watched", value: "watched" },

@@ -86,12 +86,12 @@ function FollowingPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               allowClear
-              style={{ width: 200 }}
+              style={{ width: "100%", maxWidth: 200 }}
             />
             <Select
               value={sortKey}
               onChange={setSortKey}
-              style={{ width: 150 }}
+              style={{ width: "100%", maxWidth: 150 }}
               options={[
                 { label: "Name A–Z", value: "name-asc" },
                 { label: "Name Z–A", value: "name-desc" },

@@ -158,12 +158,12 @@ function WatchedPage() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPageState(1, pageSize); }}
             allowClear
-            style={{ width: 200 }}
+            style={{ width: "100%", maxWidth: 200 }}
           />
           <Select
             value={sortKey}
             onChange={(v) => { setSortKey(v); setPageState(1, pageSize); }}
-            style={{ width: 180 }}
+            style={{ width: "100%", maxWidth: 180 }}
             options={[
               { label: "Watched (newest)", value: "watched-desc" },
               { label: "Title A–Z", value: "title-asc" },
@@ -174,7 +174,7 @@ function WatchedPage() {
           <Select
             value={typeFilter}
             onChange={(v) => { setTypeFilter(v); setPageState(1, pageSize); }}
-            style={{ width: 130 }}
+            style={{ width: "100%", maxWidth: 130 }}
             options={[
               { label: "All Types", value: "all" },
               { label: "Movies", value: "movie" },

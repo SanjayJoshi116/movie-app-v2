@@ -88,12 +88,12 @@ function ListsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             allowClear
-            style={{ width: 200 }}
+            style={{ width: "100%", maxWidth: 200 }}
           />
           <Select
             value={sortKey}
             onChange={setSortKey}
-            style={{ width: 180 }}
+            style={{ width: "100%", maxWidth: 180 }}
             options={[
               { label: "Created (newest)", value: "created-desc" },
               { label: "Created (oldest)", value: "created-asc" },

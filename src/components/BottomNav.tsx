@@ -91,14 +91,8 @@ const BottomNav = () => {
               onClick={() => navigate(item.path)}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                height: "auto",
-                padding: "4px 12px",
-                color: isActive ? "#f5c518" : undefined,
-              }}
+              className="bottom-nav-btn"
+              style={{ color: isActive ? "#f5c518" : undefined }}
             />
           );
 
@@ -116,13 +110,7 @@ const BottomNav = () => {
           icon={<SearchOutlined />}
           onClick={() => setSearchOpen(true)}
           aria-label="Search"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            height: "auto",
-            padding: "4px 12px",
-          }}
+          className="bottom-nav-btn"
         />
 
         <Button
@@ -131,14 +119,8 @@ const BottomNav = () => {
           onClick={() => setMoreOpen(true)}
           aria-label="More navigation options"
           aria-expanded={moreOpen}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            height: "auto",
-            padding: "4px 12px",
-            color: isMoreActive ? "#f5c518" : undefined,
-          }}
+          className="bottom-nav-btn"
+          style={{ color: isMoreActive ? "#f5c518" : undefined }}
         />
       </nav>
 

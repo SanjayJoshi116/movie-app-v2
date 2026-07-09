@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty } from "antd";
-import { EyeOutlined, EyeFilled, UserOutlined, SearchOutlined } from "@ant-design/icons";
+import { EyeOutlined, EyeFilled, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";

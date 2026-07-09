@@ -22,8 +22,8 @@ export default function RegisterPage() {
   };
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh" }}>
-      <Card style={{ width: 360 }}>
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "0 16px" }}>
+      <Card style={{ width: "100%", maxWidth: 360 }}>
         <Typography.Title level={3} style={{ textAlign: "center", marginBottom: 24 }}>
           Create Account
         </Typography.Title>

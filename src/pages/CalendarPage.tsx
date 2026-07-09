@@ -278,7 +278,7 @@ function CalendarPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           allowClear
-          style={{ width: 200 }}
+          style={{ width: "100%", maxWidth: 200 }}
         />
         {filteredGroups.length > 0 && (
           <Button icon={<FieldTimeOutlined />} onClick={jumpToToday}>

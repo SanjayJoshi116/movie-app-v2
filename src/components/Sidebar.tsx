@@ -134,15 +134,23 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
         <Link to="/movies" style={{ textDecoration: "none" }}>
           <Typography.Title
             level={3}
+            className="sidebar-logo-full"
             style={{ margin: 0, color: "#f5c518", letterSpacing: 3, fontWeight: 700 }}
           >
             CINE DB
+          </Typography.Title>
+          <Typography.Title
+            level={3}
+            className="sidebar-logo-compact"
+            style={{ margin: 0, color: "#f5c518", fontWeight: 700, textAlign: "center" }}
+          >
+            C
           </Typography.Title>
         </Link>
       </div>
 
       {/* Search */}
-      <div style={{ padding: "0 12px 12px" }}>
+      <div className="sidebar-search-full" style={{ padding: "0 12px 12px" }}>
         <SearchBox />
       </div>
 
@@ -160,7 +168,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       <Divider style={{ margin: "8px 0" }} />
 
       {/* Footer: filter + theme + auth */}
-      <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="sidebar-footer" style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
         {isBrowsePage && (
           <Button
             icon={<FilterOutlined />}
@@ -170,7 +178,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             aria-label="Toggle filters"
             aria-expanded={showFilterPanel}
           >
-            Filters
+            <span className="sidebar-label">Filters</span>
           </Button>
         )}
         <div style={{ display: "flex", justifyContent: "center" }}>
@@ -188,7 +196,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
         <Divider style={{ margin: "4px 0" }} />
 
         {isAuthenticated && user ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
+          <div className="sidebar-user-row" style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
             <Tooltip title="Edit Profile">
               <Avatar
                 size={36}
@@ -205,7 +213,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
                 {!user.avatar_url && getInitials(user)}
               </Avatar>
             </Tooltip>
-            <Typography.Text style={{ flex: 1, minWidth: 0, fontSize: FONT_SIZE.body, fontWeight: 600 }} ellipsis>
+            <Typography.Text className="sidebar-username-text" style={{ flex: 1, minWidth: 0, fontSize: FONT_SIZE.body, fontWeight: 600 }} ellipsis>
               {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
             </Typography.Text>
             <Tooltip title="Sign Out">
@@ -228,7 +236,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             block
             onClick={() => navigate("/login")}
           >
-            Sign In
+            <span className="sidebar-label">Sign In</span>
           </Button>
         )}
       </div>

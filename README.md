@@ -67,7 +67,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
-- **Responsive Layout** — Persistent sidebar on desktop; fixed bottom nav with overflow drawer on mobile
+- **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px)
 
 ---
 
@@ -150,8 +150,9 @@ src/
 │   ├── watchlist/
 │   │   └── RatingModal.tsx      # Modal + Form for rating + review
 │   ├── ErrorBoundary.tsx
-│   ├── Sidebar.tsx              # Desktop: 220px left nav — shows username/sign-out when authed
-│   ├── BottomNav.tsx            # Mobile: fixed bottom nav + overflow drawer
+│   ├── Sidebar.tsx              # Desktop (≥992px): 220px left nav, shows username/sign-out when authed;
+│   │                            #   collapses to a 64px icon-only rail on tablet (768-991px, CSS-only via App.css)
+│   ├── BottomNav.tsx            # Phone (<768px): fixed bottom nav + overflow drawer
 │   ├── SearchBox.tsx            # Input.Search with recent-search history dropdown
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
@@ -257,6 +258,7 @@ src/
 - **Password strength** — Registration, profile password change, and password-reset confirmation all run Django's configured `AUTH_PASSWORD_VALIDATORS` (`validate_password()`) — minimum length 8, rejects common passwords, rejects passwords too similar to the username/email, rejects all-numeric passwords.
 - **Account deletion** — `DELETE /api/auth/delete-account/` requires the user's current password in the request body and re-verifies it with `check_password()` before deleting; the frontend's Danger Zone in `ProfileModal` collects it inline, isolated on its own tab.
 - **Avatar upload** — `POST/DELETE /api/auth/avatar/` (separate from the JSON-only profile PATCH) stores a photo on a new `Profile` model (`OneToOneField` to `User`, `ImageField`, deterministic `avatars/user_<id>.<ext>` path so re-uploads overwrite rather than accumulate). Validates content-type (JPEG/PNG/WebP), size (5MB max), and uses `PIL.Image.verify()` to reject spoofed/corrupt files; deletes the previous file on replace or removal so nothing orphans. `UserSerializer.avatar_url` is relative (not `build_absolute_uri()`), since requests reach Django through the Express proxy without the original `Host` header — the frontend resolves it via `resolveAvatarUrl()`/`REACT_APP_MEDIA_BASE_URL` instead. Media is served by Django directly (`re_path` + `django.views.static.serve`, unconditional — no CDN in this stack) and reverse-proxied at `/media/` in both `server.js` (dev) and `nginx.conf` (prod, via a dedicated `location` straight to the `backend` service).
+- **Responsive breakpoints** — Three CSS-only tiers reusing antd's own scale, no JS width checks anywhere: `<768px` (phone, `Sidebar` hidden/`BottomNav` shown, unchanged), `768-991px` (tablet, new — `Sidebar` collapses to a 64px icon-only rail via a `@media` block in `App.css` that hides `.ant-menu-title-content`/username text/logo text and shows a compact "C" glyph instead), `≥992px` (desktop, full 220px sidebar, the unqualified default rule). `src/index.css` adds a root `overflow-x: hidden; max-width: 100vw` guard, and list-page filter-bar `Input`/`Select` widths (previously rigid `width: N`) are now `width: "100%", maxWidth: N` so they shrink on narrow phones instead of forcing horizontal scroll. Auth pages' `Card` is `width: "100%", maxWidth: 360` (was a fixed 360) so it doesn't overflow under-360px viewports. `playwright.config.ts` adds a `mobile-chrome` (Pixel 5) project so the existing E2E suite also runs at phone width; `e2e/responsive.spec.ts` asserts sidebar/bottom-nav behavior at all three tiers plus no-overflow at 320px/340px.
 - **Multipart proxy passthrough** — `server.js`'s `/api/django` handler previously always forwarded `req.body` (JSON-parsed), so a `multipart/form-data` upload — like the avatar endpoint — would arrive with an empty body, since `express.json()` skips but doesn't consume non-JSON requests. It now detects `multipart/form-data` and streams the raw `req` through to axios instead, forwarding the original `Content-Length` (Gunicorn's sync workers need it exact, not chunked).
 - **Login/register use the unauthenticated API client** — `AuthContext.login`/`register` call `publicApi` (no response interceptor), not the default `userApi`. `userApi`'s 401-refresh interceptor previously intercepted a failed login's 401, found no refresh token yet, and hard-redirected to `/login` before the page's own `catch` could show an "Invalid username or password" message — so bad credentials failed silently.
 - **List pagination** — `/api/watchlist/`, `/api/watched/`, `/api/ratings/`, and `/api/followed-people/` are paginated (`DefaultPagination`, page_size=100) and return `{count, next, previous, results}`. `src/utils/fetchAllPages.ts` transparently walks all pages so the frontend hooks (`useWatchlist`, `useWatched`, `useRatings`, `useFollowedPeople`) still expose the full list — it also accepts a plain array response for back-compat with mocked tests.
@@ -510,15 +512,17 @@ pip install -r backend/requirements-test.txt
 pytest backend/
 ```
 
-### E2E tests — Playwright (20 tests)
+### E2E tests — Playwright (25 tests, 2 projects)
 
-Covers auth flows, movie browsing, search, and watchlist operations. All API calls are mocked via Playwright route interception — no backend required. The React dev server starts automatically.
+Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
 
 ```
 e2e/
-├── auth.spec.ts       # Login, register, forgot password, redirect guards
-├── movies.spec.ts     # Movie/TV browse, category buttons, search, detail navigation
-└── watchlist.spec.ts  # Empty state, add/remove, export CSV, watched list
+├── auth.spec.ts        # Login, register, forgot password, redirect guards
+├── movies.spec.ts      # Movie/TV browse, category buttons, search, detail navigation
+├── watchlist.spec.ts   # Empty state, add/remove, export CSV, watched list
+└── responsive.spec.ts  # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card
+                         #   and bottom-nav no-overflow checks at 320px/340px
 ```
 
 ```bash

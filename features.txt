@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.7.0)
+CINE DB — Feature List (v0.8.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -41,4 +41,4 @@ UI/UX
 - Dark/light theme (Poppins font, unified size scale: caption/body/emphasis/display)
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
 - Framer Motion page transitions
-- Responsive: sidebar (desktop) / bottom nav (mobile)
+- Responsive across screen sizes: full sidebar (desktop, 992px+), icon-only collapsed rail (tablet, 768-991px), bottom nav (phone, under 768px); no fixed-width overflow on narrow phones (auth cards, filter-bar inputs)
