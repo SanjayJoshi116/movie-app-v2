@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty, Button } from "antd";
-import { CalendarOutlined, StarFilled, DownloadOutlined } from "@ant-design/icons";
+import { Typography, Radio, Divider, Row, Col, Card, Tag, Empty, Button, Space, Input, theme } from "antd";
+import { CalendarOutlined, StarFilled, DownloadOutlined, SearchOutlined, FieldTimeOutlined } from "@ant-design/icons";
 import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
-import { pageVariants, IMG_URL } from "../constants/ui";
+import { pageVariants, IMG_URL, NO_IMAGE, RATING_GOLD } from "../constants/ui";
+
+const SS_SEARCH = "calendar_search";
+const RELEASE_WINDOW_DAYS = 7;
 
 type MediaFilter = "both" | "movies" | "tv";
 
@@ -98,6 +101,7 @@ function getRatingColor(vote: number): string {
 function CalendarPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { token } = theme.useToken();
   const locationState = location.state as { scrollY?: number; mediaFilter?: MediaFilter; isReturn?: boolean } | null;
   const isReturning = locationState?.isReturn ?? false;
   const savedScrollY = locationState?.scrollY ?? 0;
@@ -106,15 +110,34 @@ function CalendarPage() {
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>(
     (isReturning && savedMediaFilter) ? savedMediaFilter : "both"
   );
+  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [groups, setGroups] = useState<DateGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const didRestoreRef = useRef(false);
+
+  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
+
+  const filteredGroups = useMemo<DateGroup[]>(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((g) => ({ ...g, items: g.items.filter((i) => i.title.toLowerCase().includes(q)) }))
+      .filter((g) => g.items.length > 0);
+  }, [groups, search]);
+
+  const jumpToToday = useCallback(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const target = filteredGroups.find((g) => g.date >= today) ?? filteredGroups[0];
+    if (target) {
+      document.getElementById(`date-${target.date}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [filteredGroups]);
 
   const fetchCalendar = useCallback(async (filter: MediaFilter) => {
     setLoading(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const future = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const future = new Date(Date.now() + RELEASE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       const movieParams = {
         "primary_release_date.gte": today,
@@ -182,7 +205,15 @@ function CalendarPage() {
         }
       }
 
-      setGroups(groupByDate(allItems));
+      const seen = new Set<string>();
+      const dedupedItems = allItems.filter((item) => {
+        const key = `${item.type}-${item.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setGroups(groupByDate(dedupedItems));
     } catch (err) {
       console.error("Error fetching calendar:", err);
     } finally {
@@ -210,52 +241,80 @@ function CalendarPage() {
       transition={{ duration: 0.2 }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-        <CalendarOutlined style={{ fontSize: 24, color: "#f5c518" }} />
+        <CalendarOutlined style={{ fontSize: 24, color: RATING_GOLD }} />
         <Typography.Title level={2} style={{ margin: 0, flex: 1 }}>
           Release Calendar
         </Typography.Title>
         {groups.length > 0 && (
-          <>
+          <Space size={8}>
             <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(groups)}>
               Export iCal
             </Button>
             <InfoTooltip title="Downloads an .ics file to import into Google/Apple/Outlook calendar." />
-          </>
+          </Space>
         )}
       </div>
-      <Typography.Text type="secondary" style={{ display: "block", marginBottom: 20 }}>
-        Upcoming releases in the next 60 days
+      <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+        Upcoming releases in the next {RELEASE_WINDOW_DAYS} days
         <InfoTooltip title="Release dates are as listed on TMDB and may vary by region/platform." />
       </Typography.Text>
 
-      <Radio.Group
-        value={mediaFilter}
-        onChange={(e) => setMediaFilter(e.target.value)}
-        style={{ marginBottom: 24 }}
-        buttonStyle="solid"
-      >
-        <Radio.Button value="both">All</Radio.Button>
-        <Radio.Button value="movies">Movies</Radio.Button>
-        <Radio.Button value="tv">TV Shows</Radio.Button>
-      </Radio.Group>
+      <Space style={{ marginBottom: 24, flexWrap: "wrap" }}>
+        <Radio.Group
+          value={mediaFilter}
+          onChange={(e) => setMediaFilter(e.target.value)}
+          buttonStyle="solid"
+        >
+          <Radio.Button value="both">All</Radio.Button>
+          <Radio.Button value="movies">Movies</Radio.Button>
+          <Radio.Button value="tv">TV Shows</Radio.Button>
+        </Radio.Group>
+        <Input
+          prefix={<SearchOutlined />}
+          placeholder="Search title…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 200 }}
+        />
+        {filteredGroups.length > 0 && (
+          <Button icon={<FieldTimeOutlined />} onClick={jumpToToday}>
+            Jump to Today
+          </Button>
+        )}
+        {search.trim() !== "" && (
+          <Button type="text" onClick={() => setSearch("")}>
+            Clear filters
+          </Button>
+        )}
+      </Space>
 
       {loading ? (
         <SkeletonCard count={12} />
-      ) : groups.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <Empty
           image={<CalendarOutlined style={{ fontSize: 48, color: "#aaa" }} />}
-          description="No upcoming releases in the next 7 days."
+          description={
+            search.trim()
+              ? `No releases match "${search}".`
+              : `No upcoming releases in the next ${RELEASE_WINDOW_DAYS} days.`
+          }
           style={{ padding: "60px 0" }}
         />
       ) : (
-        groups.map((group) => (
+        filteredGroups.map((group) => (
           <div key={group.date}>
-            <Divider orientation="left">
-              <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis }}>{group.label}</Typography.Text>
-            </Divider>
+            <div
+              id={`date-${group.date}`}
+              style={{ position: "sticky", top: 0, zIndex: 1, background: token.colorBgContainer, paddingTop: 4, paddingBottom: 12 }}
+            >
+              <Divider orientation="left" style={{ margin: 0 }}>
+                <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis }}>{group.label}</Typography.Text>
+              </Divider>
+            </div>
             <Row gutter={[12, 16]} style={{ marginBottom: 8 }}>
               {group.items.map((item) => (
-                <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4} xl={4}>
+                <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={4} lg={4} xl={4}>
                   <motion.div
                     whileHover={{ scale: 1.04, y: -4 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -267,13 +326,13 @@ function CalendarPage() {
                       className="glass-card"
                       cover={
                         <img
-                          src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/500x750?text=No+Image"}
+                          src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
                           alt={item.title}
                           loading="lazy"
                           className="movie-poster-img"
                         />
                       }
-                      styles={{ body: { padding: "10px 12px" } }}
+                      styles={{ body: { padding: "8px 10px" } }}
                       style={{ height: "100%" }}
                     >
                       <Typography.Text
@@ -283,12 +342,12 @@ function CalendarPage() {
                       >
                         {item.title}
                       </Typography.Text>
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0, fontSize: FONT_SIZE.caption }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0, fontSize: FONT_SIZE.caption, padding: "0 6px" }}>
                           {item.type === "movie" ? "Movie" : "TV"}
                         </Tag>
                         {item.voteAverage > 0 && (
-                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: FONT_SIZE.caption }}>
+                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: FONT_SIZE.caption, padding: "0 6px" }}>
                             <StarFilled style={{ marginRight: 2 }} />
                             {item.voteAverage.toFixed(1)}
                           </Tag>

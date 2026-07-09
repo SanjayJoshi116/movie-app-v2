@@ -16,6 +16,7 @@ const HomePage = lazy(() => import("./pages/HomePage"));
 const MovieDetailPage = lazy(() => import("./pages/MovieDetailPage"));
 const TVDetailPage = lazy(() => import("./pages/TVDetailPage"));
 const PersonPage = lazy(() => import("./pages/PersonPage"));
+const ListDetailPage = lazy(() => import("./pages/ListDetailPage"));
 const PeoplePage = lazy(() => import("./pages/PeoplePage"));
 const WatchlistPage = lazy(() => import("./pages/WatchlistPage"));
 const RecommendationsPage = lazy(() => import("./pages/RecommendationsPage"));
@@ -126,6 +127,7 @@ function AppInner() {
               <Route path="/movie/:id" element={<ErrorBoundary><MovieDetailPage /></ErrorBoundary>} />
               <Route path="/tv/:id" element={<ErrorBoundary><TVDetailPage /></ErrorBoundary>} />
               <Route path="/person/:id" element={<ErrorBoundary><PersonPage /></ErrorBoundary>} />
+              <Route path="/lists/:id" element={<ErrorBoundary><ListDetailPage /></ErrorBoundary>} />
               <Route path="/people" element={<ErrorBoundary><PeoplePage /></ErrorBoundary>} />
               <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
               <Route path="/login" element={<LoginPage />} />

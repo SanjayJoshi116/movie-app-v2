@@ -35,22 +35,23 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 ### Detail Pages
 - **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; both pages share the same section order and layout, each showing up to 20 recommendation/similar cards; cast displays in a wrapping grid (no horizontal scroll)
 - **Reviews** — TMDB reviews on both Movie and TV detail pages, rendered as a 2-column card grid
-- **Add to List** — Add or remove a title from any custom list directly from the detail page
+- **Add to List** — Shared modal (`AddToListModal.tsx`) with search-existing-lists and inline create-new-list, opened from the detail page or any browse/search/recommendation card — never a dead end even with zero lists yet
+- **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
 - **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time
 - **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links
-- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`
+- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
 - **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes
-- **User Lists** — Create named lists, add or remove any movie or show, and export each list as CSV
+- **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
-- **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity (bar chart), and top genres (horizontal bar chart)
+- **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
-- **Release Calendar** — 60-day lookahead of upcoming releases, grouped by date, fetching up to 3 pages per type; one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
+- **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
 - **Login / Register** — JWT-based auth; tokens stored in `localStorage`
@@ -100,9 +101,9 @@ backend/
 │   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email, throttle rates)
 │   └── urls.py                  # Root URL config — mounts /api/
 ├── userdata/
-│   ├── models.py                # WatchlistEntry, WatchedEntry, RatingEntry,
-│   │                            #   UserList, UserListItem, EpisodeProgress, FollowedPerson,
-│   │                            #   UserRecommendationCache (pre-computed rec cache per user)
+│   ├── models.py                # WatchlistEntry, WatchedEntry (incl. runtime_minutes, platform),
+│   │                            #   RatingEntry, UserList, UserListItem, EpisodeProgress,
+│   │                            #   FollowedPerson, UserRecommendationCache (pre-computed rec cache per user)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases)
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists
@@ -111,7 +112,7 @@ backend/
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list)
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + TMDB mirror
-│   ├── lists_views.py           # user lists + list items CRUD
+│   ├── lists_views.py           # user lists + list items CRUD (incl. PATCH rename)
 │   ├── tmdb_views.py            # TMDB OAuth (request token, session, disconnect)
 │   ├── stats_views.py           # stats aggregation + genre cache
 │   ├── social_views.py          # episode progress + followed people (paginated list) + recs
@@ -158,7 +159,14 @@ src/
 │   │                            #   and Person pages; optional section title and per-item subtitle, limit=20 default
 │   ├── ReviewsSection.tsx       # 2-column review cards, shared by Movie/TV detail pages
 │   ├── LibraryItemCard.tsx      # Poster + Card.Meta + icon-action card, shared by Watchlist/Watched/Lists pages
-│   ├── PersonCard.tsx           # Browse card for People listing + search results (department tag, Follow button)
+│   ├── PersonCard.tsx           # Browse card for People listing + search results + Following page
+│   │                            #   (department tag, Follow button); person prop is a minimal structural
+│   │                            #   type (id/name/profile_path/known_for_department?), not full TMDBPersonSummary
+│   ├── AddToListModal.tsx       # Shared "Add to List" modal (search lists, inline create), used by
+│   │                            #   Movie/TV detail pages instead of two separate bare-checkbox modals
+│   ├── MarkWatchedModal.tsx     # Shared "Mark as Watched" confirm modal — auto-fetches runtime + streaming
+│   │                            #   platforms from TMDB given just mediaId/mediaType; used by every
+│   │                            #   watched-toggle icon app-wide (detail pages, browse/search/rec cards)
 │   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages; episode list for the selected
 │   │                            #   season sits behind its own collapse toggle
 │   ├── CSVUploadModal.tsx       # CSV import modal with preview + TMDB poster enrichment
@@ -202,7 +210,9 @@ src/
 │   ├── PeoplePage.tsx           # /people — popular people browse with infinite scroll + own search box
 │   ├── WatchlistPage.tsx        # /watchlist — search, sort, type/watched filters, export CSV (protected)
 │   ├── WatchedPage.tsx          # /watched — search, sort, type filter, export CSV (protected)
-│   ├── ListsPage.tsx            # /lists — create/delete lists, add items, export CSV (protected)
+│   ├── ListsPage.tsx            # /lists — create/delete lists, search/sort, poster theme image per card (protected)
+│   ├── ListDetailPage.tsx       # /lists/:id — rename, item search/sort/type filter, scoped CSV import,
+│   │                            #   export CSV, clear, delete (protected)
 │   ├── StatsPage.tsx            # /stats — watch history charts (protected)
 │   ├── FollowingPage.tsx        # /following — manage followed people (protected)
 │   ├── CalendarPage.tsx         # /calendar — 60-day release lookahead + iCal export (protected)
@@ -271,7 +281,10 @@ src/
 - **Date formatting** — `src/utils/formatDate.ts` (`formatDateDMY`) renders dates as `dd-mm-yyyy` regardless of the viewer's locale, used anywhere a date is shown to the user (Watched, Lists, Movie/TV Detail).
 - **Info tooltips** — `src/components/InfoTooltip.tsx` wraps antd `Tooltip` + `InfoCircleOutlined` into one reusable `<InfoTooltip title="..." />`.
 - **Movie/TV detail parity** — `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader`, `WatchProviders`, `MediaCardGrid`, and `ReviewsSection` (all in `src/components/`) instead of each carrying its own copy, and render sections in the same order (Where to Watch → Cast → Recommendations → Similar → Trailers → Images → Reviews, with TV's Episode Guide inserted after Cast). Both fetch `videos` via `append_to_response` and render a Trailers section from it; TV now also fetches reviews (`fetchTVReviews`), previously movie-only.
-- **Library card parity** — `WatchlistPage.tsx`, `WatchedPage.tsx`, and `ListsPage.tsx` share `LibraryItemCard.tsx` for their item grids instead of three near-duplicate `Card`/`Card.Meta` blocks; `PeoplePage.tsx` and `SearchPage.tsx`'s People tab share `PersonCard.tsx` the same way.
+- **Library card parity** — `WatchlistPage.tsx`, `WatchedPage.tsx`, and `ListsPage.tsx` share `LibraryItemCard.tsx` for their item grids instead of three near-duplicate `Card`/`Card.Meta` blocks; `PeoplePage.tsx`, `SearchPage.tsx`'s People tab, and `FollowingPage.tsx` share `PersonCard.tsx` the same way.
+- **Mark-watched capture** — `MarkWatchedModal.tsx` is the single place that turns a "mark watched" click into a `WatchedEntry` with `runtime_minutes`/`platform` filled in: given only `mediaId`/`mediaType`, it fetches the title's detail (for runtime) and watch/providers (for platform options) itself via TMDB, so every call site — `MovieDetails.tsx`, `TVShowDetails.tsx`, `Movie.tsx`, `TVShowCard.tsx`, `RecommendationsPage.tsx`'s `RecCard`, `SearchPage.tsx`'s Movie/TV tabs — only needs those two IDs, no prop-drilling of detail data. Un-marking watched bypasses the modal entirely (instant toggle, same as before). Entries created before this existed (or via CSV bulk-import) have `runtime_minutes = null` and don't count toward "Hours Watched" — a known, accepted gap rather than a bug.
+- **List rename** — `PATCH /api/lists/<id>/` (added alongside the existing `DELETE`) accepts a partial `{name, description}` body via `UserListSerializer(..., partial=True)`; no new endpoint path, just a second method on the existing `lists_detail` view.
+- **Release Calendar window** — Reverted from a 60-day to a 7-day lookahead. The 60-day window was cosmetic: `fetchAllPages` caps each of the movie/TV discover queries at 3 pages (~60 items) sorted by release-date ascending, so on any day with meaningful release volume the cap exhausts within the first week regardless of the window's stated length. Items are deduped by `type-id` before grouping (TMDB's paginated results can repeat an item across adjacent pages under concurrent fetch, which previously caused a React key-collision warning and rendering the same title twice).
 
 ---
 
@@ -552,7 +565,7 @@ GitHub Actions runs the Jest suite, Django `pytest` suite, `ruff check`, and the
 | GET/POST        | `/api/ratings/`                             | List or add/update ratings                         |
 | DELETE/PATCH    | `/api/ratings/<id>/`                        | Remove or update a rating                          |
 | GET/POST        | `/api/lists/`                               | Create and list user lists                         |
-| DELETE          | `/api/lists/<id>/`                          | Delete a list                                      |
+| DELETE/PATCH    | `/api/lists/<id>/`                          | Delete or rename a list                            |
 | POST            | `/api/lists/<id>/items/`                    | Add an item to a list                              |
 | DELETE          | `/api/lists/<id>/items/clear/`              | Remove all items from a list (keeps the list)      |
 | DELETE          | `/api/lists/<id>/items/<item_id>/`          | Remove an item from a list                         |

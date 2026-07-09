@@ -2,15 +2,21 @@ import { memo } from "react";
 import { motion } from "framer-motion";
 import { Card, Tag, Button } from "antd";
 import { UserOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
-import type { TMDBPersonSummary } from "../types";
 import MarqueeTitle from "./MarqueeTitle";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
 import { IMG_URL, NO_IMAGE } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
+interface PersonCardPerson {
+  id: number;
+  name: string;
+  profile_path: string | null;
+  known_for_department?: string;
+}
+
 interface Props {
-  person: TMDBPersonSummary;
+  person: PersonCardPerson;
   onClick: () => void;
 }
 

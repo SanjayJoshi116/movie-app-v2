@@ -59,6 +59,12 @@ export function useLists() {
     setLists((prev) => prev.filter((l) => l.id !== id));
   }, [isAuthenticated]);
 
+  const updateList = useCallback(async (id: number, patch: { name?: string; description?: string }) => {
+    if (!isAuthenticated) return;
+    const { data } = await userApi.patch<UserListDTO>(`/lists/${id}/`, patch);
+    setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
+  }, [isAuthenticated]);
+
   const addToList = useCallback(async (listId: number, entry: WatchlistInput) => {
     if (!isAuthenticated) return;
     const list = lists.find((l) => l.id === listId);
@@ -123,5 +129,5 @@ export function useLists() {
     return list ? list.items.some((i) => i.id === id && i.type === type) : false;
   }, [lists]);
 
-  return { lists, isLoading, createList, deleteList, addToList, removeFromList, clearList, isInList, reloadLists: fetchLists };
+  return { lists, isLoading, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists: fetchLists };
 }

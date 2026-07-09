@@ -156,6 +156,14 @@ export interface StatsData {
   dailyActivity: { date: string; count: number }[];
   topRatedItems: { title: string; posterPath: string | null; userRating: number; mediaType: string }[];
   recentItems: { title: string; posterPath: string | null; watchedAt: string; mediaType: string }[];
+  totalRuntimeMinutes: number;
+  platformBreakdown: { platform: string; count: number }[];
+  ratingByGenre: { genre: string; avgRating: number }[];
+  reviewsWritten: number;
+  listsCount: number;
+  listsItemsCount: number;
+  watchlistTotal: number;
+  watchlistUnwatched: number;
 }
 
 export const fetchStats = () => userApi.get<StatsData>("/stats/");

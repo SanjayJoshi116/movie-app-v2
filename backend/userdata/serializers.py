@@ -84,6 +84,8 @@ class WatchedEntrySerializer(serializers.ModelSerializer):
         source="original_language", allow_null=True, allow_blank=True, required=False
     )
     releaseYear = serializers.IntegerField(source="release_year", allow_null=True, required=False)
+    runtimeMinutes = serializers.IntegerField(source="runtime_minutes", allow_null=True, required=False)
+    platform = serializers.CharField(allow_null=True, allow_blank=True, required=False)
 
     class Meta:
         model = WatchedEntry
@@ -97,6 +99,8 @@ class WatchedEntrySerializer(serializers.ModelSerializer):
             "watchedAt",
             "originalLanguage",
             "releaseYear",
+            "runtimeMinutes",
+            "platform",
         )
         read_only_fields = ("id", "watchedAt")
 

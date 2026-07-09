@@ -34,6 +34,8 @@ class WatchedEntry(models.Model):
     original_language = models.CharField(max_length=10, null=True, blank=True)
     release_year = models.IntegerField(null=True, blank=True)
     watched_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    runtime_minutes = models.IntegerField(null=True, blank=True)
+    platform = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")

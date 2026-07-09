@@ -65,6 +65,7 @@ export interface ListsContextType {
   isLoading: boolean;
   createList(name: string, description: string): void;
   deleteList(id: number): void;
+  updateList(id: number, patch: { name?: string; description?: string }): Promise<void>;
   addToList(listId: number, entry: WatchlistInput): void;
   removeFromList(listId: number, itemId: number, type: string): void;
   clearList(listId: number): Promise<void>;

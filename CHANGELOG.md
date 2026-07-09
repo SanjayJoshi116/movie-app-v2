@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] - 2026-07-09
+
+### Added
+- Per-list detail page (`/lists/:id`, new `ListDetailPage.tsx`) replacing the old expand-below-grid pattern on `ListsPage.tsx` — list-level actions (rename, Export CSV, Clear All, scoped CSV import, Delete) consolidated in one header, plus its own search/sort/type filter bar for the item grid. `ListsPage.tsx` itself gained a search+sort bar and a poster "theme image" per card (first item's poster, `NO_IMAGE` fallback when empty).
+- List rename: new `PATCH /api/lists/<id>/` endpoint (`lists_views.py`), `updateList()` in `useLists.ts`/`ListsContextType` — previously only create/delete existed.
+- `AddToListModal.tsx` — shared "Add to List" modal (search, inline create-new-list, `List`+`Tag` row styling) used by both `MovieDetails.tsx` and `TVShowDetails.tsx`, replacing two duplicated bare-checkbox modals; the button no longer disappears when the user has zero lists (previously a dead end).
+- `MarkWatchedModal.tsx` — shared confirm-step modal shown when marking a title watched (movie/TV detail pages and every browse/search/recommendation card's watched-toggle icon, replacing an instant one-click toggle). Auto-fetches runtime and that title's streaming platforms via TMDB (`fetchMovieDetails`/`fetchTVDetails` + `fetchMovieProviders`/`fetchTVWatchProviders`) using just `mediaId`/`mediaType` — runtime is read-only (auto-only, not user-entered), platform is a dropdown of real providers plus a free-text "Other". Un-marking stays an instant toggle, no modal.
+- `WatchedEntry` gained `runtime_minutes` and `platform` fields (migration `0013_watchedentry_platform_watchedentry_runtime_minutes.py`), captured via the modal above.
+- Stats page: "Hours Watched", "Reviews Written", "My Lists", and "Watchlist Backlog" KPI tiles; "Rating by Genre" chart (avg rating per genre, min. 3 rated titles); "Platform Breakdown" chart (from the new `platform` field).
+- Release Calendar: title search, sticky per-date headers, "Jump to Today" button.
+- Following page: search + sort (name A–Z/Z–A) bar; new "Recommended From People You Follow" section wired to the previously-unused `fetchFollowedPeopleRecommendations()` endpoint.
+
+### Changed
+- Release Calendar reverted to a 7-day lookahead (previously 60 days) — the 60-day window silently truncated to the first ~week of dense release volume anyway, since `fetchAllPages` caps at 3 pages (~60 items) per media type sorted date-ascending.
+- Release Calendar poster grid: fixed 6-per-row above mobile widths (2 on `xs`, 3 on `sm`), consistent spacing between date header and card grid.
+- `PersonCard.tsx`'s `person` prop relaxed from full `TMDBPersonSummary` to the minimal shape it actually reads (`id`/`name`/`profile_path`/optional `known_for_department`), enabling reuse from `FollowingPage.tsx` without synthesizing fake TMDB fields.
+- `RecommendationsPage.tsx`'s `SectionRow` exported for reuse by `FollowingPage.tsx`.
+- `FollowingPage.tsx` and `ListsPage.tsx` no longer redefine local color/image constants — both now import `RATING_GOLD`/`IMG_URL`/`NO_IMAGE` from `constants/ui.ts`.
+
+### Fixed
+- Duplicate items appearing (and firing a React key-collision warning) on the Release Calendar — TMDB's paginated discover results could list the same title on two adjacent pages under concurrent fetch; entries are now deduped by `type-id` before grouping.
+- `WatchedEntrySerializer`'s `platform` field passed a redundant `source="platform"`, which Django REST Framework rejects with a 500 (`AssertionError`) on every "mark watched" request — removed.
+- 4 grid/card-level "mark as watched" toggles (`Movie.tsx`, `TVShowCard.tsx`, `RecommendationsPage.tsx`'s `RecCard`, `SearchPage.tsx`'s Movie/TV tabs) were still instant-toggling directly against the watched API, bypassing `MarkWatchedModal` entirely — runtime/platform were silently never captured from these 4 spots even though the detail-page flow worked, so "Hours Watched" undercounted anything marked watched from a browse grid. All now route through the modal.
+- `AddToListModal`'s per-row checkbox had a redundant `stopPropagation` that would have silently prevented the actual add/remove toggle from ever firing on checkbox clicks (caught in review before shipping, not a live regression).
+
 ## [0.5.0] - 2026-07-08
 
 ### Added

@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.5.0)
+CINE DB — Feature List (v0.6.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -14,19 +14,21 @@ DETAIL PAGES
 - Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability
 - Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a grid (no horizontal scroll)
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
-- Add to / remove from custom lists
+- Add to / remove from custom lists via a shared modal (search existing lists, inline create-new-list, no dead end at zero lists)
+- Mark as watched goes through a confirm modal that auto-fetches runtime and lets you pick the streaming platform (or "Other") — feeds Hours Watched / Platform Breakdown on Stats
 - Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle
 - Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button
+- Following page: search + sort followed people, "Recommended From People You Follow" section
 
 LIBRARY
 - Watchlist & Watched lists, tied to account
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Search/sort/CSV export on Watchlist and Watched
 - Ratings (0.5-10) + written reviews
-- User Lists: create, add/remove items, CSV export, CSV import
-- Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, activity heatmap
+- User Lists: create, rename, add/remove items, CSV export, CSV import; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
+- Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap
 - Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card
-- Release Calendar: 60-day lookahead, grouped by date, iCal export
+- Release Calendar: 7-day lookahead, grouped by date, title search, sticky date headers, "Jump to Today", iCal export
 
 AUTH
 - JWT login/register

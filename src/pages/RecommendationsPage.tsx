@@ -17,6 +17,7 @@ import {
 } from "../api/userApi";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import { FONT_SIZE } from "../constants/typography";
 
 const SS_SEARCH = "foryou_search";
@@ -36,7 +37,9 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
   const { showSuccess } = useToast();
+  const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
   return (
+    <>
     <motion.div
       whileHover={{ scale: 1.04, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
@@ -73,9 +76,12 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     style={{ color: isWatched(item.id, item.type) ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const alreadyWatched = isWatched(item.id, item.type);
-                      toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
-                      showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
+                      if (isWatched(item.id, item.type)) {
+                        toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                        showSuccess("Removed from watched");
+                      } else {
+                        setShowMarkWatchedModal(true);
+                      }
                     }}
                     aria-label={isWatched(item.id, item.type) ? "Unmark watched" : "Mark as watched"}
                   />
@@ -110,10 +116,23 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
         />
       </Card>
     </motion.div>
+
+    <MarkWatchedModal
+      open={showMarkWatchedModal}
+      mediaId={item.id}
+      mediaType={item.type}
+      onCancel={() => setShowMarkWatchedModal(false)}
+      onConfirm={(details) => {
+        toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage, ...details });
+        showSuccess("Marked as watched");
+        setShowMarkWatchedModal(false);
+      }}
+    />
+    </>
   );
 });
 
-function SectionRow({ section, navigate }: { section: PersonalizedRecSection; navigate: (path: string, opts?: object) => void }) {
+export function SectionRow({ section, navigate }: { section: PersonalizedRecSection; navigate: (path: string, opts?: object) => void }) {
   return (
     <div key={section.key}>
       <Divider orientation="left">

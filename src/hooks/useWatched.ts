@@ -33,6 +33,8 @@ export function useWatched() {
             posterPath: item.posterPath,
             voteAverage: item.voteAverage,
             watchedAt: item.watchedAt,
+            runtimeMinutes: item.runtimeMinutes,
+            platform: item.platform,
           };
         });
         dbIdMap.current = map;
@@ -50,6 +52,8 @@ export function useWatched() {
       title: entry.title,
       posterPath: entry.posterPath,
       voteAverage: entry.voteAverage,
+      runtimeMinutes: entry.runtimeMinutes,
+      platform: entry.platform,
     });
     dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
     setWatchedList((prev) => {
@@ -99,6 +103,8 @@ export function useWatched() {
         posterPath: item.posterPath,
         voteAverage: item.voteAverage,
         watchedAt: item.watchedAt,
+        runtimeMinutes: item.runtimeMinutes,
+        platform: item.platform,
       };
     });
     dbIdMap.current = map;

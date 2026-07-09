@@ -25,10 +25,15 @@ def lists_list(request):
     return Response(UserListSerializer(user_list).data, status=status.HTTP_201_CREATED)
 
 
-@api_view(["DELETE"])
+@api_view(["DELETE", "PATCH"])
 @permission_classes([IsAuthenticated])
 def lists_detail(request, pk):
     user_list = get_object_or_404(UserList, pk=pk, user=request.user)
+    if request.method == "PATCH":
+        serializer = UserListSerializer(instance=user_list, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
     user_list.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 

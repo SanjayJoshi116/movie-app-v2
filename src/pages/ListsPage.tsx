@@ -1,34 +1,33 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Typography, Button, Modal, Form, Input, Card, Row, Col, Empty,
-  Space, Popconfirm, Tag, Divider, Spin, Tooltip,
+  Typography, Button, Modal, Form, Input, Select, Card, Row, Col, Empty,
+  Space, Popconfirm, Tag, Spin,
 } from "antd";
 import {
-  PlusOutlined, DeleteOutlined, UnorderedListOutlined, StarFilled, DownloadOutlined, UploadOutlined, ClearOutlined,
+  PlusOutlined, DeleteOutlined, UnorderedListOutlined, UploadOutlined, SearchOutlined,
 } from "@ant-design/icons";
 
 import { useListsContext } from "../context/useListsContext";
-import { downloadCSV } from "../utils/export";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
-import LibraryItemCard from "../components/LibraryItemCard";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
-import { pageVariants } from "../constants/ui";
+import { pageVariants, RATING_GOLD, IMG_URL, NO_IMAGE } from "../constants/ui";
 
-const SS_SELECTED = "lists_selected_id";
+const SS_SEARCH = "lists_search";
+const SS_SORT = "lists_sort";
+
+type SortKey = "created-desc" | "created-asc" | "name-asc" | "items-desc";
 
 function ListsPage() {
   const navigate = useNavigate();
-  const { lists, isLoading, createList, deleteList, removeFromList, clearList } = useListsContext();
+  const { lists, isLoading, createList, deleteList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importListOpen, setImportListOpen] = useState(false);
-  const [selectedListId, setSelectedListId] = useState<number | null>(() => {
-    const saved = sessionStorage.getItem(SS_SELECTED);
-    return saved ? Number(saved) : null;
-  });
+  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
+  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "created-desc");
   const [form] = Form.useForm();
 
   const handleCreate = () => {
@@ -39,15 +38,20 @@ function ListsPage() {
     });
   };
 
-  const selectList = (id: number | null) => {
-    setSelectedListId(id);
-    if (id !== null) sessionStorage.setItem(SS_SELECTED, String(id));
-    else sessionStorage.removeItem(SS_SELECTED);
-  };
-
-  const currentSelected = selectedListId
-    ? lists.find((l) => l.id === selectedListId) ?? null
-    : null;
+  const filteredLists = useMemo(() => {
+    let items = [...lists];
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter((l) => l.name.toLowerCase().includes(q));
+    }
+    switch (sortKey) {
+      case "created-asc": items.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")); break;
+      case "name-asc":    items.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case "items-desc":  items.sort((a, b) => b.items.length - a.items.length); break;
+      default:            items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+    }
+    return items;
+  }, [lists, search, sortKey]);
 
   return (
     <motion.div
@@ -59,7 +63,7 @@ function ListsPage() {
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <UnorderedListOutlined style={{ fontSize: 24, color: "#f5c518" }} />
+          <UnorderedListOutlined style={{ fontSize: 24, color: RATING_GOLD }} />
           <Typography.Title level={2} style={{ margin: 0 }}>My Lists</Typography.Title>
         </div>
         <Space wrap>
@@ -73,13 +77,45 @@ function ListsPage() {
         </Space>
       </div>
 
+      {lists.length > 0 && (
+        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="Search lists…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 200 }}
+          />
+          <Select
+            value={sortKey}
+            onChange={setSortKey}
+            style={{ width: 180 }}
+            options={[
+              { label: "Created (newest)", value: "created-desc" },
+              { label: "Created (oldest)", value: "created-asc" },
+              { label: "Name A–Z", value: "name-asc" },
+              { label: "Item count ↓", value: "items-desc" },
+            ]}
+          />
+          {(search.trim() !== "" || sortKey !== "created-desc") && (
+            <Button
+              type="text"
+              onClick={() => { setSearch(""); setSortKey("created-desc"); }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </Space>
+      )}
+
       {isLoading ? (
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
           <Spin size="large" />
         </div>
       ) : lists.length === 0 ? (
         <Empty
-          image={<UnorderedListOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
+          image={<UnorderedListOutlined style={{ fontSize: 48, color: RATING_GOLD }} />}
           description="No custom lists yet. Create your first list to organize your favorites."
           style={{ padding: "60px 0" }}
         >
@@ -87,21 +123,35 @@ function ListsPage() {
             Create a List
           </Button>
         </Empty>
+      ) : filteredLists.length === 0 ? (
+        <Empty
+          description={search.trim() ? `No lists match "${search}".` : "No lists match your filters."}
+          style={{ padding: "40px 0" }}
+        />
       ) : (
         <Row gutter={[16, 16]}>
-          {lists.map((list) => (
-            <Col key={list.id} xs={24} sm={12} md={8} lg={6}>
+          {filteredLists.map((list) => (
+            <Col key={list.id} xs={12} sm={8} md={4} lg={4}>
               <Card
                 hoverable
                 className="glass-card"
-                style={{ height: "100%", cursor: "pointer", borderColor: currentSelected?.id === list.id ? "#f5c518" : undefined }}
-                onClick={() => selectList(list.id === currentSelected?.id ? null : list.id)}
+                style={{ height: "100%", cursor: "pointer" }}
+                onClick={() => navigate(`/lists/${list.id}`)}
+                cover={
+                  <img
+                    src={list.items[0]?.posterPath ? `${IMG_URL}${list.items[0].posterPath}` : NO_IMAGE}
+                    alt={list.name}
+                    loading="lazy"
+                    className="movie-poster-img"
+                    style={{ aspectRatio: "2 / 3", objectFit: "cover" }}
+                  />
+                }
                 actions={[
                   <Popconfirm
                     key="delete"
                     title={`Delete "${list.name}"?`}
                     description="This will permanently remove the list and all its items."
-                    onConfirm={() => { if (currentSelected?.id === list.id) selectList(null); deleteList(list.id); }}
+                    onConfirm={() => deleteList(list.id)}
                     okText="Delete"
                     okType="danger"
                     cancelText="Cancel"
@@ -130,100 +180,6 @@ function ListsPage() {
             </Col>
           ))}
         </Row>
-      )}
-
-      {/* Selected list items */}
-      {currentSelected && (
-        <>
-          <Divider>
-            <Space>
-              <Typography.Text strong>{currentSelected.name}</Typography.Text>
-              {currentSelected.items.length > 0 && (
-                <Space>
-                  <Button
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={() => {
-                      const rows = currentSelected.items.map((i) => ({
-                        list: currentSelected.name,
-                        title: i.title,
-                        type: i.type,
-                        tmdb_id: i.id,
-                        vote_average: i.voteAverage,
-                        added_at: i.addedAt,
-                      }));
-                      downloadCSV(rows, `${currentSelected.name.replace(/\s+/g, "_")}.csv`);
-                    }}
-                  >
-                    Export CSV
-                  </Button>
-                  <Popconfirm
-                    title={`Clear all items from "${currentSelected.name}"?`}
-                    description="The list will remain but all items will be removed."
-                    onConfirm={() => clearList(currentSelected.id)}
-                    okText="Clear All"
-                    okType="danger"
-                    cancelText="Cancel"
-                  >
-                    <Button danger size="small" icon={<ClearOutlined />}>
-                      Clear All
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              )}
-            </Space>
-          </Divider>
-
-          {currentSelected.items.length === 0 ? (
-            <Empty
-              description={`"${currentSelected.name}" is empty. Add items from movie or TV detail pages.`}
-              style={{ padding: "40px 0" }}
-            />
-          ) : (
-            <Row gutter={[16, 20]}>
-              {currentSelected.items.map((item) => (
-                <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                  <LibraryItemCard
-                    posterPath={item.posterPath}
-                    title={item.title}
-                    onOpen={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/lists" } })}
-                    tags={
-                      <>
-                        <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                          {item.type === "movie" ? "Movie" : "TV"}
-                        </Tag>
-                        {item.voteAverage != null && (
-                          <Tag color="gold" style={{ margin: 0 }}>
-                            <StarFilled /> {item.voteAverage.toFixed(1)}
-                          </Tag>
-                        )}
-                      </>
-                    }
-                    actionButtons={
-                      <Popconfirm
-                        title="Remove from list?"
-                        onConfirm={() => removeFromList(currentSelected.id, item.id, item.type)}
-                        okText="Remove"
-                        cancelText="Cancel"
-                      >
-                        <Tooltip title="Remove">
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label="Remove from list"
-                          />
-                        </Tooltip>
-                      </Popconfirm>
-                    }
-                  />
-                </Col>
-              ))}
-            </Row>
-          )}
-        </>
       )}
 
       {/* Create List Modal */}

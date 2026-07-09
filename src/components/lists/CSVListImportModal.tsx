@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space, Select } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
@@ -15,6 +15,7 @@ const { Text } = Typography;
 interface Props {
   open: boolean;
   onClose: () => void;
+  lockedListId?: number;
 }
 
 function downloadTemplate(type: "movie" | "tv") {
@@ -31,10 +32,14 @@ function downloadTemplate(type: "movie" | "tv") {
   URL.revokeObjectURL(url);
 }
 
-const CSVListImportModal = ({ open, onClose }: Props) => {
+const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
   const { showSuccess, showError } = useToast();
   const { lists, reloadLists } = useListsContext();
-  const [selectedListId, setSelectedListId] = useState<number | null>(null);
+  const [selectedListId, setSelectedListId] = useState<number | null>(lockedListId ?? null);
+
+  useEffect(() => {
+    if (lockedListId != null) setSelectedListId(lockedListId);
+  }, [lockedListId, open]);
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
   const [parsed, setParsed] = useState<ParsedEntry[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -110,7 +115,7 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
     setParsed([]);
     setParseError(null);
     setFileName(null);
-    setSelectedListId(null);
+    setSelectedListId(lockedListId ?? null);
     setMediaType("movie");
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClose();
@@ -133,6 +138,7 @@ const CSVListImportModal = ({ open, onClose }: Props) => {
           placeholder="Select a list"
           value={selectedListId}
           onChange={setSelectedListId}
+          disabled={lockedListId != null}
           options={lists.map((l) => ({ label: `${l.name} (${l.items.length} items)`, value: l.id }))}
         />
       </div>

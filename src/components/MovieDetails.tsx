@@ -3,15 +3,16 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Image, Modal, Checkbox,
+  Statistic, Card, Space, Image,
 } from "antd";
 import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
-import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
+import { AddToListModal } from "./AddToListModal";
+import { MarkWatchedModal } from "./MarkWatchedModal";
 import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "./InfoTooltip";
@@ -59,10 +60,10 @@ const MovieDetails = ({ movie }: Props) => {
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
   const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
-  const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess, showError } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
+  const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
 
   const {
     id, title, overview, release_date, poster_path, backdrop_path, genres, runtime,
@@ -135,8 +136,12 @@ const MovieDetails = ({ movie }: Props) => {
                 </motion.button>
                 <motion.button
                   onClick={() => {
-                    toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                    showSuccess(watched ? "Removed from watched" : "Marked as watched");
+                    if (watched) {
+                      toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess("Removed from watched");
+                    } else {
+                      setShowMarkWatchedModal(true);
+                    }
                   }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
@@ -152,11 +157,9 @@ const MovieDetails = ({ movie }: Props) => {
                 >
                   {myRating ? `${myRating.userRating}/10` : "Rate"}
                 </Button>
-                {lists.length > 0 && (
-                  <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
-                    Add to List
-                  </Button>
-                )}
+                <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
+                  Add to List
+                </Button>
               </div>
 
               <Typography.Paragraph style={{ fontSize: FONT_SIZE.body, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
@@ -218,43 +221,27 @@ const MovieDetails = ({ movie }: Props) => {
         />
       )}
 
-      <Modal
-        title="Add to List"
+      <AddToListModal
         open={showListModal}
-        onCancel={() => setShowListModal(false)}
-        footer={null}
-      >
-        <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
-          {lists.map((list) => {
-            const inList = isInList(list.id, id, "movie");
-            return (
-              <div
-                key={list.id}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}
-              >
-                <div>
-                  <Typography.Text strong>{list.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: FONT_SIZE.caption }}>
-                    {list.items.length} item{list.items.length !== 1 ? "s" : ""}
-                  </Typography.Text>
-                </div>
-                <Checkbox
-                  checked={inList}
-                  onChange={() => {
-                    if (inList) {
-                      removeFromList(list.id, id, "movie");
-                      showSuccess(`Removed from "${list.name}"`);
-                    } else {
-                      addToList(list.id, { id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                      showSuccess(`Added to "${list.name}"`);
-                    }
-                  }}
-                />
-              </div>
-            );
-          })}
-        </Space>
-      </Modal>
+        onClose={() => setShowListModal(false)}
+        mediaId={id}
+        mediaType="movie"
+        title={title}
+        posterPath={poster_path}
+        voteAverage={vote_average}
+      />
+
+      <MarkWatchedModal
+        open={showMarkWatchedModal}
+        mediaId={id}
+        mediaType="movie"
+        onCancel={() => setShowMarkWatchedModal(false)}
+        onConfirm={(details) => {
+          toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+          showSuccess("Marked as watched");
+          setShowMarkWatchedModal(false);
+        }}
+      />
 
       {/* Sections below the glass card */}
       <div className="detail-container">

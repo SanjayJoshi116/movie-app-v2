@@ -4,17 +4,18 @@ import EpisodeGuide from "./EpisodeGuide";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Tag, Typography, Descriptions,
-  Statistic, Card, Space, Divider, Image, Spin, Modal, Checkbox, Collapse, Popconfirm,
+  Statistic, Card, Space, Divider, Image, Spin, Collapse, Popconfirm,
 } from "antd";
 import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
   PlayCircleOutlined, MinusOutlined, DeleteOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
-import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { useEpisodeProgress } from "../hooks/useEpisodeProgress";
 import { RatingModal } from "./watchlist/RatingModal";
+import { AddToListModal } from "./AddToListModal";
+import { MarkWatchedModal } from "./MarkWatchedModal";
 import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "./InfoTooltip";
@@ -46,11 +47,11 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
   const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
-  const { lists, addToList, removeFromList, isInList } = useListsContext();
   const { showSuccess, showError } = useToast();
   const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
+  const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
   const [epSeason, setEpSeason] = useState<number>(1);
   const [epEpisode, setEpEpisode] = useState<number>(1);
   const [epEditing, setEpEditing] = useState(false);
@@ -132,8 +133,12 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 </motion.button>
                 <motion.button
                   onClick={() => {
-                    toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
-                    showSuccess(watched ? "Removed from watched" : "Marked as watched");
+                    if (watched) {
+                      toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess("Removed from watched");
+                    } else {
+                      setShowMarkWatchedModal(true);
+                    }
                   }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
@@ -149,11 +154,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 >
                   {myRating ? `${myRating.userRating}/10` : "Rate"}
                 </Button>
-                {lists.length > 0 && (
-                  <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
-                    Add to List
-                  </Button>
-                )}
+                <Button icon={<PlusOutlined />} onClick={() => setShowListModal(true)}>
+                  Add to List
+                </Button>
               </div>
 
               <Typography.Paragraph style={{ fontSize: FONT_SIZE.body, lineHeight: 1.7 }}>{overview}</Typography.Paragraph>
@@ -300,43 +303,27 @@ const TVShowDetails = ({ tvShow }: Props) => {
         />
       )}
 
-      <Modal
-        title="Add to List"
+      <AddToListModal
         open={showListModal}
-        onCancel={() => setShowListModal(false)}
-        footer={null}
-      >
-        <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
-          {lists.map((list) => {
-            const inList = isInList(list.id, id, "tv");
-            return (
-              <div
-                key={list.id}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}
-              >
-                <div>
-                  <Typography.Text strong>{list.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: FONT_SIZE.caption }}>
-                    {list.items.length} item{list.items.length !== 1 ? "s" : ""}
-                  </Typography.Text>
-                </div>
-                <Checkbox
-                  checked={inList}
-                  onChange={() => {
-                    if (inList) {
-                      removeFromList(list.id, id, "tv");
-                      showSuccess(`Removed from "${list.name}"`);
-                    } else {
-                      addToList(list.id, { id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
-                      showSuccess(`Added to "${list.name}"`);
-                    }
-                  }}
-                />
-              </div>
-            );
-          })}
-        </Space>
-      </Modal>
+        onClose={() => setShowListModal(false)}
+        mediaId={id}
+        mediaType="tv"
+        title={name}
+        posterPath={poster_path}
+        voteAverage={vote_average}
+      />
+
+      <MarkWatchedModal
+        open={showMarkWatchedModal}
+        mediaId={id}
+        mediaType="tv"
+        onCancel={() => setShowMarkWatchedModal(false)}
+        onConfirm={(details) => {
+          toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average, ...details });
+          showSuccess("Marked as watched");
+          setShowMarkWatchedModal(false);
+        }}
+      />
 
       {/* Sections below the glass card */}
       <div className="detail-container">

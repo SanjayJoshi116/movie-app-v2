@@ -12,6 +12,16 @@ import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { MarkWatchedModal } from "../components/MarkWatchedModal";
+import type { MediaType } from "../types";
+
+interface PendingWatch {
+  id: number;
+  type: MediaType;
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+}
 
 function getRatingColor(v: number) {
   if (v >= 8) return "#52c41a";
@@ -125,6 +135,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess } = useToast();
+  const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
@@ -181,9 +192,12 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                             style={{ color: isWatched(m.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              const already = isWatched(m.id, "movie");
-                              toggleWatched({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
-                              showSuccess(already ? "Removed from watched" : "Marked as watched");
+                              if (isWatched(m.id, "movie")) {
+                                toggleWatched({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
+                                showSuccess("Removed from watched");
+                              } else {
+                                setPendingWatch({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
+                              }
                             }}
                             aria-label={isWatched(m.id, "movie") ? "Unmark watched" : "Mark as watched"}
                           />
@@ -207,6 +221,19 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
       </Row>
       {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
       <div ref={sentinelRef} style={{ height: 1 }} />
+      <MarkWatchedModal
+        open={pendingWatch !== null}
+        mediaId={pendingWatch?.id ?? 0}
+        mediaType={pendingWatch?.type ?? "movie"}
+        onCancel={() => setPendingWatch(null)}
+        onConfirm={(details) => {
+          if (pendingWatch) {
+            toggleWatched({ ...pendingWatch, ...details });
+            showSuccess("Marked as watched");
+          }
+          setPendingWatch(null);
+        }}
+      />
     </>
   );
 }
@@ -215,6 +242,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess } = useToast();
+  const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
@@ -271,9 +299,12 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                             style={{ color: isWatched(t.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              const already = isWatched(t.id, "tv");
-                              toggleWatched({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
-                              showSuccess(already ? "Removed from watched" : "Marked as watched");
+                              if (isWatched(t.id, "tv")) {
+                                toggleWatched({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
+                                showSuccess("Removed from watched");
+                              } else {
+                                setPendingWatch({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
+                              }
                             }}
                             aria-label={isWatched(t.id, "tv") ? "Unmark watched" : "Mark as watched"}
                           />
@@ -297,6 +328,19 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
       </Row>
       {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
       <div ref={sentinelRef} style={{ height: 1 }} />
+      <MarkWatchedModal
+        open={pendingWatch !== null}
+        mediaId={pendingWatch?.id ?? 0}
+        mediaType={pendingWatch?.type ?? "movie"}
+        onCancel={() => setPendingWatch(null)}
+        onConfirm={(details) => {
+          if (pendingWatch) {
+            toggleWatched({ ...pendingWatch, ...details });
+            showSuccess("Marked as watched");
+          }
+          setPendingWatch(null);
+        }}
+      />
     </>
   );
 }

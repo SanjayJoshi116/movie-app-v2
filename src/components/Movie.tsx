@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
@@ -8,6 +8,7 @@ import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
+import { MarkWatchedModal } from "./MarkWatchedModal";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -28,8 +29,10 @@ const Movie = ({ movie, onKnowMore }: Props) => {
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
   const { showSuccess } = useToast();
+  const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
 
   return (
+    <>
     <motion.div
       role="article"
       whileHover={{ scale: 1.04, y: -4 }}
@@ -69,9 +72,12 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     style={{ color: isWatched(movie.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const alreadyWatched = isWatched(movie.id, "movie");
-                      toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                      showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
+                      if (isWatched(movie.id, "movie")) {
+                        toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                        showSuccess("Removed from watched");
+                      } else {
+                        setShowMarkWatchedModal(true);
+                      }
                     }}
                     aria-label={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}
                   />
@@ -109,6 +115,19 @@ const Movie = ({ movie, onKnowMore }: Props) => {
         />
       </Card>
     </motion.div>
+
+    <MarkWatchedModal
+      open={showMarkWatchedModal}
+      mediaId={movie.id}
+      mediaType="movie"
+      onCancel={() => setShowMarkWatchedModal(false)}
+      onConfirm={(details) => {
+        toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+        showSuccess("Marked as watched");
+        setShowMarkWatchedModal(false);
+      }}
+    />
+    </>
   );
 };
 

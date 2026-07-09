@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -8,6 +8,7 @@ import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
+import { MarkWatchedModal } from "./MarkWatchedModal";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -27,8 +28,10 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
   const { showSuccess } = useToast();
+  const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
 
   return (
+    <>
     <motion.div
       role="article"
       whileHover={{ scale: 1.04, y: -4 }}
@@ -72,9 +75,12 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     style={{ color: isWatched(tvShow.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const alreadyWatched = isWatched(tvShow.id, "tv");
-                      toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
-                      showSuccess(alreadyWatched ? "Removed from watched" : "Marked as watched");
+                      if (isWatched(tvShow.id, "tv")) {
+                        toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
+                        showSuccess("Removed from watched");
+                      } else {
+                        setShowMarkWatchedModal(true);
+                      }
                     }}
                     aria-label={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}
                   />
@@ -112,6 +118,19 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
         />
       </Card>
     </motion.div>
+
+    <MarkWatchedModal
+      open={showMarkWatchedModal}
+      mediaId={tvShow.id}
+      mediaType="tv"
+      onCancel={() => setShowMarkWatchedModal(false)}
+      onConfirm={(details) => {
+        toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average, ...details });
+        showSuccess("Marked as watched");
+        setShowMarkWatchedModal(false);
+      }}
+    />
+    </>
   );
 };
 

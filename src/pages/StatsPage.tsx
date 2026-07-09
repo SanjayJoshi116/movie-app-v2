@@ -10,6 +10,10 @@ import {
   StarOutlined,
   StarFilled,
   FormOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  UnorderedListOutlined,
+  BookOutlined,
 } from "@ant-design/icons";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
@@ -28,13 +32,13 @@ import {
   Area,
 } from "recharts";
 import { fetchStats, type StatsData } from "../api/userApi";
-import { pageVariants } from "../constants/ui";
+import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL, NO_IMAGE } from "../constants/ui";
 
 const { Title, Text } = Typography;
 
-const GOLD = "#f5c518";
+const GOLD = RATING_GOLD;
 const BLUE = "#4096ff";
-const GREEN = "#52c41a";
+const GREEN = WATCHED_GREEN;
 const PURPLE = "#722ed1";
 const TEAL = "#13c2c2";
 const ORANGE = "#fa8c16";
@@ -270,7 +274,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
     <div style={{ width: 110, flexShrink: 0 }}>
       <div style={{ position: "relative", borderRadius: 6, overflow: "hidden" }}>
         <img
-          src={posterPath ? `https://image.tmdb.org/t/p/w185${posterPath}` : "https://placehold.co/110x165?text=No+Image"}
+          src={posterPath ? `${IMG_URL}${posterPath}` : NO_IMAGE}
           alt={title}
           loading="lazy"
           style={{ width: "100%", display: "block" }}
@@ -382,6 +386,39 @@ function StatsPage() {
             tooltip="Average TMDB community score for titles you've watched (not your own rating)."
           />
         </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard
+            title="Hours Watched"
+            value={Math.round(data.totalRuntimeMinutes / 60)}
+            suffix="hrs"
+            icon={<ClockCircleOutlined />}
+            color={ORANGE}
+            tooltip="Based on runtime entered when marking titles watched. Older entries without runtime aren't counted."
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard title="Reviews Written" value={data.reviewsWritten} icon={<EditOutlined />} color={PURPLE} />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard
+            title="My Lists"
+            value={data.listsCount}
+            suffix={`${data.listsItemsCount} items`}
+            icon={<UnorderedListOutlined />}
+            color={GOLD}
+            animate={false}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <StatCard
+            title="Watchlist Backlog"
+            value={data.watchlistUnwatched}
+            suffix={`of ${data.watchlistTotal}`}
+            icon={<BookOutlined />}
+            color={BLUE}
+            animate={false}
+          />
+        </Col>
       </Row>
 
       {/* Library Overview */}
@@ -439,15 +476,15 @@ function StatsPage() {
       {/* Watch History */}
       <Title level={4} style={{ marginBottom: 16 }}>Watch History</Title>
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
-        <Col xs={24}>
-          <Card className="glass-card" title={<>Activity Heatmap (Last 52 Weeks)<InfoTooltip title="Counts days you watched, rated, or added a title to a list." /></>}>
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title={<>Activity Heatmap (Last 52 Weeks)<InfoTooltip title="Counts days you watched, rated, or added a title to a list." /></>} style={{ height: "100%" }}>
             <ActivityHeatmap dailyActivity={data.dailyActivity ?? []} />
           </Card>
         </Col>
 
-        {data.monthlyActivity.length > 0 && (
-          <Col xs={24}>
-            <Card className="glass-card" title="Watch Activity by Month">
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title="Watch Activity by Month" style={{ height: "100%" }}>
+            {data.monthlyActivity.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={data.monthlyActivity} style={CHART_STYLE}>
                   <defs>
@@ -463,9 +500,11 @@ function StatsPage() {
                     fill="url(#activityGradient)" dot={{ fill: BLUE, r: 3 }} activeDot={{ r: 5 }} />
                 </AreaChart>
               </ResponsiveContainer>
-            </Card>
-          </Col>
-        )}
+            ) : (
+              <Empty description="No monthly activity yet." style={{ padding: "24px 0" }} />
+            )}
+          </Card>
+        </Col>
       </Row>
 
       {/* Genres & Origins */}
@@ -496,100 +535,145 @@ function StatsPage() {
         </Col>
 
         <Col xs={24} md={12}>
-          <Row gutter={[16, 16]}>
-            {languageData.length > 0 && (
-              <Col xs={24}>
-                <Card className="glass-card" title="Language Breakdown">
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={languageData} layout="vertical" style={CHART_STYLE}>
-                      <XAxis type="number" allowDecimals={false} />
-                      <YAxis type="category" dataKey="name" width={80} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                        {languageData.map((_, i) => (
-                          <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-              </Col>
+          <Card className="glass-card" title={<>Rating by Genre<InfoTooltip title="Average of your ratings per genre. Only genres with 3+ rated titles are shown." /></>} style={{ height: "100%" }}>
+            {(data.ratingByGenre ?? []).length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={data.ratingByGenre} layout="vertical" style={CHART_STYLE}>
+                  <XAxis type="number" domain={[0, 10]} allowDecimals={false} />
+                  <YAxis type="category" dataKey="genre" width={110} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="avgRating" radius={[0, 4, 4, 0]}>
+                    {(data.ratingByGenre ?? []).map((_, i) => (
+                      <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty description="Rate 3+ titles in the same genre to see this chart." style={{ padding: "24px 0" }} />
             )}
+          </Card>
+        </Col>
 
-            {(data.decadeBreakdown ?? []).length > 0 && (
-              <Col xs={24}>
-                <Card className="glass-card" title={<>By Decade<InfoTooltip title="Titles grouped by the decade of their release date." /></>}>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={data.decadeBreakdown} style={CHART_STYLE}>
-                      <XAxis dataKey="decade" />
-                      <YAxis allowDecimals={false} width={28} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                        {(data.decadeBreakdown ?? []).map((_, i) => (
-                          <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-              </Col>
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title="Language Breakdown">
+            {languageData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={languageData} layout="vertical" style={CHART_STYLE}>
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={80} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    {languageData.map((_, i) => (
+                      <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty description="No language data yet." style={{ padding: "24px 0" }} />
             )}
-          </Row>
+          </Card>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title={<>By Decade<InfoTooltip title="Titles grouped by the decade of their release date." /></>}>
+            {(data.decadeBreakdown ?? []).length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={data.decadeBreakdown} style={CHART_STYLE}>
+                  <XAxis dataKey="decade" />
+                  <YAxis allowDecimals={false} width={28} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {(data.decadeBreakdown ?? []).map((_, i) => (
+                      <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty description="No decade data yet." style={{ padding: "24px 0" }} />
+            )}
+          </Card>
         </Col>
       </Row>
 
-      {/* Top Items */}
-      {hasTopItems && (
-        <>
-          <Title level={4} style={{ marginBottom: 16 }}>Top Items</Title>
-          <Card className="glass-card" style={{ marginBottom: 32 }}>
-            <Tabs
-              activeKey={activeStatsTab}
-              onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
-              items={[
-                {
-                  key: "top-rated",
-                  label: "Top Rated",
-                  children: (data.topRatedItems ?? []).length > 0 ? (
-                    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
-                      {(data.topRatedItems ?? []).map((item, i) => (
-                        <PosterCard
-                          key={i}
-                          title={item.title}
-                          posterPath={item.posterPath}
-                          badge={`★ ${item.userRating}`}
-                          mediaType={item.mediaType}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty description="Rate some items to see them here." />
-                  ),
-                },
-                {
-                  key: "recent",
-                  label: "Recently Watched",
-                  children: (data.recentItems ?? []).length > 0 ? (
-                    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
-                      {(data.recentItems ?? []).map((item, i) => (
-                        <PosterCard
-                          key={i}
-                          title={item.title}
-                          posterPath={item.posterPath}
-                          badge={item.watchedAt}
-                          mediaType={item.mediaType}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty description="No recent items." />
-                  ),
-                },
-              ]}
-            />
+      {/* Platform Breakdown & Top Items */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title={<>Platform Breakdown<InfoTooltip title="Where you watched, based on what you selected when marking titles watched." /></>} style={{ height: "100%" }}>
+            {(data.platformBreakdown ?? []).length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={data.platformBreakdown} style={CHART_STYLE}>
+                  <XAxis dataKey="platform" />
+                  <YAxis allowDecimals={false} width={28} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {(data.platformBreakdown ?? []).map((_, i) => (
+                      <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty description="No platform data yet. Pick a platform when marking titles watched to see this chart." style={{ padding: "24px 0" }} />
+            )}
           </Card>
-        </>
-      )}
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Card className="glass-card" title="Top Items" style={{ height: "100%" }}>
+            {hasTopItems ? (
+              <Tabs
+                activeKey={activeStatsTab}
+                onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
+                items={[
+                  {
+                    key: "top-rated",
+                    label: "Top Rated",
+                    children: (data.topRatedItems ?? []).length > 0 ? (
+                      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+                        {(data.topRatedItems ?? []).map((item, i) => (
+                          <PosterCard
+                            key={i}
+                            title={item.title}
+                            posterPath={item.posterPath}
+                            badge={`★ ${item.userRating}`}
+                            mediaType={item.mediaType}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="Rate some items to see them here." />
+                    ),
+                  },
+                  {
+                    key: "recent",
+                    label: "Recently Watched",
+                    children: (data.recentItems ?? []).length > 0 ? (
+                      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+                        {(data.recentItems ?? []).map((item, i) => (
+                          <PosterCard
+                            key={i}
+                            title={item.title}
+                            posterPath={item.posterPath}
+                            badge={item.watchedAt}
+                            mediaType={item.mediaType}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <Empty description="No recent items." />
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <Empty description="Watch or rate titles to see them here." style={{ padding: "24px 0" }} />
+            )}
+          </Card>
+        </Col>
+      </Row>
     </motion.div>
   );
 }

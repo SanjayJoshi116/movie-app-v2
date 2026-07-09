@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import WatchedEntry, RatingEntry
+from .models import WatchedEntry, RatingEntry, UserList, UserListItem, WatchlistEntry
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,10 @@ def stats(request):
         round(sum(w.vote_average for w in watched_list) / total_watched, 1) if watched_list else None
     )
 
+    total_runtime_minutes = sum(w.runtime_minutes or 0 for w in watched_list)
+    platform_counter = Counter(w.platform for w in watched_list if w.platform)
+    platform_breakdown = [{"platform": p, "count": c} for p, c in platform_counter.most_common(10)]
+
     missing = [w for w in watched_list if w.original_language is None or w.release_year is None]
 
     if missing:
@@ -133,6 +137,31 @@ def stats(request):
         (r.media_id, r.media_type): r.user_rating
         for r in ratings_qs.only("media_id", "media_type", "user_rating")
     }
+
+    genre_rating_sum: dict[int, float] = {}
+    genre_rating_n: dict[int, int] = {}
+    for entry in watched_list:
+        ur = rating_map.get((entry.media_id, entry.media_type))
+        if ur is None:
+            continue
+        for gid in (entry.genre_ids or []):
+            genre_rating_sum[gid] = genre_rating_sum.get(gid, 0) + ur
+            genre_rating_n[gid] = genre_rating_n.get(gid, 0) + 1
+    rating_by_genre = sorted([
+        {"genre": genre_names.get(gid, f"Genre {gid}"), "avgRating": round(genre_rating_sum[gid] / n, 1)}
+        for gid, n in genre_rating_n.items() if n >= 3
+    ], key=lambda x: -x["avgRating"])[:10]
+
+    reviews_written = ratings_qs.exclude(review="").count()
+
+    lists_qs = UserList.objects.filter(user=request.user)
+    lists_count = lists_qs.count()
+    lists_items_count = UserListItem.objects.filter(user_list__in=lists_qs).count()
+
+    watchlist_qs = WatchlistEntry.objects.filter(user=request.user)
+    watchlist_total = watchlist_qs.count()
+    watchlist_unwatched = watchlist_qs.filter(watched=False).count()
+
     top_rated: list[dict] = []
     for entry in watched_list:
         user_rating = rating_map.get((entry.media_id, entry.media_type))
@@ -172,4 +201,12 @@ def stats(request):
         "dailyActivity": daily_activity,
         "topRatedItems": top_rated_items,
         "recentItems": recent_items,
+        "totalRuntimeMinutes": total_runtime_minutes,
+        "platformBreakdown": platform_breakdown,
+        "ratingByGenre": rating_by_genre,
+        "reviewsWritten": reviews_written,
+        "listsCount": lists_count,
+        "listsItemsCount": lists_items_count,
+        "watchlistTotal": watchlist_total,
+        "watchlistUnwatched": watchlist_unwatched,
     })

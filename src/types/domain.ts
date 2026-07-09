@@ -36,6 +36,8 @@ export interface WatchedEntry {
   posterPath: string | null;
   voteAverage: number;
   watchedAt: string;
+  runtimeMinutes?: number | null;
+  platform?: string | null;
 }
 
 export type WatchedInput = Omit<WatchedEntry, "watchedAt">;
@@ -99,6 +101,8 @@ export interface WatchedEntryDTO {
   watchedAt: string;
   originalLanguage: string | null;
   releaseYear: number | null;
+  runtimeMinutes?: number | null;
+  platform?: string | null;
 }
 
 export interface RatingEntryDTO {
