@@ -33,7 +33,6 @@ export interface AppContextType {
   clearAllWatchlist(): Promise<void>;
   isInWatchlist(id: number, type: string): boolean;
   toggleWatchlist(entry: WatchlistInput): void;
-  markWatched(id: number, type: string, watched: boolean): void;
 
   // Watched
   watchedList: WatchedEntry[];

@@ -14,7 +14,6 @@ class WatchlistEntry(models.Model):
     poster_path = models.CharField(max_length=500, blank=True, null=True)
     vote_average = models.FloatField(default=0)
     added_at = models.DateTimeField(auto_now_add=True)
-    watched = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")

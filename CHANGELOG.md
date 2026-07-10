@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.10.0] - 2026-07-10
+
+### Changed
+- Watchlist page's "watched" status no longer lives on its own `WatchlistEntry.watched` DB column — it's now derived live from the shared Watched list (`isWatched(id, type)` via `WatchedContext`), same source every other page already reads from. Marking watched from `WatchlistPage.tsx` now opens `MarkWatchedModal` (auto-fetches runtime/platform) instead of an instant local toggle, matching the convention used everywhere else (`SearchPage.tsx`, `Movie.tsx`, `TVShowCard.tsx`); unmarking stays instant. Removed `WatchlistEntry.watched` (migration `0015_remove_watchlistentry_watched.py`), `WatchlistEntrySerializer`'s `watched` field, and `markWatched`/`useWatchlist.ts`'s corresponding endpoint call, context method, and type entries — all now dead code since the derived value replaces them everywhere.
+- Watchlist page's eye icon now colors green when watched (matching `SearchPage.tsx`/`Movie.tsx`/`TVShowCard.tsx`'s existing convention) instead of only swapping icon shape with no color change.
+- Removed the separate cyan "Watched" `Tag` from Watchlist page cards — the green eye icon is now the only (and sufficient) watched indicator, avoiding a redundant second signal.
+
+### Fixed
+- Watchlist page cards showed the correct watched state but stayed visually stale relative to marking something watched from a different page (e.g. Search) — the root cause was two independent, unsynced "watched" booleans (`WatchlistEntry.watched` vs the separate `WatchedEntry` table); see "Changed" above for the fix.
+- Watchlist cards of different content lengths (long review text, missing rating, etc.) rendered at different heights despite sharing a grid row — `LibraryItemCard.tsx`'s outer `motion.div` wrapper had no height set, so the inner `Card`'s existing `height: 100%` had nothing to resolve against; the antd `Col` itself was already stretched to match its tallest row sibling (default flex behavior), but the visible card box just sat at its own natural content height inside that stretched space. Added `height: "100%"` to the wrapper — fixes it for `WatchlistPage.tsx`, `WatchedPage.tsx`, and `ListsPage.tsx`/`ListDetailPage.tsx` alike, since they all share this component.
+- `backend/userdata/auth_views.py`'s avatar-upload error response exceeded ruff's 120-char line limit, failing `ruff check backend/` in CI's backend job on every single run (deterministic, not flaky) — wrapped across multiple lines.
+
 ## [0.9.0] - 2026-07-10
 
 ### Added

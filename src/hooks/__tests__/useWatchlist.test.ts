@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 
 describe("useWatchlist", () => {
-  it("add() creates entry with addedAt timestamp and watched=false", async () => {
+  it("add() creates entry with addedAt timestamp", async () => {
     const { result } = renderHook(() => useWatchlist(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -61,7 +61,6 @@ describe("useWatchlist", () => {
 
     const entry = result.current.watchlist[0];
     expect(entry).toBeDefined();
-    expect(entry!.watched).toBe(false);
     expect(Number.isFinite(Date.parse(entry!.addedAt))).toBe(true);
   });
 
@@ -115,26 +114,10 @@ describe("useWatchlist", () => {
     expect(result.current.isIn(5, "movie")).toBe(false);
   });
 
-  it("markWatched() flips watched flag on matching item only", async () => {
-    mockPost
-      .mockResolvedValueOnce({ data: { id: 10, addedAt: "2024-01-01T00:00:00Z" } })
-      .mockResolvedValueOnce({ data: { id: 11, addedAt: "2024-01-01T00:00:00Z" } });
-
-    const { result } = renderHook(() => useWatchlist(), { wrapper });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    await act(async () => { await result.current.add(makeEntry({ id: 1 })); });
-    await act(async () => { await result.current.add(makeEntry({ id: 2, title: "Other" })); });
-    await act(async () => { await result.current.markWatched(1, "movie", true); });
-
-    expect(result.current.watchlist.find((i) => i.id === 1)!.watched).toBe(true);
-    expect(result.current.watchlist.find((i) => i.id === 2)!.watched).toBe(false);
-  });
-
   it("loads watchlist from API on mount when authenticated", async () => {
     mockGet.mockResolvedValueOnce({
       data: [
-        { id: 42, mediaId: 7, mediaType: "movie", title: "Fetched", posterPath: null, voteAverage: 8, addedAt: "2024-06-01T00:00:00Z", watched: false },
+        { id: 42, mediaId: 7, mediaType: "movie", title: "Fetched", posterPath: null, voteAverage: 8, addedAt: "2024-06-01T00:00:00Z" },
       ],
     });
 

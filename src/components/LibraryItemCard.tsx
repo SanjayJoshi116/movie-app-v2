@@ -21,6 +21,7 @@ const LibraryItemCard = ({ posterPath, title, onOpen, tags, actionButtons, foote
       role="article"
       whileHover={{ scale: 1.04, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      style={{ height: "100%" }}
     >
       <Card
         hoverable

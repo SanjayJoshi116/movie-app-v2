@@ -8,11 +8,13 @@ import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutline
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
+import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import LibraryItemCard from "../components/LibraryItemCard";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { pageVariants } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import type { MediaType } from "../types";
 
 const SS_SCROLL = "watchlist_scroll";
 const SS_SEARCH = "watchlist_search";
@@ -30,11 +32,22 @@ interface RatingTarget {
   title: string;
 }
 
+interface PendingWatch {
+  id: number;
+  type: MediaType;
+  title: string;
+  posterPath: string | null;
+  voteAverage: number;
+}
+
 function WatchlistPage() {
   const navigate = useNavigate();
-  const { watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, markWatched } = useAppContext();
+  const {
+    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, isWatched, toggleWatched, watchedList, theme,
+  } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
+  const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "added-desc");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
@@ -63,7 +76,7 @@ function WatchlistPage() {
       items = items.filter((i) => i.type === typeFilter);
     }
     if (watchedFilter !== "all") {
-      items = items.filter((i) => (watchedFilter === "watched" ? i.watched : !i.watched));
+      items = items.filter((i) => (watchedFilter === "watched" ? isWatched(i.id, i.type) : !isWatched(i.id, i.type)));
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -76,7 +89,7 @@ function WatchlistPage() {
       default:           items.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
     }
     return items;
-  }, [watchlist, search, sortKey, typeFilter, watchedFilter]);
+  }, [watchlist, search, sortKey, typeFilter, watchedFilter, isWatched, watchedList]);
 
   const handleExport = () => {
     const rows = watchlist.map((i) => ({
@@ -85,7 +98,7 @@ function WatchlistPage() {
       tmdb_id: i.id,
       vote_average: i.voteAverage,
       added_at: i.addedAt,
-      watched: i.watched,
+      watched: isWatched(i.id, i.type),
     }));
     downloadCSV(rows, "watchlist.csv");
   };
@@ -200,6 +213,7 @@ function WatchlistPage() {
         <Row gutter={[16, 20]}>
           {filtered.map((item) => {
             const rating = getRating(item.id, item.type);
+            const watched = isWatched(item.id, item.type);
             return (
               <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
                 <LibraryItemCard
@@ -218,21 +232,26 @@ function WatchlistPage() {
                         <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
                       )}
                       {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
-                      {item.watched && <Tag color="cyan" style={{ margin: 0 }}>Watched</Tag>}
                     </>
                   }
                   actionButtons={
                     <>
-                      <Tooltip title={item.watched ? "Mark unwatched" : "Mark watched"}>
+                      <Tooltip title={watched ? "Mark unwatched" : "Mark watched"}>
                         <Button
                           type="text"
                           size="small"
-                          icon={item.watched ? <EyeFilled /> : <EyeOutlined />}
+                          icon={watched ? <EyeFilled /> : <EyeOutlined />}
+                          style={{ color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            markWatched(item.id, item.type, !item.watched);
+                            if (watched) {
+                              toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                              showSuccess("Removed from watched");
+                            } else {
+                              setPendingWatch({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                            }
                           }}
-                          aria-label={item.watched ? "Mark unwatched" : "Mark watched"}
+                          aria-label={watched ? "Mark unwatched" : "Mark watched"}
                         />
                       </Tooltip>
                       <Tooltip title={rating ? "Edit rating" : "Rate"}>
@@ -295,6 +314,20 @@ function WatchlistPage() {
           onClose={() => setRatingTarget(null)}
         />
       )}
+
+      <MarkWatchedModal
+        open={pendingWatch !== null}
+        mediaId={pendingWatch?.id ?? 0}
+        mediaType={pendingWatch?.type ?? "movie"}
+        onCancel={() => setPendingWatch(null)}
+        onConfirm={(details) => {
+          if (pendingWatch) {
+            toggleWatched({ ...pendingWatch, ...details });
+            showSuccess("Marked as watched");
+          }
+          setPendingWatch(null);
+        }}
+      />
     </motion.div>
   );
 }

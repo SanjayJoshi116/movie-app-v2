@@ -37,7 +37,6 @@ export function useAppContext(): AppContextType {
     clearAllWatchlist: watchlist.clearAll,
     isInWatchlist: watchlist.isIn,
     toggleWatchlist: watchlist.toggle,
-    markWatched: watchlist.markWatched,
     watchedList: watched.watchedList,
     addToWatched: watched.add,
     removeFromWatched: watched.remove,

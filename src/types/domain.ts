@@ -15,10 +15,9 @@ export interface WatchlistEntry {
   posterPath: string | null;
   voteAverage: number;
   addedAt: string;
-  watched: boolean;
 }
 
-export type WatchlistInput = Omit<WatchlistEntry, "addedAt" | "watched">;
+export type WatchlistInput = Omit<WatchlistEntry, "addedAt">;
 
 export interface RatingEntry {
   id: number;
@@ -88,7 +87,6 @@ export interface WatchlistEntryDTO {
   posterPath: string | null;
   voteAverage: number;
   addedAt: string;
-  watched: boolean;
 }
 
 export interface WatchedEntryDTO {

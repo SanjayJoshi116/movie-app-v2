@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.9.0)
+CINE DB — Feature List (v0.10.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -25,6 +25,7 @@ DETAIL PAGES
 LIBRARY
 - Watchlist & Watched lists, tied to account
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
+- Watchlist's watched status is shared live with the Watched list (mark watched from any page, the Watchlist card reflects it immediately); marking watched opens the same runtime/platform-capture modal used everywhere else
 - Search/sort/CSV export on Watchlist and Watched
 - Ratings (0.5-10) + written reviews
 - User Lists: create, rename, add/remove items, CSV export, CSV import; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card

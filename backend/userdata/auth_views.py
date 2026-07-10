@@ -193,7 +193,10 @@ def avatar(request):
     if not file:
         return Response({"detail": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
     if file.content_type not in ALLOWED_AVATAR_TYPES:
-        return Response({"detail": "Unsupported image type. Use JPEG, PNG, or WebP."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "Unsupported image type. Use JPEG, PNG, or WebP."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if file.size > MAX_AVATAR_BYTES:
         return Response({"detail": "Image must be smaller than 5MB."}, status=status.HTTP_400_BAD_REQUEST)
     try:

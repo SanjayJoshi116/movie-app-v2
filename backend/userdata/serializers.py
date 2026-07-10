@@ -78,7 +78,7 @@ class WatchlistEntrySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WatchlistEntry
-        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt", "watched")
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt")
         read_only_fields = ("id", "addedAt")
 
 

@@ -33,7 +33,6 @@ export function useWatchlist() {
             posterPath: item.posterPath,
             voteAverage: item.voteAverage,
             addedAt: item.addedAt,
-            watched: item.watched,
           };
         });
         dbIdMap.current = map;
@@ -55,7 +54,7 @@ export function useWatchlist() {
     dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
     setWatchlist((prev) => {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
-      return [...prev, { ...entry, addedAt: data.addedAt, watched: false }];
+      return [...prev, { ...entry, addedAt: data.addedAt }];
     });
   }, [isAuthenticated]);
 
@@ -87,15 +86,5 @@ export function useWatchlist() {
     }
   }, [remove, add]);
 
-  const markWatched = useCallback(async (id: number, type: string, watched: boolean) => {
-    if (!isAuthenticated) return;
-    const dbId = dbIdMap.current[mkKey(id, type)];
-    if (dbId == null) return;
-    await userApi.patch(`/watchlist/${dbId}/`, { watched });
-    setWatchlist((prev) =>
-      prev.map((i) => (i.id === id && i.type === type ? { ...i, watched } : i))
-    );
-  }, [isAuthenticated]);
-
-  return { watchlist, isLoading, add, remove, clearAll, isIn, toggle, markWatched };
+  return { watchlist, isLoading, add, remove, clearAll, isIn, toggle };
 }
