@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.11.0] - 2026-07-10
+
+### Added
+- Desktop sidebar manual collapse: footer toggle button (`Sidebar.tsx`) folds the full 220px sidebar to the same 64px icon-only rail tablet already uses (768-991px). State persists via `useLocalStorage("cinedb_sidebar_collapsed", false)`, same convention as `cinedb_theme`. Collapsed-state CSS rules live in `App.css`'s existing `@media (min-width: 992px)` block, reusing the tablet rail's child selectors rather than duplicating them. Toggle button itself is hidden below 992px since tablet/phone already have their own fixed sidebar/bottom-nav layout.
+
+### Changed
+- `WatchlistPage.tsx` no longer destructures the unused `watchedList` from context (leftover from the 0.10.0 watched-state decoupling — `isWatched(id, type)` alone is sufficient).
+
 ## [0.10.0] - 2026-07-10
 
 ### Changed

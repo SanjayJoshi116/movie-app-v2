@@ -43,7 +43,7 @@ interface PendingWatch {
 function WatchlistPage() {
   const navigate = useNavigate();
   const {
-    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, isWatched, toggleWatched, watchedList, theme,
+    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, isWatched, toggleWatched, theme,
   } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
@@ -89,7 +89,7 @@ function WatchlistPage() {
       default:           items.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
     }
     return items;
-  }, [watchlist, search, sortKey, typeFilter, watchedFilter, isWatched, watchedList]);
+  }, [watchlist, search, sortKey, typeFilter, watchedFilter, isWatched]);
 
   const handleExport = () => {
     const rows = watchlist.map((i) => ({

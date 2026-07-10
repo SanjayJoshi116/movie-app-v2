@@ -82,6 +82,46 @@
   align-items: center;
 }
 
+/* Desktop: manual collapse toggle re-uses the tablet icon-rail look */
+@media (min-width: 992px) {
+  .app-sidebar.sidebar-collapsed {
+    width: 64px;
+    padding: 16px 0;
+  }
+
+  .app-sidebar.sidebar-collapsed .sidebar-logo-full,
+  .app-sidebar.sidebar-collapsed .sidebar-search-full,
+  .app-sidebar.sidebar-collapsed .sidebar-label,
+  .app-sidebar.sidebar-collapsed .sidebar-username-text,
+  .app-sidebar.sidebar-collapsed .ant-menu-title-content {
+    display: none;
+  }
+  .app-sidebar.sidebar-collapsed .sidebar-logo-compact {
+    display: block;
+  }
+
+  .app-sidebar.sidebar-collapsed .ant-menu-item,
+  .app-sidebar.sidebar-collapsed .ant-menu-submenu-title {
+    padding-inline: 0 !important;
+    justify-content: center;
+  }
+  .app-sidebar.sidebar-collapsed .sidebar-footer {
+    align-items: center;
+    padding: 8px 4px;
+  }
+  .app-sidebar.sidebar-collapsed .sidebar-user-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+/* Toggle only meaningful on desktop — tablet/phone already have their own fixed layout */
+@media (max-width: 991px) {
+  .sidebar-collapse-toggle {
+    display: none;
+  }
+}
+
 /* ── Bottom Navigation (mobile only) ───────────────────── */
 .app-bottom-nav {
   display: none;

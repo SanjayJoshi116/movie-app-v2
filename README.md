@@ -68,6 +68,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
 - **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px); the sidebar stays pinned in place while scrolling
+- **Manual Sidebar Collapse** — Desktop-only toggle button (fold/unfold icon in the sidebar footer) collapses the 220px sidebar to the same 64px icon rail tablet uses; preference persists in `localStorage` (`cinedb_sidebar_collapsed`)
 - **Flash Tooltip** — Clicking a Sidebar or BottomNav icon force-shows its tooltip label for ~1.4s, confirming the destination on layouts where no text label is visible (tablet icon rail, phone bottom nav)
 
 ---
@@ -154,6 +155,7 @@ src/
 │   ├── ErrorBoundary.tsx
 │   ├── Sidebar.tsx              # Desktop (≥992px): 220px left nav, shows username/sign-out when authed;
 │   │                            #   collapses to a 64px icon-only rail on tablet (768-991px, CSS-only via App.css)
+│   │                            #   or manually via footer toggle on desktop (persisted, .sidebar-collapsed class)
 │   ├── BottomNav.tsx            # Phone (<768px): fixed bottom nav + overflow drawer
 │   ├── SearchBox.tsx            # Input.Search with recent-search history dropdown
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA

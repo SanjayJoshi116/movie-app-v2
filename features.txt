@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.10.0)
+CINE DB — Feature List (v0.11.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -45,4 +45,5 @@ UI/UX
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
 - Framer Motion page transitions
 - Responsive across screen sizes: full sidebar (desktop, 992px+), icon-only collapsed rail (tablet, 768-991px), bottom nav (phone, under 768px); no fixed-width overflow on narrow phones (auth cards, filter-bar inputs)
+- Desktop sidebar has a manual collapse toggle (folds to the same icon rail tablet uses); preference remembered
 - Sidebar stays pinned in place while scrolling; nav icons briefly flash their tooltip label on click, most useful on the icon-only tablet rail and phone bottom nav

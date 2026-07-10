@@ -19,6 +19,8 @@ import {
   LogoutOutlined,
   BarChartOutlined,
   UserAddOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
 import { useAppContext } from "../context/useAppContext";
@@ -28,6 +30,7 @@ import ProfileModal from "./ProfileModal";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
+import { useLocalStorage } from "../hooks/useLocalStorage";
 
 interface Props {
   isBrowsePage: boolean;
@@ -57,6 +60,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
   const { user, isAuthenticated, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
   const [flashKey, triggerFlash] = useFlashTooltip();
+  const [collapsed, setCollapsed] = useLocalStorage<boolean>("cinedb_sidebar_collapsed", false);
 
   const navDefs = [
     { key: "/movies", icon: <VideoCameraOutlined />, label: "Movies" },
@@ -100,7 +104,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
 
   return (
     <motion.aside
-      className="app-sidebar glass-sidebar"
+      className={`app-sidebar glass-sidebar${collapsed ? " sidebar-collapsed" : ""}`}
       initial={{ x: -220 }}
       animate={{ x: 0 }}
       transition={{ type: "spring", stiffness: 260, damping: 30 }}
@@ -161,7 +165,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             <span className="sidebar-label">Filters</span>
           </Button>
         )}
-        <div style={{ display: "flex", justifyContent: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
           <Tooltip title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
             <Button
               type="text"
@@ -169,6 +173,17 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
               onClick={toggleTheme}
               style={{ color: "#f5c518", padding: "0 4px" }}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            />
+          </Tooltip>
+          <Tooltip title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            <Button
+              className="sidebar-collapse-toggle"
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed((c) => !c)}
+              style={{ padding: "0 4px" }}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!collapsed}
             />
           </Tooltip>
         </div>
