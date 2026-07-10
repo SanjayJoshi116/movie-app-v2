@@ -23,13 +23,15 @@ import { ReviewsSection } from "./ReviewsSection";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
 interface ReleaseDateEntry {
   iso_3166_1: string;
   release_dates: Array<{ certification: string; type: number }>;
 }
 
-type RecommendationItem = { id: number; poster_path: string | null; title: string };
+type RecommendationItem = { id: number; poster_path: string | null; title: string; genre_ids: number[] };
+type SimilarMovieItem = RecommendationItem;
 
 export type MovieDetailData = Omit<
   TMDBMovieDetail,
@@ -37,7 +39,7 @@ export type MovieDetailData = Omit<
 > & {
   reviews: Array<{ id: string; author: string; content: string }>;
   recommendations: RecommendationItem[];
-  similarMovies: RecommendationItem[];
+  similarMovies: SimilarMovieItem[];
   watchProviders: Record<string, TMDBProviderRegion>;
   certifications: ReleaseDateEntry[] | string;
 };
@@ -72,6 +74,8 @@ const MovieDetails = ({ movie }: Props) => {
     vote_average,
   } = movie;
 
+  const similarFiltered = filterByGenreOverlap(similarMovies ?? [], (genres ?? []).map((g) => g.id));
+  const recommendationsFiltered = filterByGenreOverlap(recommendations ?? [], (genres ?? []).map((g) => g.id));
   const cast = credits?.cast ?? [];
   const directors = (credits?.crew ?? [])
     .filter((c: any) => c.job === "Director")
@@ -286,13 +290,13 @@ const MovieDetails = ({ movie }: Props) => {
 
         <MediaCardGrid
           title="Recommendations"
-          items={(recommendations ?? []).map((rec) => ({ id: rec.id, posterPath: rec.poster_path, name: rec.title }))}
+          items={recommendationsFiltered.map((rec) => ({ id: rec.id, posterPath: rec.poster_path, name: rec.title }))}
           mediaType="movie"
         />
 
         <MediaCardGrid
           title="Similar Movies"
-          items={(similarMovies ?? []).map((m) => ({ id: m.id, posterPath: m.poster_path, name: m.title }))}
+          items={similarFiltered.map((m) => ({ id: m.id, posterPath: m.poster_path, name: m.title }))}
           mediaType="movie"
         />
 
@@ -327,6 +331,7 @@ const MovieDetails = ({ movie }: Props) => {
                   <Col key={image.file_path} xs={12} sm={8} md={6}>
                     <Image
                       src={`${IMG_URL}${image.file_path}`}
+                      preview={{ src: `${BACKDROP_URL}${image.file_path}` }}
                       alt="Backdrop"
                       className="backdrop-img"
                       style={{ borderRadius: 8 }}

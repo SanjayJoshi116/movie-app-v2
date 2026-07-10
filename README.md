@@ -33,7 +33,7 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
 
 ### Detail Pages
-- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; both pages share the same section order and layout, each showing up to 20 recommendation/similar cards; cast displays in a wrapping grid (no horizontal scroll)
+- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; both pages share the same section order and layout, each showing up to 20 recommendation/similar cards filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing); cast displays in a centered wrapping grid (no horizontal scroll); backdrop images open a full-size lightbox on click
 - **Reviews** — TMDB reviews on both Movie and TV detail pages, rendered as a 2-column card grid
 - **Add to List** — Shared modal (`AddToListModal.tsx`) with search-existing-lists and inline create-new-list, opened from the detail page or any browse/search/recommendation card — never a dead end even with zero lists yet
 - **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
@@ -67,7 +67,8 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
-- **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px)
+- **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px); the sidebar stays pinned in place while scrolling
+- **Flash Tooltip** — Clicking a Sidebar or BottomNav icon force-shows its tooltip label for ~1.4s, confirming the destination on layouts where no text label is visible (tablet icon rail, phone bottom nav)
 
 ---
 
@@ -109,7 +110,8 @@ backend/
 │   │                            #   TMDBProfile (TMDB OAuth session), Profile (avatar ImageField)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases)
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
-│   │                            #   applied to watchlist/watched/ratings/followed-people lists
+│   │                            #   applied to watchlist/watched/ratings/followed-people lists;
+│   │                            #   next/previous are plain page numbers, not absolute URLs
 │   ├── views.py                 # Thin re-export barrel — import from domain modules below
 │   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list)
@@ -205,7 +207,9 @@ src/
 │   │                            #   Home/Anime/People pages
 │   ├── useToast.ts              # App.useApp() toast wrapper
 │   ├── useLocalStorage.ts       # Generic localStorage hook
-│   └── useRecentSearches.ts     # Last 5 searches
+│   ├── useRecentSearches.ts     # Last 5 searches
+│   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
+│                                #   used by Sidebar.tsx and BottomNav.tsx
 ├── pages/
 │   ├── HomePage.tsx             # /movies and /tv — HeroBanner, recently watched strip, infinite scroll
 │   ├── SearchPage.tsx           # /search — live results across movies, TV, and people
@@ -234,6 +238,9 @@ src/
 │   ├── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
 │   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
 │   │                            #   (falls back to a plain array response transparently)
+│   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres; falls back
+│   │                            #   to the unfiltered list if that would empty the result — used by
+│   │                            #   Movie/TV detail pages' Recommendations and Similar sections
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
 │                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
@@ -261,7 +268,10 @@ src/
 - **Responsive breakpoints** — Three CSS-only tiers reusing antd's own scale, no JS width checks anywhere: `<768px` (phone, `Sidebar` hidden/`BottomNav` shown, unchanged), `768-991px` (tablet, new — `Sidebar` collapses to a 64px icon-only rail via a `@media` block in `App.css` that hides `.ant-menu-title-content`/username text/logo text and shows a compact "C" glyph instead), `≥992px` (desktop, full 220px sidebar, the unqualified default rule). `src/index.css` adds a root `overflow-x: hidden; max-width: 100vw` guard, and list-page filter-bar `Input`/`Select` widths (previously rigid `width: N`) are now `width: "100%", maxWidth: N` so they shrink on narrow phones instead of forcing horizontal scroll. Auth pages' `Card` is `width: "100%", maxWidth: 360` (was a fixed 360) so it doesn't overflow under-360px viewports. `playwright.config.ts` adds a `mobile-chrome` (Pixel 5) project so the existing E2E suite also runs at phone width; `e2e/responsive.spec.ts` asserts sidebar/bottom-nav behavior at all three tiers plus no-overflow at 320px/340px.
 - **Multipart proxy passthrough** — `server.js`'s `/api/django` handler previously always forwarded `req.body` (JSON-parsed), so a `multipart/form-data` upload — like the avatar endpoint — would arrive with an empty body, since `express.json()` skips but doesn't consume non-JSON requests. It now detects `multipart/form-data` and streams the raw `req` through to axios instead, forwarding the original `Content-Length` (Gunicorn's sync workers need it exact, not chunked).
 - **Login/register use the unauthenticated API client** — `AuthContext.login`/`register` call `publicApi` (no response interceptor), not the default `userApi`. `userApi`'s 401-refresh interceptor previously intercepted a failed login's 401, found no refresh token yet, and hard-redirected to `/login` before the page's own `catch` could show an "Invalid username or password" message — so bad credentials failed silently.
-- **List pagination** — `/api/watchlist/`, `/api/watched/`, `/api/ratings/`, and `/api/followed-people/` are paginated (`DefaultPagination`, page_size=100) and return `{count, next, previous, results}`. `src/utils/fetchAllPages.ts` transparently walks all pages so the frontend hooks (`useWatchlist`, `useWatched`, `useRatings`, `useFollowedPeople`) still expose the full list — it also accepts a plain array response for back-compat with mocked tests.
+- **List pagination** — `/api/watchlist/`, `/api/watched/`, `/api/ratings/`, and `/api/followed-people/` are paginated (`DefaultPagination`, page_size=100) and return `{count, next, previous, results}`. `src/utils/fetchAllPages.ts` transparently walks all pages so the frontend hooks (`useWatchlist`, `useWatched`, `useRatings`, `useFollowedPeople`) still expose the full list — it also accepts a plain array response for back-compat with mocked tests. `DefaultPagination.get_next_link`/`get_previous_link` return the next/previous page number rather than DRF's default absolute URL (`request.build_absolute_uri()`), since building that URL validates the request's Host header against `ALLOWED_HOSTS` and 500s (`DisallowedHost`) for any host besides bare `localhost`/`127.0.0.1` under `DEBUG=True` — `fetchAllPages.ts` only ever checked `next` for truthiness, so returning a page number instead is a drop-in fix with no frontend change needed.
+- **Sticky sidebar / `overflow-x` scoping** — `.app-sidebar` (`App.css`) is `position: sticky; top: 0`, which sticks relative to the *nearest ancestor with a scrolling mechanism* — not necessarily the viewport. `src/index.css` scopes `overflow-x: hidden` to `html` only (not `body`/`#root`) because setting `overflow-x` without an explicit `overflow-y` silently promotes `overflow-y` to `auto` too (per the CSS overflow spec), which would turn `body`/`#root` into unintended scroll containers sitting between the sidebar and the true viewport scroller — since those containers' own `scrollTop` never moves, the sidebar's sticky offset would never engage and it'd just scroll away with the page. Don't add `overflow-x: hidden` (or any non-`visible` overflow value) to `body`/`#root`/any ancestor of a `position: sticky` element without also handling `overflow-y` explicitly.
+- **Popup positioning inside a sticky container** — `SearchBox.tsx`'s recent-searches `Dropdown` sets `getPopupContainer` to mount its popup inside the sidebar's own search wrapper (`Sidebar.tsx`, `position: relative`) instead of antd's default `document.body`. A popup mounted in `body` repositions itself via scroll-linked recalculation built for a trigger that scrolls with the page; once its trigger lives inside a genuinely `position: sticky` (viewport-pinned) ancestor, that recalculation visibly glitches for a frame on every scroll tick. Any future dropdown/popover/tooltip anchored to something inside the sidebar should set `getPopupContainer` the same way rather than defaulting to `body`.
+- **Recommendations/Similar genre filtering** — `filterByGenreOverlap()` (`src/utils/filterByGenreOverlap.ts`) keeps only items sharing ≥half the opened title's genre count, falling back to the unfiltered list if that would empty the section. Applied to both "Similar" and "Recommendations" on `MovieDetails.tsx`/`TVShowDetails.tsx` — TMDB's own recommendations/similar endpoints return `genre_ids` on every item, so no extra API call is needed.
 - **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
 - **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. `ALLOWED_HOSTS` fails closed (empty by default) rather than defaulting to `*`. When `DEBUG=False`, an unset `SECRET_KEY` raises `ImproperlyConfigured` at startup instead of a silent fallback. `CORS_ALLOW_ALL_ORIGINS` is only enabled in `DEBUG`; production reads explicit origins from `CORS_ALLOWED_ORIGINS`.
 - **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.

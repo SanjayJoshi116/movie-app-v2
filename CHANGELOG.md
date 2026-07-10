@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.9.0] - 2026-07-10
+
+### Added
+- Recommendations sections on Movie/TV detail pages now run through the same `filterByGenreOverlap` genre-overlap filter already used by "Similar" — keeps only recommendations sharing ≥half the opened title's genres, falling back to the unfiltered TMDB list if that would empty the section. `MovieDetails.tsx`'s `RecommendationItem` type gained `genre_ids`; `TVShowDetails.tsx` normalizes the raw `{results: [...]}` shape TMDB's `append_to_response=recommendations` actually returns for `/tv/{id}` (previously accessed via an inline cast with no filtering).
+- Nav "flash tooltip": clicking a Sidebar or BottomNav icon now force-shows its tooltip label for ~1.4s (`useFlashTooltip.ts`), confirming which page you navigated to — most useful on the icon-only tablet sidebar rail and phone bottom nav, where no text label is otherwise visible.
+
+### Changed
+- Cast grid on Movie/TV detail pages now centers (`justify-content: center`) instead of left-aligning when the row doesn't fill.
+- Backdrop images in the Images section now open a full-size lightbox on click (`Image`'s `preview.src` pointed at `BACKDROP_URL`) instead of only showing the thumbnail-cropped version.
+
+### Fixed
+- `GET /api/watched/` (and any other paginated list endpoint once a user has more than `page_size` rows) 500'd with `django.core.exceptions.DisallowedHost` — DRF's default `PageNumberPagination.get_paginated_response()` builds an absolute `next`/`previous` URL via `request.build_absolute_uri()`, which validates the request's Host header against `ALLOWED_HOSTS` (only bare `localhost`/`127.0.0.1` are implicitly allowed under `DEBUG=True`; a LAN IP or any other host 500s). Only fired for endpoints where a user has enough rows to need a `next` page — small lists (watchlist, followed-people) never hit it. `DefaultPagination` (`backend/userdata/pagination.py`) now overrides `get_next_link`/`get_previous_link` to return plain page numbers instead of absolute URLs; the frontend's `fetchAllPages.ts` only ever checked `next` for truthiness, so this is a drop-in fix with no frontend changes.
+- Sidebar drifted upward while scrolling instead of staying pinned — `src/index.css` set `overflow-x: hidden` on `html, body, #root` with no explicit `overflow-y`, and per the CSS overflow spec that silently promotes `overflow-y` to `auto` too, turning `#root` into an unintended scroll container sitting between `.app-sidebar` and the real viewport scroller. `position: sticky` sticks to the *nearest* scrolling ancestor, so it locked onto `#root` (whose `scrollTop` never actually moves) instead of `<html>`, and the sidebar just rode along with normal page scroll. Fixed by scoping `overflow-x: hidden` to `html` only.
+- Recent-searches dropdown visibly jumped up/down mid-scroll — antd's `Dropdown` mounts its popup in `document.body` by default and repositions it via scroll-linked recalculation built for a trigger that scrolls with the page; once the sidebar (and the search input inside it) became genuinely sticky (previous fix), that recalculation briefly miscomputed on each scroll tick before self-correcting. `SearchBox.tsx`'s `Dropdown` now sets `getPopupContainer` to mount the popup inside the sidebar's own search wrapper (`Sidebar.tsx`, given `position: relative`) instead of `document.body`, so it never needs scroll-based repositioning at all.
+
 ## [0.6.0] - 2026-07-09
 
 ### Added

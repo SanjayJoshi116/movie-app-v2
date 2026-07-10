@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Avatar, Badge, Button, Drawer, Divider } from "antd";
+import { Avatar, Badge, Button, Drawer, Divider, Tooltip } from "antd";
 import {
   VideoCameraOutlined,
   PlaySquareOutlined,
@@ -25,6 +25,7 @@ import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
+import { useFlashTooltip } from "../hooks/useFlashTooltip";
 
 function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
   const f = user.first_name?.trim() ?? "";
@@ -49,6 +50,7 @@ const BottomNav = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [flashKey, triggerFlash] = useFlashTooltip();
 
   useEffect(() => {
     setSearchOpen(false);
@@ -84,16 +86,20 @@ const BottomNav = () => {
         {coreItems.map((item) => {
           const isActive = location.pathname === item.path;
           const btn = (
-            <Button
-              key={item.path}
-              type="text"
-              icon={item.icon}
-              onClick={() => navigate(item.path)}
-              aria-label={item.label}
-              aria-current={isActive ? "page" : undefined}
-              className="bottom-nav-btn"
-              style={{ color: isActive ? "#f5c518" : undefined }}
-            />
+            <Tooltip key={item.path} title={item.label} placement="top" open={flashKey === item.path || undefined}>
+              <Button
+                type="text"
+                icon={item.icon}
+                onClick={() => {
+                  triggerFlash(item.path);
+                  navigate(item.path);
+                }}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
+                className="bottom-nav-btn"
+                style={{ color: isActive ? "#f5c518" : undefined }}
+              />
+            </Tooltip>
           );
 
           return item.badge != null && item.badge > 0 ? (
@@ -105,23 +111,33 @@ const BottomNav = () => {
           );
         })}
 
-        <Button
-          type="text"
-          icon={<SearchOutlined />}
-          onClick={() => setSearchOpen(true)}
-          aria-label="Search"
-          className="bottom-nav-btn"
-        />
+        <Tooltip title="Search" placement="top" open={flashKey === "search" || undefined}>
+          <Button
+            type="text"
+            icon={<SearchOutlined />}
+            onClick={() => {
+              triggerFlash("search");
+              setSearchOpen(true);
+            }}
+            aria-label="Search"
+            className="bottom-nav-btn"
+          />
+        </Tooltip>
 
-        <Button
-          type="text"
-          icon={<EllipsisOutlined />}
-          onClick={() => setMoreOpen(true)}
-          aria-label="More navigation options"
-          aria-expanded={moreOpen}
-          className="bottom-nav-btn"
-          style={{ color: isMoreActive ? "#f5c518" : undefined }}
-        />
+        <Tooltip title="More" placement="top" open={flashKey === "more" || undefined}>
+          <Button
+            type="text"
+            icon={<EllipsisOutlined />}
+            onClick={() => {
+              triggerFlash("more");
+              setMoreOpen(true);
+            }}
+            aria-label="More navigation options"
+            aria-expanded={moreOpen}
+            className="bottom-nav-btn"
+            style={{ color: isMoreActive ? "#f5c518" : undefined }}
+          />
+        </Tooltip>
       </nav>
 
       <Drawer

@@ -64,6 +64,7 @@ const SearchBox = () => {
         onClick: ({ key }) => handleSearch(key),
       }}
       trigger={[]}
+      getPopupContainer={(triggerNode) => (triggerNode.parentElement as HTMLElement) ?? document.body}
     >
       <Input.Search
         id="global-search"

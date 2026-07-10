@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.8.0)
+CINE DB — Feature List (v0.9.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -12,7 +12,9 @@ DISCOVERY
 
 DETAIL PAGES
 - Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability
-- Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a grid (no horizontal scroll)
+- Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a centered grid (no horizontal scroll)
+- Recommendations and Similar sections are both filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing)
+- Backdrop images in the Images section open a full-size lightbox on click
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
 - Add to / remove from custom lists via a shared modal (search existing lists, inline create-new-list, no dead end at zero lists)
 - Mark as watched goes through a confirm modal that auto-fetches runtime and lets you pick the streaming platform (or "Other") — feeds Hours Watched / Platform Breakdown on Stats
@@ -42,3 +44,4 @@ UI/UX
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
 - Framer Motion page transitions
 - Responsive across screen sizes: full sidebar (desktop, 992px+), icon-only collapsed rail (tablet, 768-991px), bottom nav (phone, under 768px); no fixed-width overflow on narrow phones (auth cards, filter-bar inputs)
+- Sidebar stays pinned in place while scrolling; nav icons briefly flash their tooltip label on click, most useful on the icon-only tablet rail and phone bottom nav

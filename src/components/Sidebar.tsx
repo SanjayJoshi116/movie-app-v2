@@ -27,6 +27,7 @@ import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
+import { useFlashTooltip } from "../hooks/useFlashTooltip";
 
 interface Props {
   isBrowsePage: boolean;
@@ -55,28 +56,13 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
   const { theme, toggleTheme, watchlist, watchedList } = useAppContext();
   const { user, isAuthenticated, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [flashKey, triggerFlash] = useFlashTooltip();
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "/movies",
-      icon: <VideoCameraOutlined />,
-      label: "Movies",
-    },
-    {
-      key: "/tv",
-      icon: <PlaySquareOutlined />,
-      label: "TV Shows",
-    },
-    {
-      key: "/anime",
-      icon: <FireOutlined />,
-      label: "Anime",
-    },
-    {
-      key: "/people",
-      icon: <UserOutlined />,
-      label: "People",
-    },
+  const navDefs = [
+    { key: "/movies", icon: <VideoCameraOutlined />, label: "Movies" },
+    { key: "/tv", icon: <PlaySquareOutlined />, label: "TV Shows" },
+    { key: "/anime", icon: <FireOutlined />, label: "Anime" },
+    { key: "/people", icon: <UserOutlined />, label: "People" },
     {
       key: "/watchlist",
       icon: (
@@ -95,32 +81,22 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       ),
       label: "Watched",
     },
-    {
-      key: "/recommendations",
-      icon: <BulbOutlined />,
-      label: "For You",
-    },
-    {
-      key: "/calendar",
-      icon: <CalendarOutlined />,
-      label: "Calendar",
-    },
-    {
-      key: "/lists",
-      icon: <UnorderedListOutlined />,
-      label: "My Lists",
-    },
-    {
-      key: "/stats",
-      icon: <BarChartOutlined />,
-      label: "Stats",
-    },
-    {
-      key: "/following",
-      icon: <UserAddOutlined />,
-      label: "Following",
-    },
+    { key: "/recommendations", icon: <BulbOutlined />, label: "For You" },
+    { key: "/calendar", icon: <CalendarOutlined />, label: "Calendar" },
+    { key: "/lists", icon: <UnorderedListOutlined />, label: "My Lists" },
+    { key: "/stats", icon: <BarChartOutlined />, label: "Stats" },
+    { key: "/following", icon: <UserAddOutlined />, label: "Following" },
   ];
+
+  const menuItems: MenuProps["items"] = navDefs.map(({ key, label, icon }) => ({
+    key,
+    label,
+    icon: (
+      <Tooltip title={label} placement="right" open={flashKey === key || undefined}>
+        <span className="sidebar-nav-icon-target">{icon}</span>
+      </Tooltip>
+    ),
+  }));
 
   return (
     <motion.aside
@@ -150,7 +126,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       </div>
 
       {/* Search */}
-      <div className="sidebar-search-full" style={{ padding: "0 12px 12px" }}>
+      <div className="sidebar-search-full" style={{ padding: "0 12px 12px", position: "relative" }}>
         <SearchBox />
       </div>
 
@@ -158,7 +134,11 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       <Menu
         mode="inline"
         selectedKeys={[location.pathname]}
-        onSelect={({ key }) => navigate(key)}
+        onSelect={({ key }) => {
+          triggerFlash(String(key));
+          navigate(String(key));
+        }}
+        onDeselect={({ key }) => triggerFlash(String(key))}
         items={menuItems}
         style={{ border: "none", background: "transparent", flex: 1 }}
       />

@@ -26,6 +26,7 @@ import { ReviewsSection } from "./ReviewsSection";
 import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
 export type TVShowDetailData = TMDBTVDetail & {
   watchProviders?: Record<string, TMDBProviderRegion>;
@@ -70,6 +71,11 @@ const TVShowDetails = ({ tvShow }: Props) => {
   } = tvShow;
 
   const hasBackdrop = !!backdrop_path;
+  const similarFiltered = filterByGenreOverlap(similar?.results ?? [], (genres ?? []).map((g) => g.id));
+  const recommendationsFiltered = filterByGenreOverlap(
+    (recommendations as unknown as { results?: TMDBTVDetail["recommendations"] })?.results ?? [],
+    (genres ?? []).map((g) => g.id),
+  );
   const castList = aggregate_credits?.cast ?? [];
   const creators = ((tvShow as any).created_by ?? [])
     .map((c: any) => c.name)
@@ -386,16 +392,17 @@ const TVShowDetails = ({ tvShow }: Props) => {
 
         <MediaCardGrid
           title="Recommendations"
-          items={(
-            (recommendations as { results?: Array<{ id: number; poster_path: string | null; name: string }> })
-              ?.results ?? []
-          ).map((show) => ({ id: show.id, posterPath: show.poster_path, name: show.name }))}
+          items={recommendationsFiltered.map((show) => ({
+            id: show.id,
+            posterPath: show.poster_path,
+            name: "name" in show ? show.name : "",
+          }))}
           mediaType="tv"
         />
 
         <MediaCardGrid
           title="Similar TV Shows"
-          items={(similar?.results ?? []).map((show) => ({
+          items={similarFiltered.map((show) => ({
             id: show.id,
             posterPath: show.poster_path,
             name: "name" in show ? show.name : "",
@@ -434,6 +441,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   <Col key={image.file_path} xs={12} sm={8} md={6}>
                     <Image
                       src={`${IMG_URL}${image.file_path}`}
+                      preview={{ src: `${BACKDROP_URL}${image.file_path}` }}
                       alt="Backdrop"
                       className="backdrop-img"
                       style={{ borderRadius: 8 }}
