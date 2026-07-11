@@ -8,6 +8,7 @@ import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 import {
   fetchForYouRecommendations,
   fetchPersonalizedRecommendations,
@@ -36,7 +37,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
   const { theme } = useUIContext();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
   return (
     <>
@@ -74,11 +75,15 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     type="text"
                     icon={isWatched(item.id, item.type) ? <EyeFilled /> : <EyeOutlined />}
                     style={{ color: isWatched(item.id, item.type) ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(item.id, item.type)) {
-                        toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
-                        showSuccess("Removed from watched");
+                        try {
+                          await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                          showSuccess("Removed from watched");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to update watched status."));
+                        }
                       } else {
                         setShowMarkWatchedModal(true);
                       }
@@ -92,11 +97,15 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     type="text"
                     icon={isInWatchlist(item.id, item.type) ? <BookFilled /> : <BookOutlined />}
                     style={{ color: isInWatchlist(item.id, item.type) ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(item.id, item.type);
-                      toggleWatchlist({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
-                      showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      try {
+                        await toggleWatchlist({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                        showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to update watchlist."));
+                      }
                     }}
                     aria-label={isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}
                   />
@@ -122,9 +131,13 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
       mediaId={item.id}
       mediaType={item.type}
       onCancel={() => setShowMarkWatchedModal(false)}
-      onConfirm={(details) => {
-        toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage, ...details });
-        showSuccess("Marked as watched");
+      onConfirm={async (details) => {
+        try {
+          await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage, ...details });
+          showSuccess("Marked as watched");
+        } catch (err) {
+          showError(getApiError(err, "Failed to mark as watched."));
+        }
         setShowMarkWatchedModal(false);
       }}
     />

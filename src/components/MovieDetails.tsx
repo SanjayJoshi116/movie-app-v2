@@ -127,9 +127,13 @@ const MovieDetails = ({ movie }: Props) => {
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <Typography.Title level={2} style={{ margin: 0 }}>{title}</Typography.Title>
                 <motion.button
-                  onClick={() => {
-                    toggleWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                    showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
+                  onClick={async () => {
+                    try {
+                      await toggleWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
+                    } catch (err) {
+                      showError(getApiError(err, "Failed to update watchlist."));
+                    }
                   }}
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
@@ -139,10 +143,14 @@ const MovieDetails = ({ movie }: Props) => {
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
                 <motion.button
-                  onClick={() => {
+                  onClick={async () => {
                     if (watched) {
-                      toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                      showSuccess("Removed from watched");
+                      try {
+                        await toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                        showSuccess("Removed from watched");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to update watched status."));
+                      }
                     } else {
                       setShowMarkWatchedModal(true);
                     }
@@ -240,9 +248,13 @@ const MovieDetails = ({ movie }: Props) => {
         mediaId={id}
         mediaType="movie"
         onCancel={() => setShowMarkWatchedModal(false)}
-        onConfirm={(details) => {
-          toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
-          showSuccess("Marked as watched");
+        onConfirm={async (details) => {
+          try {
+            await toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+            showSuccess("Marked as watched");
+          } catch (err) {
+            showError(getApiError(err, "Failed to mark as watched."));
+          }
           setShowMarkWatchedModal(false);
         }}
       />

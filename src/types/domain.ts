@@ -121,7 +121,6 @@ export interface UserListItemDTO {
   posterPath: string | null;
   voteAverage: number;
   addedAt: string;
-  watched: boolean;
 }
 
 export interface UserListDTO {

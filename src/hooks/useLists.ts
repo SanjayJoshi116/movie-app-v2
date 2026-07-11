@@ -16,7 +16,6 @@ function mapListData(data: UserListDTO[]): UserList[] {
       posterPath: i.posterPath,
       voteAverage: i.voteAverage,
       addedAt: i.addedAt,
-      watched: i.watched,
       _itemId: i.id,
     })),
   }));
@@ -92,7 +91,6 @@ export function useLists() {
               posterPath: entry.posterPath,
               voteAverage: entry.voteAverage,
               addedAt: data.addedAt,
-              watched: false,
               _itemId: data.id,
             },
           ],

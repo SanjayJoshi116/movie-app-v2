@@ -13,6 +13,7 @@ import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../type
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
+import { getApiError } from "../utils/apiError";
 import type { MediaType } from "../types";
 
 interface PendingWatch {
@@ -134,7 +135,7 @@ function usePaginatedSearch<T extends { id: number }>(
 function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
     async (q, p, a) => {
@@ -190,11 +191,15 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                             type="text"
                             icon={isWatched(m.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
                             style={{ color: isWatched(m.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(m.id, "movie")) {
-                                toggleWatched({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
-                                showSuccess("Removed from watched");
+                                try {
+                                  await toggleWatched({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
+                                  showSuccess("Removed from watched");
+                                } catch (err) {
+                                  showError(getApiError(err, "Failed to update watched status."));
+                                }
                               } else {
                                 setPendingWatch({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
                               }
@@ -226,10 +231,14 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
         mediaId={pendingWatch?.id ?? 0}
         mediaType={pendingWatch?.type ?? "movie"}
         onCancel={() => setPendingWatch(null)}
-        onConfirm={(details) => {
+        onConfirm={async (details) => {
           if (pendingWatch) {
-            toggleWatched({ ...pendingWatch, ...details });
-            showSuccess("Marked as watched");
+            try {
+              await toggleWatched({ ...pendingWatch, ...details });
+              showSuccess("Marked as watched");
+            } catch (err) {
+              showError(getApiError(err, "Failed to mark as watched."));
+            }
           }
           setPendingWatch(null);
         }}
@@ -241,7 +250,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
 function TVTab({ query, adult }: { query: string; adult: boolean }) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
     async (q, p, a) => {
@@ -297,11 +306,15 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                             type="text"
                             icon={isWatched(t.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
                             style={{ color: isWatched(t.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(t.id, "tv")) {
-                                toggleWatched({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
-                                showSuccess("Removed from watched");
+                                try {
+                                  await toggleWatched({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
+                                  showSuccess("Removed from watched");
+                                } catch (err) {
+                                  showError(getApiError(err, "Failed to update watched status."));
+                                }
                               } else {
                                 setPendingWatch({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
                               }
@@ -333,10 +346,14 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
         mediaId={pendingWatch?.id ?? 0}
         mediaType={pendingWatch?.type ?? "movie"}
         onCancel={() => setPendingWatch(null)}
-        onConfirm={(details) => {
+        onConfirm={async (details) => {
           if (pendingWatch) {
-            toggleWatched({ ...pendingWatch, ...details });
-            showSuccess("Marked as watched");
+            try {
+              await toggleWatched({ ...pendingWatch, ...details });
+              showSuccess("Marked as watched");
+            } catch (err) {
+              showError(getApiError(err, "Failed to mark as watched."));
+            }
           }
           setPendingWatch(null);
         }}

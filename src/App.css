@@ -384,20 +384,6 @@ body:not(.dark-theme) .app-bottom-nav {
   border-radius: 8px 8px 0 0;
 }
 
-/* ── Overlay (trailer viewer) ───────────────────────────────── */
-.overlay-content {
-  position: relative;
-  top: 10%;
-  width: 100%;
-  text-align: center;
-  margin-top: 30px;
-}
-
-.overlay-content h1 {
-  color: #fff;
-  margin-bottom: 20px;
-}
-
 .embed-frame {
   width: 100%;
   max-width: 720px;

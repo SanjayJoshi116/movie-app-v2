@@ -110,7 +110,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       transition={{ type: "spring", stiffness: 260, damping: 30 }}
     >
       {/* Logo */}
-      <div style={{ padding: "0 20px 20px" }}>
+      <div style={{ padding: "0 20px 12px" }}>
         <Link to="/movies" style={{ textDecoration: "none" }}>
           <Typography.Title
             level={3}
@@ -130,7 +130,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       </div>
 
       {/* Search */}
-      <div className="sidebar-search-full" style={{ padding: "0 12px 12px", position: "relative" }}>
+      <div className="sidebar-search-full" style={{ padding: "0 12px 8px", position: "relative" }}>
         <SearchBox />
       </div>
 
@@ -149,10 +149,10 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
 
       <div style={{ flexGrow: 1 }} />
 
-      <Divider style={{ margin: "8px 0" }} />
+      <Divider style={{ margin: "4px 0" }} />
 
       {/* Footer: filter + theme + auth */}
-      <div className="sidebar-footer" style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="sidebar-footer" style={{ padding: "6px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
         {isBrowsePage && (
           <Button
             icon={<FilterOutlined />}
@@ -188,7 +188,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
           </Tooltip>
         </div>
 
-        <Divider style={{ margin: "4px 0" }} />
+        <Divider style={{ margin: "2px 0" }} />
 
         {isAuthenticated && user ? (
           <div className="sidebar-user-row" style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>

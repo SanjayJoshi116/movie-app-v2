@@ -15,6 +15,8 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
 import { pageVariants, RATING_GOLD, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 
 const SS_SEARCH = "lists_search";
 const SS_SORT = "lists_sort";
@@ -29,12 +31,18 @@ function ListsPage() {
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "created-desc");
   const [form] = Form.useForm();
+  const { showSuccess, showError } = useToast();
 
   const handleCreate = () => {
-    form.validateFields().then((values) => {
-      createList(values.name, values.description || "");
-      form.resetFields();
-      setCreateModalOpen(false);
+    form.validateFields().then(async (values) => {
+      try {
+        await createList(values.name, values.description || "");
+        form.resetFields();
+        setCreateModalOpen(false);
+        showSuccess("List created");
+      } catch (err) {
+        showError(getApiError(err, "Failed to create list."));
+      }
     });
   };
 
@@ -154,7 +162,14 @@ function ListsPage() {
                     key="delete"
                     title={`Delete "${list.name}"?`}
                     description="This will permanently remove the list and all its items."
-                    onConfirm={() => deleteList(list.id)}
+                    onConfirm={async () => {
+                      try {
+                        await deleteList(list.id);
+                        showSuccess("List deleted");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to delete list."));
+                      }
+                    }}
                     okText="Delete"
                     okType="danger"
                     cancelText="Cancel"

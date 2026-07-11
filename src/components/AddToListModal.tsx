@@ -89,13 +89,17 @@ export function AddToListModal({ open, onClose, mediaId, mediaType, title, poste
             return (
               <List.Item
                 style={{ cursor: "pointer" }}
-                onClick={() => {
-                  if (inList) {
-                    removeFromList(list.id, mediaId, mediaType);
-                    showSuccess(`Removed from "${list.name}"`);
-                  } else {
-                    addToList(list.id, { id: mediaId, type: mediaType, title, posterPath, voteAverage });
-                    showSuccess(`Added to "${list.name}"`);
+                onClick={async () => {
+                  try {
+                    if (inList) {
+                      await removeFromList(list.id, mediaId, mediaType);
+                      showSuccess(`Removed from "${list.name}"`);
+                    } else {
+                      await addToList(list.id, { id: mediaId, type: mediaType, title, posterPath, voteAverage });
+                      showSuccess(`Added to "${list.name}"`);
+                    }
+                  } catch (err) {
+                    showError(getApiError(err, "Failed to update list."));
                   }
                 }}
                 actions={[<Checkbox key="check" checked={inList} onChange={() => {}} />]}

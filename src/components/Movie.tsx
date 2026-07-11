@@ -8,6 +8,7 @@ import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -28,7 +29,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
   const { theme } = useUIContext();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
 
   return (
@@ -70,11 +71,15 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     type="text"
                     icon={isWatched(movie.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
                     style={{ color: isWatched(movie.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(movie.id, "movie")) {
-                        toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                        showSuccess("Removed from watched");
+                        try {
+                          await toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                          showSuccess("Removed from watched");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to update watched status."));
+                        }
                       } else {
                         setShowMarkWatchedModal(true);
                       }
@@ -88,11 +93,15 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     type="text"
                     icon={isInWatchlist(movie.id, "movie") ? <BookFilled /> : <BookOutlined />}
                     style={{ color: isInWatchlist(movie.id, "movie") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(movie.id, "movie");
-                      toggleWatchlist({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                      showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      try {
+                        await toggleWatchlist({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                        showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to update watchlist."));
+                      }
                     }}
                     aria-label={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}
                   />
@@ -121,9 +130,13 @@ const Movie = ({ movie, onKnowMore }: Props) => {
       mediaId={movie.id}
       mediaType="movie"
       onCancel={() => setShowMarkWatchedModal(false)}
-      onConfirm={(details) => {
-        toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
-        showSuccess("Marked as watched");
+      onConfirm={async (details) => {
+        try {
+          await toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+          showSuccess("Marked as watched");
+        } catch (err) {
+          showError(getApiError(err, "Failed to mark as watched."));
+        }
         setShowMarkWatchedModal(false);
       }}
     />

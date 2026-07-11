@@ -114,7 +114,8 @@ backend/
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists;
 │   │                            #   next/previous are plain page numbers, not absolute URLs
 │   ├── views.py                 # Thin re-export barrel — import from domain modules below
-│   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes
+│   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes,
+│   │                            #   SafeTokenRefreshView (guards against a since-deleted token owner)
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list)
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + TMDB mirror
@@ -160,7 +161,6 @@ src/
 │   ├── SearchBox.tsx            # Input.Search with recent-search history dropdown
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
-│   ├── StreamingBadges.tsx      # JustWatch provider logos
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
 │   ├── WatchProviders.tsx       # Streaming/rent provider logos with deep links, shared by Movie/TV detail pages
 │   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar/credits), shared by Movie/TV detail
@@ -184,9 +184,7 @@ src/
 │   ├── Movie.tsx / Movies.tsx
 │   ├── TVShows.tsx / TVShowCard.tsx  # TVShows maps a memoized per-item TVShowCard (mirrors Movie.tsx)
 │   ├── MovieDetails.tsx         # Includes add-to-list with checkbox toggle (add + remove)
-│   ├── TVShowDetails.tsx        # Includes episode progress tracker; add-to-list with toggle
-│   ├── Overlay.tsx              # Video trailer overlay
-│   └── Tags.tsx
+│   └── TVShowDetails.tsx        # Includes episode progress tracker; add-to-list with toggle
 ├── context/
 │   ├── AppContext.tsx            # Composes UIContext + WatchlistContext + WatchedContext + RatingsContext
 │   ├── UIContext.tsx             # theme, search, genre filters
@@ -274,7 +272,8 @@ src/
 - **Sticky sidebar / `overflow-x` scoping** — `.app-sidebar` (`App.css`) is `position: sticky; top: 0`, which sticks relative to the *nearest ancestor with a scrolling mechanism* — not necessarily the viewport. `src/index.css` scopes `overflow-x: hidden` to `html` only (not `body`/`#root`) because setting `overflow-x` without an explicit `overflow-y` silently promotes `overflow-y` to `auto` too (per the CSS overflow spec), which would turn `body`/`#root` into unintended scroll containers sitting between the sidebar and the true viewport scroller — since those containers' own `scrollTop` never moves, the sidebar's sticky offset would never engage and it'd just scroll away with the page. Don't add `overflow-x: hidden` (or any non-`visible` overflow value) to `body`/`#root`/any ancestor of a `position: sticky` element without also handling `overflow-y` explicitly.
 - **Popup positioning inside a sticky container** — `SearchBox.tsx`'s recent-searches `Dropdown` sets `getPopupContainer` to mount its popup inside the sidebar's own search wrapper (`Sidebar.tsx`, `position: relative`) instead of antd's default `document.body`. A popup mounted in `body` repositions itself via scroll-linked recalculation built for a trigger that scrolls with the page; once its trigger lives inside a genuinely `position: sticky` (viewport-pinned) ancestor, that recalculation visibly glitches for a frame on every scroll tick. Any future dropdown/popover/tooltip anchored to something inside the sidebar should set `getPopupContainer` the same way rather than defaulting to `body`.
 - **Recommendations/Similar genre filtering** — `filterByGenreOverlap()` (`src/utils/filterByGenreOverlap.ts`) keeps only items sharing ≥half the opened title's genre count, falling back to the unfiltered list if that would empty the section. Applied to both "Similar" and "Recommendations" on `MovieDetails.tsx`/`TVShowDetails.tsx` — TMDB's own recommendations/similar endpoints return `genre_ids` on every item, so no extra API call is needed.
-- **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset (5/hour). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
+- **Rate limiting** — DRF `AnonRateThrottle` subclasses applied to public auth endpoints: login (10/min), register (5/min), password reset request + confirm (5/hour, same scope for both halves of the flow). Rates configured in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` in `settings.py`; no extra package needed.
+- **JWT refresh hardening** — `ROTATE_REFRESH_TOKENS` is paired with `BLACKLIST_AFTER_ROTATION` (`rest_framework_simplejwt.token_blacklist` in `INSTALLED_APPS`), so a rotated-out refresh token is actually invalidated instead of staying valid for its full remaining lifetime. `POST /auth/token/refresh/` uses a custom `SafeTokenRefreshView`/`SafeTokenRefreshSerializer` (`auth_views.py`) instead of the stock simplejwt view — the stock `TokenRefreshSerializer.validate()` does an unguarded `User.objects.get(...)`, which 500s instead of cleanly 401ing if the token's user no longer exists (e.g. a deleted account replaying an old stored token).
 - **Production config** — `DEBUG`, `ALLOWED_HOSTS`, and `SECRET_KEY` are all env-controlled in `backend/cinedb/settings.py`. `ALLOWED_HOSTS` fails closed (empty by default) rather than defaulting to `*`. When `DEBUG=False`, an unset `SECRET_KEY` raises `ImproperlyConfigured` at startup instead of a silent fallback. `CORS_ALLOW_ALL_ORIGINS` is only enabled in `DEBUG`; production reads explicit origins from `CORS_ALLOWED_ORIGINS`.
 - **Backend view split** — `views.py` was a 750-line monolith; now a thin re-export barrel. Domain logic lives in `auth_views.py`, `watchlist_views.py`, `watched_views.py`, `ratings_views.py`, `lists_views.py`, `tmdb_views.py`, `stats_views.py`, `social_views.py`. `urls.py` is unchanged.
 - **Bulk watched import** — `POST /api/watched/bulk/` validates a batch cap (500 entries), dedupes repeated `mediaId`s within the same payload, and writes via `bulk_create(ignore_conflicts=True)` inside `transaction.atomic()` instead of one `get_or_create()` per row.

@@ -242,11 +242,15 @@ function WatchlistPage() {
                           size="small"
                           icon={watched ? <EyeFilled /> : <EyeOutlined />}
                           style={{ color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
                             if (watched) {
-                              toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
-                              showSuccess("Removed from watched");
+                              try {
+                                await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                                showSuccess("Removed from watched");
+                              } catch (err) {
+                                showError(getApiError(err, "Failed to update watched status."));
+                              }
                             } else {
                               setPendingWatch({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
                             }
@@ -268,7 +272,14 @@ function WatchlistPage() {
                       </Tooltip>
                       <Popconfirm
                         title="Remove from watchlist?"
-                        onConfirm={() => { removeFromWatchlist(item.id, item.type); showSuccess("Removed from watchlist"); }}
+                        onConfirm={async () => {
+                          try {
+                            await removeFromWatchlist(item.id, item.type);
+                            showSuccess("Removed from watchlist");
+                          } catch (err) {
+                            showError(getApiError(err, "Failed to remove from watchlist."));
+                          }
+                        }}
                         okText="Remove"
                         cancelText="Cancel"
                       >

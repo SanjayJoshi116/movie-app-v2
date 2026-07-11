@@ -134,7 +134,7 @@ class UserListItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserListItem
-        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt", "watched")
+        fields = ("id", "mediaId", "mediaType", "title", "posterPath", "voteAverage", "addedAt")
         read_only_fields = ("id", "addedAt")
 
 

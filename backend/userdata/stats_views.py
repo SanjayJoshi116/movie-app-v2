@@ -158,9 +158,12 @@ def stats(request):
     lists_count = lists_qs.count()
     lists_items_count = UserListItem.objects.filter(user_list__in=lists_qs).count()
 
+    watched_keys = {(w.media_id, w.media_type) for w in watched_list}
     watchlist_qs = WatchlistEntry.objects.filter(user=request.user)
     watchlist_total = watchlist_qs.count()
-    watchlist_unwatched = watchlist_qs.filter(watched=False).count()
+    watchlist_unwatched = sum(
+        1 for e in watchlist_qs if (e.media_id, e.media_type) not in watched_keys
+    )
 
     top_rated: list[dict] = []
     for entry in watched_list:

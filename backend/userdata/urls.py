@@ -1,13 +1,13 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
+from .auth_views import SafeTokenRefreshView
 from .recommendations import personalized_recommendations, recommendations_for_you
 
 urlpatterns = [
     # Auth
     path("auth/register/", views.register),
     path("auth/login/", views.login),
-    path("auth/token/refresh/", TokenRefreshView.as_view()),
+    path("auth/token/refresh/", SafeTokenRefreshView.as_view()),
     path("auth/profile/", views.profile),
     path("auth/avatar/", views.avatar),
     path("auth/delete-account/", views.delete_account),

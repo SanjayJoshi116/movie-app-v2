@@ -10,6 +10,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.exceptions import InvalidToken
 
 from .models import Profile
 from .serializers import RegisterSerializer, UserSerializer, UserProfileUpdateSerializer
@@ -35,6 +38,18 @@ class PasswordResetThrottle(AnonRateThrottle):
 def _tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+class SafeTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        try:
+            return super().validate(attrs)
+        except User.DoesNotExist:
+            raise InvalidToken("No account found for this token.")
+
+
+class SafeTokenRefreshView(TokenRefreshView):
+    serializer_class = SafeTokenRefreshSerializer
 
 
 @api_view(["POST"])
@@ -81,6 +96,7 @@ def password_reset_request(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([PasswordResetThrottle])
 def password_reset_confirm(request):
     from django.contrib.auth.tokens import default_token_generator
     from django.contrib.auth.password_validation import validate_password

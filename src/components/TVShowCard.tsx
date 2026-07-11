@@ -8,6 +8,7 @@ import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -27,7 +28,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
   const { theme } = useUIContext();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
 
   return (
@@ -73,11 +74,15 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     type="text"
                     icon={isWatched(tvShow.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
                     style={{ color: isWatched(tvShow.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(tvShow.id, "tv")) {
-                        toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
-                        showSuccess("Removed from watched");
+                        try {
+                          await toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
+                          showSuccess("Removed from watched");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to update watched status."));
+                        }
                       } else {
                         setShowMarkWatchedModal(true);
                       }
@@ -91,11 +96,15 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     type="text"
                     icon={isInWatchlist(tvShow.id, "tv") ? <BookFilled /> : <BookOutlined />}
                     style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(tvShow.id, "tv");
-                      toggleWatchlist({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
-                      showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      try {
+                        await toggleWatchlist({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average });
+                        showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to update watchlist."));
+                      }
                     }}
                     aria-label={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}
                   />
@@ -124,9 +133,13 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
       mediaId={tvShow.id}
       mediaType="tv"
       onCancel={() => setShowMarkWatchedModal(false)}
-      onConfirm={(details) => {
-        toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average, ...details });
-        showSuccess("Marked as watched");
+      onConfirm={async (details) => {
+        try {
+          await toggleWatched({ id: tvShow.id, type: "tv", title: tvShow.name, posterPath: tvShow.poster_path, voteAverage: tvShow.vote_average, ...details });
+          showSuccess("Marked as watched");
+        } catch (err) {
+          showError(getApiError(err, "Failed to mark as watched."));
+        }
         setShowMarkWatchedModal(false);
       }}
     />
