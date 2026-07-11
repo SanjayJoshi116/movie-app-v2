@@ -91,7 +91,7 @@ jobs:
           cache: pip
       - run: pip install -r e2e/python/requirements.txt
       - run: playwright install --with-deps chromium
-      - run: npx wait-on http://localhost:3000 -t 300000
+      - run: npx wait-on http://127.0.0.1:3000 -t 300000
       - name: Show dev server output
         if: always()
         run: |
