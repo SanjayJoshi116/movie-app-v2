@@ -82,7 +82,7 @@ jobs:
           node-version: 18
           cache: npm
       - run: npm ci
-      - run: npx react-scripts start &
+      - run: nohup npx react-scripts start > /tmp/cra.log 2>&1 &
         env:
           BROWSER: none
       - uses: actions/setup-python@v5
@@ -92,5 +92,14 @@ jobs:
       - run: pip install -r e2e/python/requirements.txt
       - run: playwright install --with-deps chromium
       - run: npx wait-on http://localhost:3000 -t 300000
+      - name: Show dev server output
+        if: always()
+        run: |
+          echo "--- /tmp/cra.log ---"
+          cat /tmp/cra.log || echo "(no log file)"
+          echo "--- listening ports ---"
+          ss -tlnp || netstat -tlnp || true
+          echo "--- node processes ---"
+          ps aux | grep -i node || true
       - run: pytest e2e/python
 
