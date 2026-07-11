@@ -45,7 +45,7 @@ class SafeTokenRefreshSerializer(TokenRefreshSerializer):
         try:
             return super().validate(attrs)
         except User.DoesNotExist:
-            raise InvalidToken("No account found for this token.")
+            raise InvalidToken("No account found for this token.") from None
 
 
 class SafeTokenRefreshView(TokenRefreshView):
