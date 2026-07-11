@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Card } from "antd";
 import MarqueeTitle from "./MarqueeTitle";
-import { IMG_URL, NO_IMAGE } from "../constants/ui";
+import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { PosterPlaceholder } from "./PosterPlaceholder";
 
 interface Props {
   posterPath: string | null;
@@ -28,14 +29,18 @@ const LibraryItemCard = ({ posterPath, title, onOpen, tags, actionButtons, foote
         className="glass-card"
         style={{ height: "100%" }}
         cover={
-          <img
-            src={posterPath ? `${IMG_URL}${posterPath}` : NO_IMAGE}
-            alt={title}
-            loading="lazy"
-            className="movie-poster-img"
-            onClick={onOpen}
-            style={{ cursor: "pointer" }}
-          />
+          posterPath ? (
+            <img
+              src={`${IMG_URL}${posterPath}`}
+              alt={title}
+              loading="lazy"
+              className="movie-poster-img"
+              onClick={onOpen}
+              style={{ cursor: "pointer" }}
+            />
+          ) : (
+            <PosterPlaceholder className="movie-poster-img" style={{ cursor: "pointer" }} onClick={onOpen} />
+          )
         }
         styles={{ body: { padding: "10px 12px" } }}
       >

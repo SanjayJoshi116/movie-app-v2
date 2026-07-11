@@ -32,7 +32,8 @@ import {
   Area,
 } from "recharts";
 import { fetchStats, type StatsData } from "../api/userApi";
-import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL } from "../constants/ui";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 
 const { Title, Text } = Typography;
 
@@ -273,12 +274,16 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
   return (
     <div style={{ width: 110, flexShrink: 0 }}>
       <div style={{ position: "relative", borderRadius: 6, overflow: "hidden" }}>
-        <img
-          src={posterPath ? `${IMG_URL}${posterPath}` : NO_IMAGE}
-          alt={title}
-          loading="lazy"
-          style={{ width: "100%", display: "block" }}
-        />
+        {posterPath ? (
+          <img
+            src={`${IMG_URL}${posterPath}`}
+            alt={title}
+            loading="lazy"
+            style={{ width: "100%", display: "block" }}
+          />
+        ) : (
+          <PosterPlaceholder style={{ width: "100%", aspectRatio: "2 / 3" }} />
+        )}
         <div style={{
           position: "absolute", top: 6, right: 6,
           background: mediaType === "movie" ? GOLD : BLUE,

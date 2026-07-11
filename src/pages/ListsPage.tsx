@@ -14,9 +14,10 @@ import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
-import { pageVariants, RATING_GOLD, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { pageVariants, RATING_GOLD, IMG_URL } from "../constants/ui";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 
 const SS_SEARCH = "lists_search";
 const SS_SORT = "lists_sort";
@@ -149,13 +150,17 @@ function ListsPage() {
                 style={{ height: "100%", cursor: "pointer" }}
                 onClick={() => navigate(`/lists/${list.id}`)}
                 cover={
-                  <img
-                    src={list.items[0]?.posterPath ? `${IMG_URL}${list.items[0].posterPath}` : NO_IMAGE}
-                    alt={list.name}
-                    loading="lazy"
-                    className="movie-poster-img"
-                    style={{ aspectRatio: "2 / 3", objectFit: "cover" }}
-                  />
+                  list.items[0]?.posterPath ? (
+                    <img
+                      src={`${IMG_URL}${list.items[0].posterPath}`}
+                      alt={list.name}
+                      loading="lazy"
+                      className="movie-poster-img"
+                      style={{ aspectRatio: "2 / 3", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <PosterPlaceholder className="movie-poster-img" style={{ aspectRatio: "2 / 3" }} />
+                  )
                 }
                 actions={[
                   <Popconfirm

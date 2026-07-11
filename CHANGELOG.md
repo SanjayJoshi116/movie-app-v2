@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.13.0] - 2026-07-11
+
+### Added
+- Light mode is now a fully custom "warm paper" theme instead of stock antd gray — matches the level of design care dark mode ("cinema-dark") already had. `antdTheme.ts`'s `lightThemeConfig` gained the full token set dark mode already defined (`colorText`, `colorTextSecondary`, `colorBorder`, `colorBorderSecondary`, `colorBgElevated`) plus matching `Table`/`Drawer` component overrides, previously entirely absent so those surfaces fell back to raw antd defaults. `App.css` gained a light-mode equivalent of dark mode's `.app-content` radial-gradient background (warm gold-tinted instead of navy/purple), and the glass-panel/scrollbar colors (`.glass-sidebar`, `.glass-overlay-card`, `.app-bottom-nav`, `::-webkit-scrollbar`) were retinted from stock gray to match. Palette chosen from a 2-option visual mockup shown to the user before implementation.
+
+### Fixed
+- Custom scrollbar (`App.css`) was hardcoded dark-navy with no light-mode override, so it stayed dark-themed even on a white page — the one objective bug found while designing the light theme above. Now theme-scoped like every other glass/surface color.
+- The "No Image" poster fallback (`NO_IMAGE`, an inline SVG data-URI) always rendered its text in generic `sans-serif`, never Poppins — SVGs embedded via `<img src="data:...">` can't see the page's `@font-face`, so this could never be fixed by just changing the font-family string inside the SVG. Replaced with a real DOM component (`PosterPlaceholder.tsx`) at all 11 call sites across 9 files, which inherits Poppins for free like every other piece of text in the app. `NO_IMAGE` removed from `constants/ui.ts` as dead code once nothing referenced it.
+
 ## [0.12.0] - 2026-07-11
 
 ### Fixed

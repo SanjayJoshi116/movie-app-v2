@@ -15,13 +15,14 @@ import {
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
 import { MediaCardGrid } from "../components/MediaCardGrid";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { formatDateDMY } from "../utils/formatDate";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
   TMDBPersonImages,
 } from "../types";
-import { pageVariants, IMG_URL, NO_IMAGE } from "../constants/ui";
+import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
 function PersonPage() {
@@ -161,12 +162,16 @@ function PersonPage() {
 
         <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
           <Col xs={24} sm={8} md={6}>
-            <img
-              src={person.profile_path ? `${IMG_URL}${person.profile_path}` : NO_IMAGE}
-              alt={person.name}
-              className="person-profile-img"
-              style={{ width: "100%", borderRadius: 12 }}
-            />
+            {person.profile_path ? (
+              <img
+                src={`${IMG_URL}${person.profile_path}`}
+                alt={person.name}
+                className="person-profile-img"
+                style={{ width: "100%", borderRadius: 12 }}
+              />
+            ) : (
+              <PosterPlaceholder className="person-profile-img" style={{ width: "100%", borderRadius: 12, aspectRatio: "2 / 3" }} />
+            )}
           </Col>
           <Col xs={24} sm={16} md={18}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>

@@ -23,8 +23,9 @@ import { SectionHeader } from "./SectionHeader";
 import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
 import { ReviewsSection } from "./ReviewsSection";
+import { PosterPlaceholder } from "./PosterPlaceholder";
 import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
-import { IMG_URL, BACKDROP_URL, NO_IMAGE, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { IMG_URL, BACKDROP_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
@@ -115,11 +116,15 @@ const TVShowDetails = ({ tvShow }: Props) => {
 
         <Row gutter={[24, 24]}>
           <Col xs={24} sm={8} md={6}>
-            <img
-              src={poster_path ? `${IMG_URL}${poster_path}` : NO_IMAGE}
-              alt={name}
-              className="detail-poster-img"
-            />
+            {poster_path ? (
+              <img
+                src={`${IMG_URL}${poster_path}`}
+                alt={name}
+                className="detail-poster-img"
+              />
+            ) : (
+              <PosterPlaceholder className="detail-poster-img" />
+            )}
           </Col>
           <Col xs={24} sm={16} md={18}>
             <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -365,12 +370,16 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     size="small"
                     onClick={() => navigate(`/person/${actor.id}`)}
                     cover={
-                      <img
-                        src={actor.profile_path ? `${IMG_URL}${actor.profile_path}` : NO_IMAGE}
-                        alt={actor.name}
-                        className="cast-card-img-lg"
-                        loading="lazy"
-                      />
+                      actor.profile_path ? (
+                        <img
+                          src={`${IMG_URL}${actor.profile_path}`}
+                          alt={actor.name}
+                          className="cast-card-img-lg"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <PosterPlaceholder className="cast-card-img-lg" />
+                      )
                     }
                     styles={{ body: { padding: "6px 8px" } }}
                     aria-label={`View details for ${actor.name}`}

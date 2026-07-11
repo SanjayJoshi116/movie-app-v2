@@ -5,8 +5,9 @@ import { UserOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/i
 import MarqueeTitle from "./MarqueeTitle";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
-import { IMG_URL, NO_IMAGE } from "../constants/ui";
+import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { PosterPlaceholder } from "./PosterPlaceholder";
 
 interface PersonCardPerson {
   id: number;
@@ -37,12 +38,16 @@ const PersonCard = ({ person, onClick }: Props) => {
         hoverable
         className="glass-card"
         cover={
-          <img
-            src={person.profile_path ? `${IMG_URL}${person.profile_path}` : NO_IMAGE}
-            alt={person.name}
-            loading="lazy"
-            className="movie-poster-img"
-          />
+          person.profile_path ? (
+            <img
+              src={`${IMG_URL}${person.profile_path}`}
+              alt={person.name}
+              loading="lazy"
+              className="movie-poster-img"
+            />
+          ) : (
+            <PosterPlaceholder className="movie-poster-img" />
+          )
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}

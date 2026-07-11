@@ -6,9 +6,10 @@ import { CalendarOutlined, StarFilled, DownloadOutlined, SearchOutlined, FieldTi
 import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
-import { pageVariants, IMG_URL, NO_IMAGE, RATING_GOLD } from "../constants/ui";
+import { pageVariants, IMG_URL, RATING_GOLD } from "../constants/ui";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -328,12 +329,16 @@ function CalendarPage() {
                       hoverable
                       className="glass-card"
                       cover={
-                        <img
-                          src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
-                          alt={item.title}
-                          loading="lazy"
-                          className="movie-poster-img"
-                        />
+                        item.posterPath ? (
+                          <img
+                            src={`${IMG_URL}${item.posterPath}`}
+                            alt={item.title}
+                            loading="lazy"
+                            className="movie-poster-img"
+                          />
+                        ) : (
+                          <PosterPlaceholder className="movie-poster-img" />
+                        )
                       }
                       styles={{ body: { padding: "8px 10px" } }}
                       style={{ height: "100%" }}

@@ -161,6 +161,8 @@ src/
 │   ├── SearchBox.tsx            # Input.Search with recent-search history dropdown
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
+│   ├── PosterPlaceholder.tsx    # Real DOM "No Image" fallback (not an SVG image) so the text
+│   │                            #   inherits Poppins; used at every no-poster call site
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
 │   ├── WatchProviders.tsx       # Streaming/rent provider logos with deep links, shared by Movie/TV detail pages
 │   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar/credits), shared by Movie/TV detail
@@ -244,7 +246,7 @@ src/
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
 │                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
-│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, BACKDROP_URL, NO_IMAGE,
+│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, BACKDROP_URL,
 │   │                            #   RATING_GOLD, WATCHED_GREEN — shared across pages
 │   ├── genres.ts                # Static TMDB genre list for filter UI
 │   ├── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
@@ -303,6 +305,8 @@ src/
 - **UI** — Ant Design 5 with `ConfigProvider`. Cinema-dark uses `#0d0f1a` background and `#f5c518` gold accent. Cards use `rgba` glassmorphism (`.glass-card`, `.glass-sidebar`).
 - **Error boundaries** — Root, per-route, and video overlay placements.
 - **Typography** — `src/constants/typography.ts` exports `FONT_SIZE.caption/body/emphasis/display`; every inline `fontSize` in the app sources from this scale instead of a hardcoded number (icon-scaling `fontSize` props on antd icons are the one exception). Heading sizes are set once via antd theme tokens in `src/theme/antdTheme.ts`.
+- **Light theme is custom-designed, not stock antd gray** — `lightThemeConfig` (`antdTheme.ts`) previously only overrode 3 background tokens and fell back to antd's defaults for text/border/elevated-surface colors, so it looked bland next to dark mode's bespoke "cinema-dark" palette. Now carries the same full token set dark mode has (`colorText`, `colorTextSecondary`, `colorBorder`, `colorBorderSecondary`, `colorBgElevated`, plus `Table`/`Drawer` overrides) — a warm paper/cream palette (`#f8f3e8` base) sharing the same gold `#f5c518` accent as dark mode. `App.css`'s theme-scoped rules (`.app-content` gradient, `.glass-sidebar`/`.glass-overlay-card`/`.app-bottom-nav`, `::-webkit-scrollbar-*`) got light-mode equivalents to match — the scrollbar in particular was previously unscoped entirely and stayed dark-navy even on a white page.
+- **No-poster fallback is a DOM element, not an image** — `PosterPlaceholder.tsx` renders a plain `<div>No Image</div>` styled to match whatever poster-card class it's given, replacing a prior `NO_IMAGE` inline SVG data-URI. The SVG version baked its "No Image" text into the image itself with a hardcoded generic `font-family`, which could never actually render in the app's Poppins font — an `<img src="data:image/svg+xml,...">` is an opaque replaced element with no access to the page's `@font-face`/loaded fonts, so changing the font-family string inside the SVG has no visible effect. A real DOM node sidesteps the problem entirely by inheriting Poppins the same way every other piece of text on the page does.
 - **Date formatting** — `src/utils/formatDate.ts` (`formatDateDMY`) renders dates as `dd-mm-yyyy` regardless of the viewer's locale, used anywhere a date is shown to the user (Watched, Lists, Movie/TV Detail).
 - **Info tooltips** — `src/components/InfoTooltip.tsx` wraps antd `Tooltip` + `InfoCircleOutlined` into one reusable `<InfoTooltip title="..." />`.
 - **Movie/TV detail parity** — `MovieDetails.tsx` and `TVShowDetails.tsx` share `SectionHeader`, `WatchProviders`, `MediaCardGrid`, and `ReviewsSection` (all in `src/components/`) instead of each carrying its own copy, and render sections in the same order (Where to Watch → Cast → Recommendations → Similar → Trailers → Images → Reviews, with TV's Episode Guide inserted after Cast). Both fetch `videos` via `append_to_response` and render a Trailers section from it; TV now also fetches reviews (`fetchTVReviews`), previously movie-only.

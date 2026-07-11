@@ -50,17 +50,25 @@ export const lightThemeConfig: ThemeConfig = {
   algorithm: antdTheme.defaultAlgorithm,
   token: {
     ...commonTokens,
-    colorBgBase: "#f0f2f5",
-    colorBgContainer: "#ffffff",
-    colorBgLayout: "#f0f2f5",
+    colorBgBase: "#f8f3e8",
+    colorBgContainer: "#fffdf8",
+    colorBgElevated: "#fffefb",
+    colorBgLayout: "#f8f3e8",
+    colorText: "#2b2620",
+    colorTextSecondary: "#8c8168",
+    colorBorder: "#e8dfc9",
+    colorBorderSecondary: "#ece2c8",
   },
   components: {
-    Layout: {
-      headerBg: "#1a1d2e",
-      bodyBg: "#f0f2f5",
-    },
     Card: {
-      colorBgContainer: "rgba(255, 255, 255, 0.75)",
+      colorBgContainer: "rgba(255, 253, 248, 0.75)",
+    },
+    Drawer: {
+      colorBgElevated: "rgba(255, 253, 248, 0.95)",
+    },
+    Table: {
+      colorBgContainer: "#fffdf8",
+      headerBg: "#f3ead4",
     },
     Menu: {
       itemBg: "transparent",

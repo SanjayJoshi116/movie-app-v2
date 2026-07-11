@@ -1,8 +1,9 @@
 import { Row, Col, Card, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
-import { IMG_URL, NO_IMAGE } from "../constants/ui";
+import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { SectionHeader } from "./SectionHeader";
+import { PosterPlaceholder } from "./PosterPlaceholder";
 
 export interface MediaCardGridItem {
   id: number;
@@ -33,12 +34,16 @@ export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCard
               size="small"
               onClick={() => navigate(`/${mediaType}/${item.id}`)}
               cover={
-                <img
-                  src={item.posterPath ? `${IMG_URL}${item.posterPath}` : NO_IMAGE}
-                  alt={item.name}
-                  className="rec-card-img"
-                  loading="lazy"
-                />
+                item.posterPath ? (
+                  <img
+                    src={`${IMG_URL}${item.posterPath}`}
+                    alt={item.name}
+                    className="rec-card-img"
+                    loading="lazy"
+                  />
+                ) : (
+                  <PosterPlaceholder className="rec-card-img" />
+                )
               }
               styles={{ body: { padding: "6px 8px" } }}
             >
