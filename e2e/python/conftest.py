@@ -231,11 +231,19 @@ def seed_auth(page: Page) -> None:
 
 
 def mock_base_django_routes(page: Page) -> None:
-    """Mount baseline empty-list Django API mocks (override per-test as needed)."""
-    page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/ratings/", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/watched/", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/lists/", lambda r: fulfill_json(r, []))
+    """Mount baseline empty-list Django API mocks (override per-test as needed).
+
+    Trailing `**` matters here: fetchAllPages() (src/utils/fetchAllPages.ts) always
+    appends `?page=1` even on the first request, so an exact-match pattern with no
+    wildcard misses it, falls through to the autouse 401 block, and the app's
+    401-refresh interceptor (also unmocked -> also 401) hard-redirects to /login in
+    a loop. `lists/` isn't paginated so it never had this problem, but the wildcard
+    is harmless there too.
+    """
+    page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
 
 
 def mock_tmdb_movies(page: Page, response=None) -> None:

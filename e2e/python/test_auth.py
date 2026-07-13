@@ -54,10 +54,10 @@ class TestLoginPage:
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/ratings/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/watched/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/lists/", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
 
         page.goto("/login")
         page.get_by_label("Username").fill("testuser")
@@ -136,20 +136,20 @@ class TestRegisterPage:
         expect(page.get_by_text("Create Account")).to_be_visible()
         expect(page.get_by_label("Username")).to_be_visible()
         expect(page.get_by_label("Email")).to_be_visible()
-        expect(page.get_by_label("Password")).to_be_visible()
+        expect(page.get_by_label("Password", exact=True)).to_be_visible()
         expect(page.get_by_role("button", name="Register")).to_be_visible()
 
     def test_register_short_password_validation(self, page: Page):
         page.goto("/register")
         page.get_by_label("Username").fill("newuser")
-        page.get_by_label("Password").fill("abc")
+        page.get_by_label("Password", exact=True).fill("abc")
         page.get_by_role("button", name="Register").click()
-        expect(page.get_by_text("At least 6 characters")).to_be_visible()
+        expect(page.get_by_text("At least 8 characters")).to_be_visible()
 
     def test_register_empty_username_validation(self, page: Page):
         page.goto("/register")
         page.get_by_label("Email").fill("test@example.com")
-        page.get_by_label("Password").fill("validpass")
+        page.get_by_label("Password", exact=True).fill("validpass")
         page.get_by_role("button", name="Register").click()
         expect(page.get_by_text("Enter a username")).to_be_visible()
 
@@ -157,7 +157,7 @@ class TestRegisterPage:
         page.goto("/register")
         page.get_by_label("Username").fill("newuser")
         page.get_by_label("Email").fill("notanemail")
-        page.get_by_label("Password").fill("validpass")
+        page.get_by_label("Password", exact=True).fill("validpass")
         page.get_by_role("button", name="Register").click()
         expect(page.get_by_text("Enter a valid email")).to_be_visible()
 
@@ -167,15 +167,16 @@ class TestRegisterPage:
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/ratings/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/watched/", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/lists/", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
 
         page.goto("/register")
         page.get_by_label("Username").fill("newuser")
         page.get_by_label("Email").fill("new@example.com")
-        page.get_by_label("Password").fill("validpass")
+        page.get_by_label("Password", exact=True).fill("validpass")
+        page.get_by_label("Confirm Password").fill("validpass")
         page.get_by_role("button", name="Register").click()
         expect(page).to_have_url("/movies", timeout=10_000)
 
@@ -187,7 +188,8 @@ class TestRegisterPage:
         page.goto("/register")
         page.get_by_label("Username").fill("existinguser")
         page.get_by_label("Email").fill("new@example.com")
-        page.get_by_label("Password").fill("validpass")
+        page.get_by_label("Password", exact=True).fill("validpass")
+        page.get_by_label("Confirm Password").fill("validpass")
         page.get_by_role("button", name="Register").click()
         expect(page.locator(".ant-message-notice-content")).to_contain_text(
             "A user with that username already exists.", timeout=8_000
