@@ -58,6 +58,10 @@ class TestMovieDetailPage:
         eye_btn = authed_page.locator("[aria-label*='watched'], [aria-label*='Watched']").first
         if eye_btn.count() > 0:
             eye_btn.click()
+            # Marking as watched opens a confirm modal (MarkWatchedModal) rather than
+            # firing instantly -- only unmarking is a direct toggle with no modal.
+            expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)
+            authed_page.get_by_role("button", name="Mark Watched").click()
             expect(authed_page.locator(".ant-message-notice-content")).to_be_visible(timeout=5_000)
 
     def test_movie_detail_rate_button_opens_modal(self, authed_page: Page):
