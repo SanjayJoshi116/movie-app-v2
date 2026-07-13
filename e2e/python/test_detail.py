@@ -24,11 +24,15 @@ class TestMovieDetailPage:
 
     def test_movie_detail_watchlist_add_toggle(self, authed_page: Page):
         mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, {
+        added_item = {
             "id": 99, "mediaId": 100, "mediaType": "movie", "title": "Movie 1",
             "posterPath": None, "voteAverage": 7.5, "addedAt": "2024-01-01T00:00:00Z", "watched": False,
-        }))
+        }
+        authed_page.route("**/api/django/watchlist/**", lambda r: (
+            fulfill_json(r, [])
+            if r.request.method == "GET"
+            else fulfill_json(r, added_item, status=201)
+        ))
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Find the bookmark/watchlist button
@@ -39,11 +43,15 @@ class TestMovieDetailPage:
 
     def test_movie_detail_watched_toggle(self, authed_page: Page):
         mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/django/watched/", lambda r: fulfill_json(r, []))
-        authed_page.route("**/api/django/watched/**", lambda r: fulfill_json(r, {
+        watched_item = {
             "id": 1, "mediaId": 100, "mediaType": "movie", "title": "Movie 1",
             "posterPath": None, "voteAverage": 7.5, "watchedAt": "2024-01-01T00:00:00Z",
-        }))
+        }
+        authed_page.route("**/api/django/watched/**", lambda r: (
+            fulfill_json(r, [])
+            if r.request.method == "GET"
+            else fulfill_json(r, watched_item, status=201)
+        ))
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Eye/watched icon button
