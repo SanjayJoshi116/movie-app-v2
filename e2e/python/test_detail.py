@@ -134,8 +134,12 @@ class TestTVDetailPage:
         mock_tv_detail_routes(authed_page, 1396)
         authed_page.goto("/tv/1396")
         expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
-        # Season 1 pilot episode should be shown
-        expect(authed_page.get_by_text("Pilot")).to_be_visible(timeout=8_000)
+        # EpisodeGuide.tsx nests the per-episode Collapse inside the outer "N episodes"
+        # panel's children -- antd doesn't render collapsed children at all (not just
+        # hidden), so the episode list has to be expanded before "Pilot" ever mounts.
+        expect(authed_page.get_by_text("1 episode")).to_be_visible(timeout=8_000)
+        authed_page.get_by_text("1 episode").click()
+        expect(authed_page.get_by_text("Pilot")).to_be_visible(timeout=5_000)
 
     def test_tv_detail_episode_progress_section_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)

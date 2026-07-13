@@ -61,8 +61,11 @@ class TestRatingModalFromWatchlist:
 
     def test_rating_saved_shows_success_toast(self, authed_page: Page):
         authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
-        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, MOCK_RATING))
+        authed_page.route("**/api/django/ratings/**", lambda r: (
+            fulfill_json(r, [])
+            if r.request.method == "GET"
+            else fulfill_json(r, MOCK_RATING, status=201)
+        ))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
