@@ -87,7 +87,7 @@ class TestMovieDetailPage:
 
     def test_movie_detail_add_to_list_button_visible_with_lists(self, authed_page: Page):
         mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/django/lists/", lambda r: fulfill_json(r, [MOCK_LIST]))
+        authed_page.route("**/api/django/lists/**", lambda r: fulfill_json(r, [MOCK_LIST]))
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Look for "Add to List" button or similar
@@ -149,7 +149,7 @@ class TestTVDetailPage:
 
     def test_tv_detail_watchlist_toggle_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/tv/1396")
         expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
         # Watchlist toggle should be present

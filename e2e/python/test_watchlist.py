@@ -24,30 +24,30 @@ def make_watchlist_items(n: int):
 
 class TestWatchlistEmpty:
     def test_empty_watchlist_shows_count_zero(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (0)")).to_be_visible(timeout=8_000)
 
     def test_empty_watchlist_shows_description(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (0)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_text("Your watchlist is empty", exact=False)).to_be_visible()
 
     def test_empty_watchlist_shows_browse_movies_button(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (0)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_role("button", name="Browse Movies")).to_be_visible()
 
     def test_empty_watchlist_export_csv_hidden(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (0)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_role("button", name="Export CSV")).not_to_be_visible()
 
     def test_browse_movies_button_navigates_to_movies(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.route("**/api/tmdb/discover/movie**", lambda r: fulfill_json(r, {"results": [], "total_pages": 1, "total_results": 0}))
         authed_page.route("**/api/tmdb/trending/**", lambda r: fulfill_json(r, {"results": [], "total_pages": 1, "total_results": 0}))
         authed_page.goto("/watchlist")
@@ -58,24 +58,24 @@ class TestWatchlistEmpty:
 
 class TestWatchlistWithItems:
     def test_watchlist_one_item_shows_count(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
 
     def test_watchlist_shows_item_title(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
 
     def test_watchlist_multiple_items_count(self, authed_page: Page):
         items = make_watchlist_items(3)
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, items))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (3)")).to_be_visible(timeout=8_000)
 
     def test_watchlist_export_csv_visible_with_items(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_role("button", name="Export CSV")).to_be_visible()
@@ -85,7 +85,7 @@ class TestWatchlistWithItems:
             MOCK_WATCHLIST_ITEM,
             {**MOCK_WATCHLIST_ITEM, "id": 2, "mediaId": 551, "title": "The Shawshank Redemption"},
         ]
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, items))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (2)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("Fight")
@@ -94,7 +94,7 @@ class TestWatchlistWithItems:
         expect(authed_page.get_by_text("The Shawshank Redemption")).not_to_be_visible()
 
     def test_watchlist_search_no_results(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("zzznotfound")
@@ -102,7 +102,7 @@ class TestWatchlistWithItems:
         expect(authed_page.get_by_text('No results for "zzznotfound"')).to_be_visible()
 
     def test_watchlist_sort_controls_visible(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         # Sort select combobox should be visible
@@ -114,7 +114,7 @@ class TestWatchlistWithItems:
             {**MOCK_WATCHLIST_ITEM, "id": 1, "mediaId": 551, "title": "Zebra Film"},
             {**MOCK_WATCHLIST_ITEM, "id": 2, "mediaId": 552, "title": "Alpha Film"},
         ]
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, items))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (2)")).to_be_visible(timeout=8_000)
         # Both titles should be visible
@@ -126,24 +126,29 @@ class TestWatchlistWithItems:
 
 class TestWatchlistRemove:
     def test_remove_button_shows_popconfirm(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Remove").click()
         expect(authed_page.get_by_text("Remove from watchlist?")).to_be_visible(timeout=5_000)
 
     def test_remove_cancelled_keeps_item(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Remove").click()
         expect(authed_page.get_by_text("Remove from watchlist?")).to_be_visible(timeout=5_000)
-        authed_page.get_by_role("button", name="Cancel").last.click()
+        # The Remove icon button underneath is Tooltip-wrapped ("Remove"); Playwright's
+        # synthetic click doesn't fire the hover-exit that would dismiss it, so it can be
+        # left overlapping the Popconfirm's Cancel button and intercept pointer events
+        # forever. force=True skips that actionability check -- the button itself is
+        # unambiguous (count is 1), this is purely a leftover-tooltip artifact.
+        authed_page.get_by_role("button", name="Cancel").last.click(force=True)
         authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
 
     def test_remove_confirmed_shows_success_toast(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.route("**/api/django/watchlist/1/", lambda r: r.fulfill(status=204, body=""))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
@@ -158,7 +163,7 @@ class TestWatchlistRemove:
 
 class TestWatchlistRating:
     def test_rate_button_opens_rating_modal(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -166,15 +171,15 @@ class TestWatchlistRating:
         expect(authed_page.get_by_text("Rate: Fight Club")).to_be_visible()
 
     def test_already_rated_shows_edit_button(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/", lambda r: fulfill_json(r, [MOCK_RATING]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_role("button", name="Edit")).to_be_visible()
 
     def test_rated_item_shows_rating_tag(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/", lambda r: fulfill_json(r, [MOCK_RATING]))
+        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_text("My: 9/10")).to_be_visible()
