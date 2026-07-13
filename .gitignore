@@ -57,6 +57,7 @@ start.ps1
 
 # ad-hoc verification scratch scripts/screenshots (see CLAUDE.md)
 /verify_*.js
+/verify_*.py
 /typo_*.png
 /*.png
 

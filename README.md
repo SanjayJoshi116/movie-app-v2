@@ -575,6 +575,8 @@ pytest
 
 GitHub Actions runs the Jest suite, Django `pytest` suite, `ruff check`, and the pytest-playwright E2E suite (`e2e/python/`) automatically on every push and pull request to `main` — see `.github/workflows/ci.yml`. The TypeScript Playwright suite (`e2e/*.spec.ts`) is not yet wired into CI; run it locally with `npx playwright test`.
 
+The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
+
 ---
 
 ## API Overview

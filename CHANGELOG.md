@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.14.0] - 2026-07-13
+
+### Changed
+- `LoginPage.tsx`'s invalid-credentials error moved from a `Tooltip` pinned open over the Sign In button to an antd `message.error` toast via `App.useApp()`, matching `RegisterPage.tsx`'s existing error pattern — the two auth pages had drifted onto different conventions for the same kind of feedback.
+
+### Fixed
+- E2E CI job (`e2e-python`) could hang for GitHub Actions' full 6h default job timeout instead of failing cleanly: pytest-timeout's default `signal` method can't interrupt a hung Playwright call blocked in a background thread (its own asyncio subprocess reaper), so a stuck test just sat there forever once the alarm fired. `e2e/python/pytest.ini` now sets `timeout_method = thread` (Playwright's own recommendation), and `.github/workflows/ci.yml` caps the job at `timeout-minutes: 15` as a backstop.
+- Widespread E2E test bug: most `page.route()` overrides for `/api/django/(watchlist|watched|ratings|lists)/` across the suite used an exact path with no trailing wildcard, so they never matched — `fetchAllPages()` (`src/utils/fetchAllPages.ts`) always appends `?page=1`, even to the first request. Tests asserting an empty list passed by accident; tests asserting real content silently got the fixture's empty-list fallback instead. Added the missing `**` across `test_detail.py`, `test_lists.py`, `test_watchlist.py`, `test_profile.py`, `test_watched.py`, and `test_ratings.py`.
+- Several tests stacked two `page.route()` calls on the same pattern to model different requests (e.g. GET the list vs. POST to create) — Playwright checks routes last-registered-first, so the second call silently shadowed the first for *every* request on that path, including the initial GET, which then got a single object back where the app expected an array. This stalled the page past the test timeout and, combined with the `thread`-mode fix above, was killing the whole run rather than just the one test. Fixed in `test_detail.py` (watchlist/watched toggles) and `test_ratings.py` (rating-save) by branching on `r.request.method` inside one handler instead, matching `test_lists.py`'s existing pattern.
+- `test_movie_detail_watched_toggle` (`test_detail.py`) asserted an instant success toast after clicking "Mark as watched," but that action opens `MarkWatchedModal` first — only unmarking is a direct instant toggle. Test now waits for the modal and clicks "Mark Watched" before asserting the toast.
+- `test_clear_all_network_error_shows_error_toast` (`test_watched.py`) mocked its 500 response with a `"detail"` field, which `getApiError()` (`src/utils/apiError.ts`) prefers over the component's own fallback message — so the test was asserting text that could never actually appear. Mock body no longer includes `detail`, so the fallback path the test is meant to exercise actually runs.
+- `test_remove_cancelled_keeps_item` (`test_watchlist.py`) could hang indefinitely: a leftover `Tooltip` ("Remove", from the icon button underneath) stayed visually overlapping the Popconfirm's Cancel button, and Playwright's synthetic click doesn't fire the hover-exit that would normally dismiss it — so the click retried against an intercepted target forever. `force=True` on that click, since the target itself is unambiguous.
+- `test_tv_detail_episode_guide_shows_pilot` (`test_detail.py`) asserted "Pilot" was visible immediately on page load, but the episode guide is collapsed by default (documented behavior, `features.txt`) — antd doesn't render a collapsed panel's children at all, so the episode list never mounted until expanded. Test now expands the panel first.
+
 ## [0.13.0] - 2026-07-11
 
 ### Added
