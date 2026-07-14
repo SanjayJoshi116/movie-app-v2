@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.1] - 2026-07-14
+
+### Fixed
+- README's Stats screenshot showed the app's empty state ("Start watching movies and TV shows...") because the throwaway demo account used to capture it had no watch history — regenerated after seeding 6 well-known titles via the `/watched/` API first, so the dashboard, genre charts, and Home page's "Recently Watched" strip all show real data.
+- README's Calendar screenshot occasionally showed blank/skeleton poster cards: the capture script's image-load wait only checked `<img>` completeness, but `SkeletonCard`'s antd `Skeleton`/`Skeleton.Image` placeholders don't render real `<img>` tags at all while `CalendarPage`'s own data fetch is still in flight, so the wait passed before any poster existed to load. Also hit the live "next 7 days" TMDB fetch occasionally coming back empty under the capture script's request burst even moments after the same account got a full list — now retries a few times before accepting an empty result.
+
 ## [0.15.0] - 2026-07-14
 
 ### Added
