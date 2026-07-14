@@ -143,7 +143,16 @@ class TestWatchlistRemove:
         # left overlapping the Popconfirm's Cancel button and intercept pointer events
         # forever. force=True skips that actionability check -- the button itself is
         # unambiguous (count is 1), this is purely a leftover-tooltip artifact.
-        authed_page.get_by_role("button", name="Cancel").last.click(force=True)
+        # Also seen flaking in CI as "Element is outside of the viewport" right after
+        # Playwright's own auto-scroll reports "done scrolling" -- the popup's zoom-in
+        # entrance animation (antd's Popconfirm motion) can still be mid-transition when
+        # the actionability recheck runs, so the settle wait below runs before the click
+        # rather than only after it.
+        cancel_button = authed_page.get_by_role("button", name="Cancel").last
+        cancel_button.wait_for(state="visible", timeout=5_000)
+        authed_page.wait_for_timeout(300)
+        cancel_button.scroll_into_view_if_needed()
+        cancel_button.click(force=True)
         authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
 
