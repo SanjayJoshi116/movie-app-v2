@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.2] - 2026-07-14
+
+### Changed
+- README overhauled for portfolio readiness (external review, cross-checked against the repo before acting — the review's ".env.example missing" and "link Swagger" suggestions were already-false/not-applicable and skipped): added a Table of Contents, a `## Highlights` section with real repo-derived numbers (33 API endpoints, 234 tests), a `## Feature Overview` quick-matrix ahead of the detailed feature list, per-theme screenshot captions, a Mermaid request-flow diagram in Architecture Overview, and a `## Deployment` blurb. The ~55-bullet "Key design decisions" list moved out of `README.md` into a new `docs/ARCHITECTURE.md`, linked from the Architecture Overview section instead of inlined.
+
 ## [0.15.1] - 2026-07-14
 
 ### Fixed

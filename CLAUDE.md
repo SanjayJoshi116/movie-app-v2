@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repo. See `README.md` for full feature/architecture docs — this file covers conventions not obvious from reading the code once.
+Guidance for Claude Code when working in this repo. See `README.md` for feature/architecture docs and `docs/ARCHITECTURE.md` for detailed design-decision rationale (auth, pagination, responsive breakpoints, recommendations caching, etc.) — this file covers conventions not obvious from reading the code once.
 
 ## Stack
 - Frontend: React 18 + TypeScript (strict) + Ant Design 5, CRA (`react-scripts`), React Router v6, Framer Motion, Recharts.
@@ -42,6 +42,7 @@ Guidance for Claude Code when working in this repo. See `README.md` for full fea
 - E2E `page.route()` overrides for `/api/django/(watchlist|watched|ratings|lists)/` need a trailing `**`, not an exact path — `fetchAllPages()` (`src/utils/fetchAllPages.ts`) always appends `?page=1`, even to the first request, so an exact-match pattern silently never fires and the request falls through to whatever broader mock is registered (see `mock_base_django_routes` in `conftest.py`). When a test registers more than one route on the *same* pattern to model different requests (e.g. GET the list vs POST to create), don't stack two separate `page.route()` calls — Playwright checks routes last-registered-first, so the second call would shadow the first for every request on that path, not just the one it's meant for. Branch on `r.request.method` inside a single handler instead (see `test_lists.py`'s `test_create_list_success_shows_new_card` for the pattern).
 
 ## Don't
+- Don't inline new "why we did it this way" design-rationale writeups back into `README.md`'s Architecture Overview — that's what `docs/ARCHITECTURE.md` is for (the ~55-bullet "Key design decisions" list used to live in the README until it was moved out for length; README now just links to it). Add new rationale bullets to `docs/ARCHITECTURE.md`, keep README to structure/diagram/feature-level docs.
 - Don't bypass `docker-entrypoint.sh` / `backend/start.py` migration flow — `makemigrations` is intentionally not run automatically at boot; generate migrations explicitly.
 - Don't add a new localStorage-backed data store — all user data (watchlist/watched/ratings/lists/etc.) lives in PostgreSQL via the Django API.
 - Don't add `overflow-x: hidden` (or any non-`visible` overflow value) to `body`/`#root`/any ancestor of `.app-sidebar` without also setting `overflow-y` explicitly — an unpaired `overflow-x` silently promotes `overflow-y` to `auto` too (CSS spec), which turns that ancestor into an unintended scroll container and breaks the sidebar's `position: sticky` (it sticks relative to the nearest scrolling ancestor, not necessarily the viewport). `src/index.css` scopes it to `html` only for this reason.
