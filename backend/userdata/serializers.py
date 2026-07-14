@@ -19,6 +19,15 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(exc.messages) from exc
         return value
 
+    def validate_email(self, value):
+        # Django's built-in User.email has no unique=True, so nothing stops duplicate
+        # registrations by default -- a second account with the same email makes
+        # password_reset_request's User.objects.get(email__iexact=...) raise
+        # MultipleObjectsReturned and 500 instead of sending a reset link.
+        if value and User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
     def create(self, validated_data):
         return User.objects.create_user(
             username=validated_data["username"],

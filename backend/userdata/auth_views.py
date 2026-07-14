@@ -67,7 +67,14 @@ def password_reset_request(request):
         return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        user = User.objects.get(email__iexact=email)
+        # filter().first() rather than get(): registration didn't enforce email
+        # uniqueness until now, so accounts created before that fix can still have a
+        # duplicate email in the DB. get() would raise MultipleObjectsReturned in that
+        # case -- an unhandled 500 that surfaces to the user as a generic
+        # "Something went wrong" with no indication of the real cause.
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            raise User.DoesNotExist
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"

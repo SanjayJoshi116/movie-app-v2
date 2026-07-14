@@ -1,6 +1,7 @@
 import React from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, useLocation, Link } from "react-router-dom";
+import { AxiosError } from "axios";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
@@ -17,9 +18,14 @@ export default function LoginPage() {
     try {
       await login(values.username, values.password);
       navigate(from, { replace: true });
-    } catch {
+    } catch (err) {
       form.resetFields();
-      message.error("Invalid username or password.");
+      const status = (err as AxiosError).response?.status;
+      if (status === 429) {
+        message.error("Too many login attempts. Please wait a moment and try again.");
+      } else {
+        message.error("Invalid username or password.");
+      }
     } finally {
       setLoading(false);
     }

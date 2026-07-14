@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.2)
+CINE DB — Feature List (v0.15.3)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -36,6 +36,7 @@ LIBRARY
 AUTH
 - JWT login/register
 - Email-based password reset
+- Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
 - Profile photo upload/remove (JPEG/PNG/WebP, 5MB max), shown wherever the avatar appears
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
 

@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.3] - 2026-07-14
+
+### Changed
+- Dropped `UserAttributeSimilarityValidator` from `AUTH_PASSWORD_VALIDATORS` (`backend/cinedb/settings.py`) — users can now register/reset to a password that resembles their username or email. `MinimumLengthValidator`, `CommonPasswordValidator`, and `NumericPasswordValidator` still apply. `RegisterSerializer.validate()` (`backend/userdata/serializers.py`) simplified back to a field-level `validate_password` hook now that no validator in the active set needs a `user=` instance to compare against.
+
+### Fixed
+- `LoginPage.tsx`'s catch block showed "Invalid username or password" for every login failure, including a 429 from `LoginThrottle` (10 attempts/min per IP) — so a user testing several credential combos in quick succession would see every subsequent attempt reported as wrong, even a correct one, once throttled. Now checks the response status and shows a distinct "Too many login attempts" message for 429.
+
 ## [0.15.2] - 2026-07-14
 
 ### Changed
