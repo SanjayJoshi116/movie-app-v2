@@ -56,6 +56,7 @@ enable-lan.ps1
 start.ps1
 
 # ad-hoc verification scratch scripts/screenshots (see CLAUDE.md)
+# root-scoped only (leading /) — docs/screenshots/*.png (README assets) stay tracked
 /verify_*.js
 /verify_*.py
 /typo_*.png

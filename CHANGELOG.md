@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.0] - 2026-07-14
+
+### Added
+- README's `## Screenshots` section replaced its `*Coming soon*` placeholder table with 9 real captures under `docs/screenshots/`: Home/Movie Detail/Stats/Calendar in both dark and light theme, plus one phone-width shot showing `BottomNav`.
+
 ## [0.14.0] - 2026-07-13
 
 ### Changed

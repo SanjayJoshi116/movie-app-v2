@@ -15,9 +15,23 @@ No live deployment yet — see [Quick Start](#quick-start) to run locally.
 
 ## Screenshots
 
+### Desktop — Dark
+
 | Home | Movie Detail | Stats Dashboard | Release Calendar |
 |------|-------------|-----------------|-----------------|
-| *Coming soon* | *Coming soon* | *Coming soon* | *Coming soon* |
+| ![Home (dark)](docs/screenshots/home-dark.png) | ![Movie Detail (dark)](docs/screenshots/detail-dark.png) | ![Stats Dashboard (dark)](docs/screenshots/stats-dark.png) | ![Release Calendar (dark)](docs/screenshots/calendar-dark.png) |
+
+### Desktop — Light
+
+| Home | Movie Detail | Stats Dashboard | Release Calendar |
+|------|-------------|-----------------|-----------------|
+| ![Home (light)](docs/screenshots/home-light.png) | ![Movie Detail (light)](docs/screenshots/detail-light.png) | ![Stats Dashboard (light)](docs/screenshots/stats-light.png) | ![Release Calendar (light)](docs/screenshots/calendar-light.png) |
+
+### Mobile
+
+<img src="docs/screenshots/home-mobile.png" alt="Home (mobile, dark)" width="280" />
+
+Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 
 ---
 
