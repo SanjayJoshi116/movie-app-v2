@@ -157,3 +157,11 @@ class EpisodeProgress(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — show {self.show_id} S{self.season_number:02d}E{self.episode_number:02d}"
+
+
+class NotificationCheckpoint(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_checkpoint")
+    last_seen_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.user.username} — notifications last seen {self.last_seen_at}"

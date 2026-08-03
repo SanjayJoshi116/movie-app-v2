@@ -27,6 +27,7 @@ import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
+import NotificationBell from "./NotificationBell";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
@@ -166,6 +167,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
           </Button>
         )}
         <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+          {isAuthenticated && <NotificationBell />}
           <Tooltip title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
             <Button
               type="text"

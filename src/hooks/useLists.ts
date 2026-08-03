@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
+import { fetchAllPages } from "../utils/fetchAllPages";
 import type { UserList, UserListDTO, UserListItemDTO, WatchlistInput } from "../types";
 
 function mapListData(data: UserListDTO[]): UserList[] {
@@ -30,7 +31,7 @@ export function useLists() {
     if (!isAuthenticated) return;
     setIsLoading(true);
     try {
-      const { data } = await userApi.get<UserListDTO[]>("/lists/");
+      const data = await fetchAllPages<UserListDTO>(userApi, "/lists/");
       setLists(mapListData(data));
     } finally {
       setIsLoading(false);

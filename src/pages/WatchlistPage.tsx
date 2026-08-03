@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Button, Tag, Typography, Empty, Space, Popconfirm, Input, Select, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Input, Select, Tooltip,
 } from "antd";
 import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, SearchOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
@@ -10,21 +10,25 @@ import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import LibraryItemCard from "../components/LibraryItemCard";
+import MediaGrid from "../components/MediaGrid";
+import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { pageVariants } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
-import type { MediaType } from "../types";
+import type { MediaType, WatchlistEntry } from "../types";
 
 const SS_SCROLL = "watchlist_scroll";
-const SS_SEARCH = "watchlist_search";
-const SS_SORT   = "watchlist_sort";
-const SS_TYPE_FILTER = "watchlist_type_filter";
 const SS_WATCHED_FILTER = "watchlist_watched_filter";
 
-type SortKey = "added-desc" | "added-asc" | "title-asc" | "rating-desc";
-type TypeFilter = "all" | "movie" | "tv";
 type WatchedFilter = "all" | "watched" | "unwatched";
+
+const SORT_FNS: Record<string, (a: WatchlistEntry, b: WatchlistEntry) => number> = {
+  "added-desc": (a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""),
+  "added-asc": (a, b) => (a.addedAt ?? "").localeCompare(b.addedAt ?? ""),
+  "title-asc": (a, b) => a.title.localeCompare(b.title),
+  "rating-desc": (a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0),
+};
 
 interface RatingTarget {
   id: number;
@@ -48,9 +52,6 @@ function WatchlistPage() {
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
-  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "added-desc");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>(() => (sessionStorage.getItem(SS_WATCHED_FILTER) as WatchedFilter) ?? "all");
   const didRestoreScroll = useRef(false);
 
@@ -65,31 +66,19 @@ function WatchlistPage() {
     }
   }, []);
 
-  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
-  useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
-  useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
   useEffect(() => { sessionStorage.setItem(SS_WATCHED_FILTER, watchedFilter); }, [watchedFilter]);
 
-  const filtered = useMemo(() => {
-    let items = [...watchlist];
-    if (typeFilter !== "all") {
-      items = items.filter((i) => i.type === typeFilter);
-    }
-    if (watchedFilter !== "all") {
-      items = items.filter((i) => (watchedFilter === "watched" ? isWatched(i.id, i.type) : !isWatched(i.id, i.type)));
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter((i) => i.title.toLowerCase().includes(q));
-    }
-    switch (sortKey) {
-      case "added-asc":  items.sort((a, b) => (a.addedAt ?? "").localeCompare(b.addedAt ?? "")); break;
-      case "title-asc":  items.sort((a, b) => a.title.localeCompare(b.title)); break;
-      case "rating-desc": items.sort((a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0)); break;
-      default:           items.sort((a, b) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""));
-    }
-    return items;
-  }, [watchlist, search, sortKey, typeFilter, watchedFilter, isWatched]);
+  const { search, setSearch, sortKey, setSortKey, typeFilter, setTypeFilter, filtered, isDefault, resetFilters } =
+    useLibraryFilters<WatchlistEntry>({
+      keyPrefix: "watchlist",
+      items: watchlist,
+      sortFns: SORT_FNS,
+      defaultSort: "added-desc",
+      extraFilter:
+        watchedFilter === "all"
+          ? undefined
+          : (i) => (watchedFilter === "watched" ? isWatched(i.id, i.type) : !isWatched(i.id, i.type)),
+    });
 
   const handleExport = () => {
     const rows = watchlist.map((i) => ({
@@ -180,13 +169,11 @@ function WatchlistPage() {
               { label: "Unwatched", value: "unwatched" },
             ]}
           />
-          {(search.trim() !== "" || typeFilter !== "all" || watchedFilter !== "all" || sortKey !== "added-desc") && (
+          {(!isDefault || watchedFilter !== "all") && (
             <Button
               type="text"
               onClick={() => {
-                setSearch("");
-                setSortKey("added-desc");
-                setTypeFilter("all");
+                resetFilters();
                 setWatchedFilter("all");
               }}
             >
@@ -210,104 +197,104 @@ function WatchlistPage() {
           style={{ padding: "40px 0" }}
         />
       ) : (
-        <Row gutter={[16, 20]}>
-          {filtered.map((item) => {
+        <MediaGrid
+          items={filtered}
+          keyFn={(item) => `${item.type}-${item.id}`}
+          renderCard={(item) => {
             const rating = getRating(item.id, item.type);
             const watched = isWatched(item.id, item.type);
             return (
-              <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                <LibraryItemCard
-                  posterPath={item.posterPath}
-                  title={item.title}
-                  onOpen={() => {
-                    sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
-                    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
-                  }}
-                  tags={
-                    <>
-                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                        {item.type === "movie" ? "Movie" : "TV"}
-                      </Tag>
-                      {item.voteAverage != null && (
-                        <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
-                      )}
-                      {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
-                    </>
-                  }
-                  actionButtons={
-                    <>
-                      <Tooltip title={watched ? "Mark unwatched" : "Mark watched"}>
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={watched ? <EyeFilled /> : <EyeOutlined />}
-                          style={{ color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (watched) {
-                              try {
-                                await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
-                                showSuccess("Removed from watched");
-                              } catch (err) {
-                                showError(getApiError(err, "Failed to update watched status."));
-                              }
-                            } else {
-                              setPendingWatch({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+              <LibraryItemCard
+                posterPath={item.posterPath}
+                title={item.title}
+                onOpen={() => {
+                  sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
+                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
+                }}
+                tags={
+                  <>
+                    <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                      {item.type === "movie" ? "Movie" : "TV"}
+                    </Tag>
+                    {item.voteAverage != null && (
+                      <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
+                    )}
+                    {rating && <Tag color="green" style={{ margin: 0 }}>My: {rating.userRating}/10</Tag>}
+                  </>
+                }
+                actionButtons={
+                  <>
+                    <Tooltip title={watched ? "Mark unwatched" : "Mark watched"}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={watched ? <EyeFilled /> : <EyeOutlined />}
+                        style={{ color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (watched) {
+                            try {
+                              await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                              showSuccess("Removed from watched");
+                            } catch (err) {
+                              showError(getApiError(err, "Failed to update watched status."));
                             }
-                          }}
-                          aria-label={watched ? "Mark unwatched" : "Mark watched"}
-                        />
-                      </Tooltip>
-                      <Tooltip title={rating ? "Edit rating" : "Rate"}>
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EditOutlined />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRatingTarget({ id: item.id, type: item.type, title: item.title });
-                          }}
-                          aria-label={rating ? "Edit rating" : "Rate"}
-                        />
-                      </Tooltip>
-                      <Popconfirm
-                        title="Remove from watchlist?"
-                        onConfirm={async () => {
-                          try {
-                            await removeFromWatchlist(item.id, item.type);
-                            showSuccess("Removed from watchlist");
-                          } catch (err) {
-                            showError(getApiError(err, "Failed to remove from watchlist."));
+                          } else {
+                            setPendingWatch({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
                           }
                         }}
-                        okText="Remove"
-                        cancelText="Cancel"
-                      >
-                        <Tooltip title="Remove">
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label="Remove from watchlist"
-                          />
-                        </Tooltip>
-                      </Popconfirm>
-                    </>
-                  }
-                  footer={
-                    rating?.review && (
-                      <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
-                        "{rating.review}"
-                      </Typography.Paragraph>
-                    )
-                  }
-                />
-              </Col>
+                        aria-label={watched ? "Mark unwatched" : "Mark watched"}
+                      />
+                    </Tooltip>
+                    <Tooltip title={rating ? "Edit rating" : "Rate"}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRatingTarget({ id: item.id, type: item.type, title: item.title });
+                        }}
+                        aria-label={rating ? "Edit rating" : "Rate"}
+                      />
+                    </Tooltip>
+                    <Popconfirm
+                      title="Remove from watchlist?"
+                      onConfirm={async () => {
+                        try {
+                          await removeFromWatchlist(item.id, item.type);
+                          showSuccess("Removed from watchlist");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to remove from watchlist."));
+                        }
+                      }}
+                      okText="Remove"
+                      cancelText="Cancel"
+                    >
+                      <Tooltip title="Remove">
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Remove from watchlist"
+                        />
+                      </Tooltip>
+                    </Popconfirm>
+                  </>
+                }
+                footer={
+                  rating?.review && (
+                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
+                      "{rating.review}"
+                    </Typography.Paragraph>
+                  )
+                }
+              />
             );
-          })}
-        </Row>
+          }}
+        />
       )}
 
       {ratingTarget && (

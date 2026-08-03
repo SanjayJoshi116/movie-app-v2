@@ -11,17 +11,30 @@ export interface LocationRestore {
   savedScrollY: number;
 }
 
+interface RestoredState<T> {
+  items: T[];
+  hasMore: boolean;
+}
+
 interface Options<T> {
   fetchPage: (page: number) => Promise<PageResult<T>>;
   restore: LocationRestore;
+  /**
+   * When set alongside restore.isReturning, seeds items/hasMore directly
+   * from a caller-held cache instead of refetching restore.savedLoadedPages
+   * pages over the network — used by SearchPage, which caches full result
+   * arrays in sessionStorage itself (Home/Anime/People don't pass this and
+   * keep the refetch-by-page-count behavior below unchanged).
+   */
+  restoredState?: RestoredState<T>;
 }
 
 /**
  * Shared "fetch page 1, infinite-scroll loadMore, restore N pages + scroll
  * position when returning via router location.state" logic used by the
- * browse-style pages (Home, Anime, People).
+ * browse-style pages (Home, Anime, People) and (via restoredState) SearchPage.
  */
-export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore }: Options<T>) {
+export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore, restoredState }: Options<T>) {
   const [items, setItems] = useState<T[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -30,14 +43,32 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
 
   const didRestoreScrollRef = useRef(false);
   const isRestoringRef = useRef(restore.isReturning);
+  const restoredStateRef = useRef(restoredState);
+  const consumedFetchPageRef = useRef<typeof fetchPage | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
+    // React 18 StrictMode (dev only) replays this effect once with the same
+    // fetchPage reference to test cleanup-safety. A *real* rerun only ever
+    // happens when fetchPage's identity actually changes (new query/filters),
+    // so an identical reference here means "StrictMode's dev-only replay" —
+    // state is already correct from the first pass, refetching would silently
+    // clobber a successful restore (e.g. Search's cached items/scroll) with a
+    // fresh page-1 fetch.
+    if (consumedFetchPageRef.current === fetchPage) {
+      return;
+    }
+
     const load = async () => {
       setLoading(true);
       try {
-        if (isRestoringRef.current && restore.savedLoadedPages > 1) {
+        if (isRestoringRef.current && restoredStateRef.current) {
+          const { items: cachedItems, hasMore: cachedHasMore } = restoredStateRef.current;
+          setItems(cachedItems);
+          setCurrentPage(restore.savedLoadedPages);
+          setHasMore(cachedHasMore);
+        } else if (isRestoringRef.current && restore.savedLoadedPages > 1) {
           const pages = Array.from({ length: restore.savedLoadedPages }, (_, i) => i + 1);
           const pageResults = await Promise.all(pages.map((p) => fetchPage(p)));
           if (cancelled) return;
@@ -58,6 +89,7 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       } finally {
         if (!cancelled) setLoading(false);
         isRestoringRef.current = false;
+        consumedFetchPageRef.current = fetchPage;
       }
     };
 

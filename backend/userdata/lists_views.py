@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import UserList, UserListItem
+from .pagination import DefaultPagination
 from .serializers import UserListSerializer, UserListItemSerializer
 
 
@@ -13,7 +14,9 @@ from .serializers import UserListSerializer, UserListItemSerializer
 def lists_list(request):
     if request.method == "GET":
         user_lists = UserList.objects.filter(user=request.user).prefetch_related("items").order_by("-created_at")
-        return Response(UserListSerializer(user_lists, many=True).data)
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(user_lists, request)
+        return paginator.get_paginated_response(UserListSerializer(page, many=True).data)
 
     serializer = UserListSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

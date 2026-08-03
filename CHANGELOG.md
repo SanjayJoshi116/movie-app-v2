@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.5] - 2026-08-03
+
+### Added
+- In-app notifications for new releases from followed people: new `NotificationCheckpoint` model + `GET /api/notifications/new-releases/` (last-30-days releases from followed people's TMDB credits, unread count computed against the checkpoint's `last_seen_at`) and `POST /api/notifications/mark-seen/`. `NotificationBell.tsx` (bell icon + unread badge + dropdown) wired inline into `Sidebar.tsx`'s existing footer row (no added vertical space — respects the sidebar's documented space budget) and into `BottomNav.tsx`; `useNotifications.ts` polls every 3 minutes while authenticated. Extracted the threaded TMDB `combined_credits` fetch out of `followed_people_recommendations` into a shared `_fetch_followed_people_credits()` helper so the new endpoint reuses it instead of duplicating the thread-pool code.
+- Auto-next-episode workflow: `TVShowDetails.tsx`'s episode-progress bookmark gained a "Next Episode →" button that auto-increments season/episode (handling season rollover, hiding at the series finale) instead of requiring the manual +/- stepper edit for the common case. No backend change — reuses the existing `episode-progress/<show_id>/` bookmark endpoint.
+- Pagination on `/api/lists/` — matches every other paginated endpoint now (`DefaultPagination` backend, `fetchAllPages` frontend).
+
+### Changed
+- De-duplicated `WatchlistPage.tsx`/`WatchedPage.tsx`'s near-identical search/sort/type-filter state, sessionStorage persistence, and poster-grid markup into a shared `useLibraryFilters.ts` hook and `MediaGrid.tsx` component. Each page keeps its own page-specific bits (Watchlist's watched-status filter, Watched's URL-based pagination) layered on top.
+- `SearchPage.tsx`'s `usePaginatedSearch` no longer reimplements the page/loadMore/hasMore state machine — it's now a thin adapter over the shared `usePaginatedFetch.ts` (same hook Home/Anime/People already used), which gained an opt-in `restoredState` param so a caller holding its own cache (Search's sessionStorage query cache) can seed items/hasMore directly instead of the hook's default refetch-by-page-count restore path.
+
+### Fixed
+- The `usePaginatedSearch` → `usePaginatedFetch` merge above initially introduced an infinite refetch loop: `fetchPage`'s `useCallback` depended on the `fetcher` argument, which is a fresh inline closure on every render of `MoviesTab`/`TVTab`/`PeopleTab` — any render retriggered a "new" `fetchPage` identity, refetching page 1 forever. Fixed by reading `fetcher` through a ref instead of a dependency (`fetchPage`'s deps are back to just `[query, adult]`, matching the pre-merge effect's own dependency list).
+- Found via the same verification pass: `usePaginatedFetch.ts` itself had a latent React 18 StrictMode (dev-only) bug affecting all four consumers (Home/Anime/People's refetch-by-page-count restore, and now Search's cache restore) — StrictMode's intentional dev-mode effect double-invoke replays the mount effect with the *same* `fetchPage` reference, but `isRestoringRef.current` had already been flipped to `false` by the first pass's `finally` block, so the replay silently fell through to a fresh page-1 fetch and clobbered a correctly-restored multi-page/scroll state. Guarded by tracking the last-consumed `fetchPage` reference and skipping the replay entirely when it's identical (a real dependency-triggered rerun only ever happens when `fetchPage` actually changes — an identical reference can only mean StrictMode's replay). Dev-only; never affected production builds, but was reproducible under the app's own documented `npm run dev` + Playwright verification method.
+
 ## [0.15.4] - 2026-08-03
 
 ### Changed

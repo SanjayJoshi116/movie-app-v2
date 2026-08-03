@@ -84,11 +84,32 @@ def followed_people_detail(request, person_id: int):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _fetch_followed_people_credits(user, limit=10):
+    """Fetch raw TMDB combined_credits 'cast' arrays for a user's most-recently
+    -followed people. Returns [(FollowedPerson, cast_list)]; cast_list is []
+    for a person whose TMDB fetch failed, so callers never need to special-case
+    a failure separately from "no credits"."""
+    followed = list(FollowedPerson.objects.filter(user=user).order_by("-followed_at")[:limit])
+    if not followed:
+        return []
+
+    def fetch(fp):
+        try:
+            data = tmdb_client._get(f"/person/{fp.person_id}/combined_credits")
+            return fp, data.get("cast", [])
+        except Exception:
+            logger.exception("Failed to fetch combined credits for person %s", fp.person_id)
+            return fp, []
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        return list(ex.map(fetch, followed))
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def followed_people_recommendations(request):
-    followed = list(FollowedPerson.objects.filter(user=request.user).order_by("-followed_at")[:10])
-    if not followed:
+    results = _fetch_followed_people_credits(request.user)
+    if not results:
         return Response([])
 
     watched_set = {
@@ -96,39 +117,29 @@ def followed_people_recommendations(request):
         for e in WatchedEntry.objects.filter(user=request.user).only("media_id", "media_type")
     }
 
-    def fetch_credits(fp):
-        try:
-            data = tmdb_client._get(f"/person/{fp.person_id}/combined_credits")
-            items = []
-            seen_ids = set()
-            for c in data.get("cast", []):
-                if c.get("media_type") not in ("movie", "tv"):
-                    continue
-                mid = c.get("id")
-                if (mid, c["media_type"]) in watched_set or mid in seen_ids:
-                    continue
-                if (c.get("vote_average") or 0) < 6:
-                    continue
-                seen_ids.add(mid)
-                items.append({
-                    "id": mid,
-                    "type": c["media_type"],
-                    "title": c.get("title") or c.get("name", ""),
-                    "posterPath": c.get("poster_path"),
-                    "voteAverage": c.get("vote_average", 0),
-                })
-            items.sort(key=lambda x: -x["voteAverage"])
-            return fp.name, items[:12]
-        except Exception:
-            logger.exception("Failed to fetch combined credits for person %s", fp.person_id)
-            return fp.name, []
-
     sections = []
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        results = list(ex.map(fetch_credits, followed))
-
-    for name, items in results:
+    for fp, cast in results:
+        items = []
+        seen_ids = set()
+        for c in cast:
+            if c.get("media_type") not in ("movie", "tv"):
+                continue
+            mid = c.get("id")
+            if (mid, c["media_type"]) in watched_set or mid in seen_ids:
+                continue
+            if (c.get("vote_average") or 0) < 6:
+                continue
+            seen_ids.add(mid)
+            items.append({
+                "id": mid,
+                "type": c["media_type"],
+                "title": c.get("title") or c.get("name", ""),
+                "posterPath": c.get("poster_path"),
+                "voteAverage": c.get("vote_average", 0),
+            })
+        items.sort(key=lambda x: -x["voteAverage"])
+        items = items[:12]
         if items:
-            sections.append({"key": f"follow-{name}", "label": f"New from {name}", "items": items})
+            sections.append({"key": f"follow-{fp.name}", "label": f"New from {fp.name}", "items": items})
 
     return Response(sections)

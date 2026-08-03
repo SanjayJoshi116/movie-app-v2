@@ -3,6 +3,7 @@ from . import views
 from .auth_views import SafeTokenRefreshView
 from .recommendations import personalized_recommendations, recommendations_for_you
 from .tmdb_proxy_views import tmdb_proxy
+from .notifications_views import new_release_notifications, mark_notifications_seen
 
 urlpatterns = [
     # TMDB proxy (key stays server-side)
@@ -54,6 +55,10 @@ urlpatterns = [
     path("followed-people/", views.followed_people_list),
     path("followed-people/<int:person_id>/", views.followed_people_detail),
     path("recommendations/followed-people/", views.followed_people_recommendations),
+
+    # Notifications
+    path("notifications/new-releases/", new_release_notifications),
+    path("notifications/mark-seen/", mark_notifications_seen),
 
     # TMDB OAuth
     path("tmdb-auth/request-token/", views.tmdb_request_token),

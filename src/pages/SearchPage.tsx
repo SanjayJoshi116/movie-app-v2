@@ -8,6 +8,8 @@ import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";
 import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
+import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
+import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
@@ -57,17 +59,45 @@ function usePaginatedSearch<T extends { id: number }>(
   adult: boolean,
   cacheKey: string,
 ) {
+  // Frozen at mount, same as the pre-merge implementation — a query change
+  // after mount always goes through a normal fetch, only the very first
+  // load (if it matches a cached search) skips the network entirely.
   const cache = useState(() => readCache<T>(cacheKey, query, adult))[0];
+  const restore = useState<LocationRestore>(() => ({
+    isReturning: !!cache,
+    savedLoadedPages: cache?.page ?? 1,
+    savedScrollY: cache?.scrollY ?? 0,
+  }))[0];
+  const restoredState = useState(() =>
+    cache ? { items: cache.items, hasMore: cache.hasMore } : undefined
+  )[0];
 
-  const [items, setItems] = useState<T[]>(cache?.items ?? []);
-  const [loading, setLoading] = useState(cache ? false : Boolean(query));
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(cache?.page ?? 1);
-  const [hasMore, setHasMore] = useState(cache?.hasMore ?? false);
+  useEffect(() => {
+    if (!query) sessionStorage.removeItem(cacheKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // fetcher is a fresh inline closure on every render of the calling tab —
+  // keep it out of fetchPage's deps (via a ref) so a re-render doesn't look
+  // like a new fetchPage identity and retrigger usePaginatedFetch's effect.
+  const fetcherRef = useRef(fetcher);
+  useEffect(() => { fetcherRef.current = fetcher; });
+
+  const fetchPage = useCallback(
+    (page: number) =>
+      query ? fetcherRef.current(query, page, adult) : Promise.resolve({ results: [], totalPages: 0 }),
+    [query, adult]
+  );
+
+  const { items, currentPage, hasMore, loading, loadingMore, loadMore } = usePaginatedFetch<T>({
+    fetchPage,
+    restore,
+    restoredState,
+  });
 
   // Keep a ref with latest state so unmount cleanup captures current values
-  const stateRef = useRef({ query, adult, items, page, hasMore });
-  useEffect(() => { stateRef.current = { query, adult, items, page, hasMore }; });
+  const stateRef = useRef({ query, adult, items, page: currentPage, hasMore });
+  useEffect(() => { stateRef.current = { query, adult, items, page: currentPage, hasMore }; });
 
   // Save to sessionStorage on unmount
   useEffect(() => {
@@ -87,45 +117,6 @@ function usePaginatedSearch<T extends { id: number }>(
       window.scrollTo(0, cache.scrollY);
     }
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!query) {
-      setItems([]);
-      setHasMore(false);
-      setPage(1);
-      sessionStorage.removeItem(cacheKey);
-      return;
-    }
-    if (cache) return; // restored from cache, skip initial fetch
-    let cancelled = false;
-    setLoading(true);
-    fetcher(query, 1, adult)
-      .then(({ results, totalPages }) => {
-        if (cancelled) return;
-        setItems(results);
-        setPage(1);
-        setHasMore(totalPages > 1);
-      })
-      .catch(() => { if (!cancelled) setItems([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [query, adult]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || !query) return;
-    const next = page + 1;
-    setLoadingMore(true);
-    try {
-      const { results, totalPages } = await fetcher(query, next, adult);
-      setItems((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        return [...prev, ...results.filter((item) => !existingIds.has(item.id))];
-      });
-      setPage(next);
-      setHasMore(next < totalPages);
-    } catch { /* ignore */ }
-    finally { setLoadingMore(false); }
-  }, [loadingMore, hasMore, page, query, adult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { items, loading, loadingMore, hasMore, loadMore };
 }

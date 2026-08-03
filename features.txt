@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.4)
+CINE DB — Feature List (v0.15.5)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -18,9 +18,10 @@ DETAIL PAGES
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
 - Add to / remove from custom lists via a shared modal (search existing lists, inline create-new-list, no dead end at zero lists)
 - Mark as watched goes through a confirm modal that auto-fetches runtime and lets you pick the streaming platform (or "Other") — feeds Hours Watched / Platform Breakdown on Stats
-- Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle
+- Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle; one-click "Next Episode" advance (handles season rollover, hides at the series finale)
 - Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button
 - Following page: search + sort followed people, "Recommended From People You Follow" section
+- In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from people you follow, polled every 3 minutes
 
 LIBRARY
 - Watchlist & Watched lists, tied to account

@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select, Tooltip,
 } from "antd";
 import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
@@ -12,15 +12,17 @@ import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
+import MediaGrid from "../components/MediaGrid";
+import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, WATCHED_GREEN } from "../constants/ui";
+import type { WatchedEntry } from "../types";
 
-const SS_SEARCH = "watched_search";
-const SS_SORT = "watched_sort";
-const SS_TYPE_FILTER = "watched_type_filter";
-
-type SortKey = "watched-desc" | "title-asc" | "tmdb-desc" | "my-rating-desc";
-type TypeFilter = "all" | "movie" | "tv";
+const SORT_FNS: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
+  "watched-desc": (a, b) => (b.watchedAt ?? "").localeCompare(a.watchedAt ?? ""),
+  "title-asc": (a, b) => a.title.localeCompare(b.title),
+  "tmdb-desc": (a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0),
+};
 
 function WatchedPage() {
   const navigate = useNavigate();
@@ -28,13 +30,19 @@ function WatchedPage() {
   const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [clearing, setClearing] = useState(false);
-  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
-  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "watched-desc");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
 
-  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
-  useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
-  useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
+  const sortFns: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
+    ...SORT_FNS,
+    "my-rating-desc": (a, b) => (getRating(b.id, b.type)?.userRating ?? 0) - (getRating(a.id, a.type)?.userRating ?? 0),
+  };
+
+  const { search, setSearch, sortKey, setSortKey, typeFilter, setTypeFilter, filtered, isDefault, resetFilters } =
+    useLibraryFilters<WatchedEntry>({
+      keyPrefix: "watched",
+      items: watchedList,
+      sortFns,
+      defaultSort: "watched-desc",
+    });
 
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = Number(searchParams.get("pageSize") ?? "48") || 48;
@@ -55,31 +63,6 @@ function WatchedPage() {
     const qs = p.toString();
     return qs ? `/watched?${qs}` : "/watched";
   };
-
-  const filtered = useMemo(() => {
-    let items = [...watchedList];
-    if (typeFilter !== "all") {
-      items = items.filter((i) => i.type === typeFilter);
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter((i) => i.title.toLowerCase().includes(q));
-    }
-    switch (sortKey) {
-      case "title-asc":     items.sort((a, b) => a.title.localeCompare(b.title)); break;
-      case "tmdb-desc":     items.sort((a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0)); break;
-      case "my-rating-desc": {
-        items.sort((a, b) => {
-          const ra = getRating(a.id, a.type)?.userRating ?? 0;
-          const rb = getRating(b.id, b.type)?.userRating ?? 0;
-          return rb - ra;
-        });
-        break;
-      }
-      default: items.sort((a, b) => (b.watchedAt ?? "").localeCompare(a.watchedAt ?? ""));
-    }
-    return items;
-  }, [watchedList, search, sortKey, typeFilter, getRating]);
 
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
   const movies = watchedList.filter((w) => w.type === "movie");
@@ -182,13 +165,11 @@ function WatchedPage() {
             ]}
           />
           <InfoTooltip title="TMDB Rating is the public community score; My Rating is your personal rating." />
-          {(search.trim() !== "" || sortKey !== "watched-desc" || typeFilter !== "all") && (
+          {!isDefault && (
             <Button
               type="text"
               onClick={() => {
-                setSearch("");
-                setSortKey("watched-desc");
-                setTypeFilter("all");
+                resetFilters();
                 setPageState(1, pageSize);
               }}
             >
@@ -213,53 +194,53 @@ function WatchedPage() {
         />
       ) : (
         <>
-          <Row gutter={[16, 20]}>
-            {paginated.map((item) => (
-              <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4}>
-                <LibraryItemCard
-                  posterPath={item.posterPath}
-                  title={item.title}
-                  onOpen={() =>
-                    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
-                  }
-                  tags={
-                    <>
-                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                        {item.type === "movie" ? "Movie" : "TV"}
-                      </Tag>
-                      {item.voteAverage != null && (
-                        <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
-                      )}
-                    </>
-                  }
-                  actionButtons={
-                    <Popconfirm
-                      title="Mark as unwatched?"
-                      onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Marked as unwatched"); }}
-                      okText="Mark Unwatched"
-                      cancelText="Cancel"
-                    >
-                      <Tooltip title="Mark unwatched">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EyeFilled />}
-                          style={{ color: WATCHED_GREEN }}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Mark as unwatched"
-                        />
-                      </Tooltip>
-                    </Popconfirm>
-                  }
-                  footer={
-                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
-                      {formatDateDMY(item.watchedAt)}
-                    </Typography.Text>
-                  }
-                />
-              </Col>
-            ))}
-          </Row>
+          <MediaGrid
+            items={paginated}
+            keyFn={(item) => `${item.type}-${item.id}`}
+            renderCard={(item) => (
+              <LibraryItemCard
+                posterPath={item.posterPath}
+                title={item.title}
+                onOpen={() =>
+                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
+                }
+                tags={
+                  <>
+                    <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                      {item.type === "movie" ? "Movie" : "TV"}
+                    </Tag>
+                    {item.voteAverage != null && (
+                      <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
+                    )}
+                  </>
+                }
+                actionButtons={
+                  <Popconfirm
+                    title="Mark as unwatched?"
+                    onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Marked as unwatched"); }}
+                    okText="Mark Unwatched"
+                    cancelText="Cancel"
+                  >
+                    <Tooltip title="Mark unwatched">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EyeFilled />}
+                        style={{ color: WATCHED_GREEN }}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Mark as unwatched"
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                }
+                footer={
+                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
+                    {formatDateDMY(item.watchedAt)}
+                  </Typography.Text>
+                }
+              />
+            )}
+          />
 
           {filtered.length > pageSize && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>

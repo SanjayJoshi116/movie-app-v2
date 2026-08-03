@@ -28,7 +28,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 
 ## Highlights
 
-- **33 REST API endpoints** across auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, and TMDB OAuth (`## API Overview` below)
+- **36 REST API endpoints** across TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
 - **JWT auth** with silent refresh + rotation/blacklisting, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
@@ -595,6 +595,7 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 
 | Method          | Endpoint                                    | Description                                        |
 | --------------- | ------------------------------------------- | -------------------------------------------------- |
+| GET             | `/api/tmdb/<path>`                          | TMDB API passthrough (key stays server-side)       |
 | POST            | `/api/auth/register/`                       | Create account                                     |
 | POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
 | POST            | `/api/auth/token/refresh/`                  | Refresh access token                               |
@@ -624,6 +625,8 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 | GET             | `/api/recommendations/for-you/`             | Trending + genre-based recommendations             |
 | GET             | `/api/recommendations/personalized/`        | K-means clustered personalized recommendations     |
 | GET             | `/api/recommendations/followed-people/`     | Top-rated credits from followed people             |
+| GET             | `/api/notifications/new-releases/`          | New releases (last 30 days) from followed people   |
+| POST            | `/api/notifications/mark-seen/`             | Mark notifications as read                         |
 | GET             | `/api/tmdb-auth/request-token/`             | Start TMDB OAuth flow                              |
 | POST            | `/api/tmdb-auth/create-session/`            | Complete TMDB OAuth, store session                 |
 | GET             | `/api/tmdb-auth/status/`                    | Check if TMDB account is connected                 |
@@ -632,13 +635,6 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 ---
 
 ## Roadmap
-
-**Planned:**
-- [ ] In-app notifications for new releases from followed people
-- [ ] Auto-next episode workflow on TV detail pages
-- [ ] Pagination on `/api/lists/` (watchlist/watched/ratings/followed-people are already paginated)
-- [ ] Shared `MediaGrid` component + filter/sort hook to de-duplicate `WatchedPage`/`WatchlistPage`
-- [ ] Merge `SearchPage`'s `usePaginatedSearch` onto the shared `usePaginatedFetch` hook
 
 **Considering:**
 - [ ] PWA / offline support (Service Workers for poster caching)

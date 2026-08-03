@@ -23,6 +23,7 @@ import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
+import NotificationBell from "./NotificationBell";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
@@ -110,6 +111,8 @@ const BottomNav = () => {
             btn
           );
         })}
+
+        {isAuthenticated && <NotificationBell buttonClassName="bottom-nav-btn" />}
 
         <Tooltip title="Search" placement="top" open={flashKey === "search" || undefined}>
           <Button

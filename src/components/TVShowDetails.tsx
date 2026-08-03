@@ -242,6 +242,27 @@ const TVShowDetails = ({ tvShow }: Props) => {
                         S{String(epProgress.season).padStart(2, "0")}E{String(epProgress.episode).padStart(2, "0")}
                       </Typography.Text>
                     </Typography.Text>
+                    {(() => {
+                      const maxEpisodesThisSeason = getMaxEpisodes(epProgress.season);
+                      const hasNextInSeason = epProgress.episode < maxEpisodesThisSeason;
+                      const hasNextSeason = epProgress.season < (number_of_seasons ?? 0);
+                      if (!hasNextInSeason && !hasNextSeason) return null;
+                      const nextSeason = hasNextInSeason ? epProgress.season : epProgress.season + 1;
+                      const nextEpisode = hasNextInSeason ? epProgress.episode + 1 : 1;
+                      return (
+                        <Button
+                          size="small"
+                          type="link"
+                          style={{ padding: 0 }}
+                          onClick={async () => {
+                            await updateEpProgress(nextSeason, nextEpisode);
+                            showSuccess(`Progress saved: S${String(nextSeason).padStart(2, "0")}E${String(nextEpisode).padStart(2, "0")}`);
+                          }}
+                        >
+                          Next Episode →
+                        </Button>
+                      );
+                    })()}
                     <Button size="small" type="link" style={{ padding: 0 }} onClick={() => {
                       setEpSeason(epProgress.season);
                       setEpEpisode(epProgress.episode);

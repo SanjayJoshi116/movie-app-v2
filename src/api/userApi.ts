@@ -1,5 +1,6 @@
 import axios from "axios";
 import { fetchAllPages } from "../utils/fetchAllPages";
+import type { MediaType } from "../types";
 
 const API_HOST = window.location.hostname;
 const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:8000/api`;
@@ -206,5 +207,25 @@ export const unfollowPerson = (personId: number) =>
 
 export const fetchFollowedPeopleRecommendations = () =>
   userApi.get<PersonalizedRecSection[]>("/recommendations/followed-people/");
+
+export interface NewReleaseNotification {
+  id: number;
+  type: MediaType;
+  title: string;
+  posterPath: string | null;
+  releaseDate: string;
+  personName: string;
+  isUnread: boolean;
+}
+
+export interface NewReleaseNotificationsResponse {
+  items: NewReleaseNotification[];
+  unreadCount: number;
+}
+
+export const fetchNewReleaseNotifications = () =>
+  userApi.get<NewReleaseNotificationsResponse>("/notifications/new-releases/");
+
+export const markNotificationsSeen = () => userApi.post("/notifications/mark-seen/");
 
 export default userApi;
