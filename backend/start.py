@@ -34,8 +34,12 @@ conn.close()
 manage = str(base / "manage.py")
 subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 
-# Step 3: Pre-compute recommendation cache (best-effort — failure won't block startup)
-subprocess.run([sys.executable, manage, "compute_recommendations"], check=False)
+# Step 3: Pre-compute recommendation cache (best-effort — failure or a hung
+# TMDB call won't block startup)
+try:
+    subprocess.run([sys.executable, manage, "compute_recommendations"], check=False, timeout=30)
+except subprocess.TimeoutExpired:
+    print("[cinedb] compute_recommendations timed out after 30s, skipping (best-effort)")
 
 # Step 4: Start server
 subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)

@@ -1,6 +1,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+import requests
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -97,7 +98,7 @@ def _fetch_followed_people_credits(user, limit=10):
         try:
             data = tmdb_client._get(f"/person/{fp.person_id}/combined_credits")
             return fp, data.get("cast", [])
-        except Exception:
+        except (requests.RequestException, ValueError):
             logger.exception("Failed to fetch combined credits for person %s", fp.person_id)
             return fp, []
 

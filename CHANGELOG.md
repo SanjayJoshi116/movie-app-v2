@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.6] - 2026-08-03
+
+### Fixed
+- Entire e2e test suite (TS `@playwright/test` + Python pytest-playwright, ~180 tests) was broken by 0.15.4's Express removal and 0.15.5's notification bell, discovered while scoping new tests for this release: (1) test mocks still targeted `**/api/django/...`, a URL shape that stopped existing once the `/django` path segment was dropped; (2) `NotificationBell`/`useNotifications` now polls a new endpoint on every authenticated page (rendered globally in `Sidebar`/`BottomNav`), which no test mocked, so it fell through to a real 401 and the refresh-interceptor redirected to `/login`, failing almost every authenticated test; (3) separately, 3 TS spec files (`auth.spec.ts`, `movies.spec.ts`, `watchlist.spec.ts`) had a latent, pre-existing bug of their own — exact-match route patterns (`**/api/watchlist/"` etc.) with no trailing `**`, so `fetchAllPages()`'s always-appended `?page=1` never matched. Fixed all three; `mock_base_django_routes` (Python) and each TS file's `beforeEach` now mock `/api/notifications/new-releases/` too.
+- `backend/start.py`'s best-effort `compute_recommendations` step (pre-startup cache warm) had no timeout, so a slow/hung TMDB call could block `runserver` from ever starting — `npm run dev`/`npm start` would silently never finish booting Django. Now capped at 30s with a clean skip-and-continue on timeout.
+- `tmdb_proxy` (`backend/userdata/tmdb_proxy_views.py`) echoed raw exception text to the caller in its error response — since the view is `AllowAny`, any internet caller could see internal error detail. Now logs the real exception server-side and returns a generic message.
+
+### Security
+- Added per-endpoint rate limiting: `TmdbProxyThrottle` (120/min) on the open `AllowAny` TMDB passthrough, `NotificationsThrottle` (30/min) on the followed-people new-releases endpoint, and `UserRateThrottle` (5000/day default) added system-wide — previously only `AnonRateThrottle` existed, so authenticated users were completely unthrottled.
+- Narrowed all 22 bare `except Exception:` blocks across the Django backend to specific exception types (`requests.RequestException`, `KeyError`/`TypeError`/`ValueError`, `django.db.Error`, `TMDBProfile.DoesNotExist`), except 4 sites where a genuinely heterogeneous operation mix (TMDB I/O + numpy/sklearn + DB writes in a background/batch context) makes a broad catch the deliberately-correct choice — each of those 4 now has a comment explaining why.
+
+### Added
+- `GET /api/health/` — plain `{"status": "ok"}`, no DB/TMDB calls. `docker-compose.yml`'s backend healthcheck switched from a raw TCP socket probe to hitting this endpoint over HTTP.
+- `CONTRIBUTING.md` — dev setup pointer, commit-message convention, testing checklist.
+- One representative test added per area with no prior coverage: 4 Django pytest cases (`test_notifications.py`), 7 Jest cases (`useLibraryFilters.test.ts`), 1 Playwright case (next-episode season-rollover, `test_detail.py`).
+
+### Changed
+- `NotificationBell.tsx`'s dropdown rows are now keyboard-accessible (`role="button"`, `tabIndex`, Enter/Space) — previously an unlabeled `<div onClick>`.
+- `useNotifications.ts` surfaces a visible "couldn't check for updates" state after a failed poll instead of failing silently forever, and defensively falls back on a malformed/unexpected response shape instead of crashing `NotificationBell`'s render.
+- README: Feature Overview matrix gained a Social row (previously didn't mention notifications at all); Deployment's DEBUG/SECRET_KEY guidance promoted from a sentence to a `> **Warning:**` callout; API Overview table gained the TMDB-proxy and notifications endpoints (33 → 36 documented endpoints).
+
 ## [0.15.5] - 2026-08-03
 
 ### Added

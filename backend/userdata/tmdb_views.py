@@ -1,3 +1,5 @@
+import requests
+from django.db import Error as DBError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -16,7 +18,7 @@ def tmdb_request_token(request):
         token = data["request_token"]
         redirect_url = f"https://www.themoviedb.org/authenticate/{token}?redirect_to={redirect_to}"
         return Response({"redirect_url": redirect_url, "request_token": token})
-    except Exception as e:
+    except (requests.RequestException, ValueError, KeyError) as e:
         return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
@@ -33,7 +35,7 @@ def tmdb_create_session(request):
         profile.session_id = session_id
         profile.save()
         return Response({"connected": True})
-    except Exception as e:
+    except (requests.RequestException, ValueError, KeyError, DBError) as e:
         return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 

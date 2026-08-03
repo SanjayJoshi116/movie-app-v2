@@ -17,9 +17,10 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem("cinedb_user", JSON.stringify(data.user));
   }, { ...MOCK_TOKENS, user: MOCK_USER });
 
-  await page.route("**/api/django/ratings/", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/django/watched/", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/django/lists/", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/ratings/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/watched/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/lists/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
   await page.route("**/api/tmdb/trending/**", (route) =>
     route.fulfill({ json: { results: [MOCK_MOVIE], total_pages: 1, total_results: 1 } })
   );
@@ -30,7 +31,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe("Watchlist", () => {
   test("empty watchlist shows prompt", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
     await page.goto("/watchlist");
     await expect(page.getByText("My Watchlist (0)")).toBeVisible();
     await expect(page.getByText("Your watchlist is empty")).toBeVisible();
@@ -38,7 +39,7 @@ test.describe("Watchlist", () => {
   });
 
   test("watchlist with items shows count and cards", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) =>
+    await page.route("**/api/watchlist/**", (route) =>
       route.fulfill({
         json: [{
           id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",
@@ -53,7 +54,7 @@ test.describe("Watchlist", () => {
   });
 
   test("remove from watchlist shows confirmation", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) =>
+    await page.route("**/api/watchlist/**", (route) =>
       route.fulfill({
         json: [{
           id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",
@@ -61,7 +62,7 @@ test.describe("Watchlist", () => {
         }],
       })
     );
-    await page.route("**/api/django/watchlist/1/", (route) => route.fulfill({ status: 204, body: "" }));
+    await page.route("**/api/watchlist/1/", (route) => route.fulfill({ status: 204, body: "" }));
 
     await page.goto("/watchlist");
     await expect(page.getByText("Fight Club")).toBeVisible();
@@ -70,7 +71,7 @@ test.describe("Watchlist", () => {
   });
 
   test("export CSV button visible when watchlist has items", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) =>
+    await page.route("**/api/watchlist/**", (route) =>
       route.fulfill({
         json: [{
           id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",
@@ -86,14 +87,14 @@ test.describe("Watchlist", () => {
 
 test.describe("Watched page", () => {
   test("empty watched list shows empty state", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
     await page.goto("/watched");
     await expect(page.getByText("Watched (0)")).toBeVisible();
   });
 
   test("watched list renders items with sort controls", async ({ page }) => {
-    await page.route("**/api/django/watchlist/", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/django/watched/", (route) =>
+    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/watched/**", (route) =>
       route.fulfill({
         json: [{
           id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",

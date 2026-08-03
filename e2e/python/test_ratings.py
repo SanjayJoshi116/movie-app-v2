@@ -11,7 +11,7 @@ from conftest import (
 
 class TestRatingModalFromWatchlist:
     def test_rate_button_opens_modal(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -19,7 +19,7 @@ class TestRatingModalFromWatchlist:
         expect(authed_page.get_by_text("Rate: Fight Club")).to_be_visible()
 
     def test_modal_has_star_rating_widget(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -27,7 +27,7 @@ class TestRatingModalFromWatchlist:
         expect(authed_page.locator(".ant-rate")).to_be_visible()
 
     def test_modal_save_button_disabled_without_rating(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -37,7 +37,7 @@ class TestRatingModalFromWatchlist:
         expect(save_btn).to_be_disabled()
 
     def test_modal_save_enabled_after_star_click(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -50,7 +50,7 @@ class TestRatingModalFromWatchlist:
         expect(save_btn).to_be_enabled()
 
     def test_modal_cancel_closes_modal(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Rate").click()
@@ -60,8 +60,8 @@ class TestRatingModalFromWatchlist:
         expect(authed_page.locator(".ant-modal")).not_to_be_visible()
 
     def test_rating_saved_shows_success_toast(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/**", lambda r: (
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/ratings/**", lambda r: (
             fulfill_json(r, [])
             if r.request.method == "GET"
             else fulfill_json(r, MOCK_RATING, status=201)
@@ -81,15 +81,15 @@ class TestRatingModalFromWatchlist:
 
 class TestRatingEditing:
     def test_edit_rating_button_shows_when_rated(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_role("button", name="Edit")).to_be_visible()
 
     def test_edit_modal_prefills_existing_rating(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Edit").click()
@@ -98,8 +98,8 @@ class TestRatingEditing:
         expect(authed_page.get_by_text("Rate: Fight Club")).to_be_visible()
 
     def test_edit_modal_shows_existing_review(self, authed_page: Page):
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
-        authed_page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, [MOCK_WATCHLIST_ITEM]))
+        authed_page.route("**/api/ratings/**", lambda r: fulfill_json(r, [MOCK_RATING]))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Edit").click()

@@ -31,6 +31,10 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(f"  [{i}/{total}] {user.username} — done")
             except Exception as e:
+                # Broad on purpose: same heterogeneous TMDB/numpy/DB surface
+                # as recommendations.py's _refresh_cache, plus this loop's
+                # own job — one user's failure must not abort the batch for
+                # everyone else.
                 self.stderr.write(f"  [{i}/{total}] {user.username} — failed: {e}")
 
         self.stdout.write(self.style.SUCCESS("Recommendation cache computation complete."))

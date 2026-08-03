@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from threading import Thread
 
+import requests
+from django.db import Error as DBError
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -26,7 +28,7 @@ def _get_cached_genre_names() -> dict[int, str]:
         try:
             _genre_name_cache = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
             _genre_cache_ts = _time.time()
-        except Exception:
+        except TypeError:
             pass
     return _genre_name_cache
 
@@ -95,7 +97,7 @@ def stats(request):
                     original_language=lang,
                     release_year=year,
                 )
-            except Exception:
+            except (requests.RequestException, ValueError, TypeError, DBError):
                 logger.exception("Failed to backfill language/year for WatchedEntry %s", entry.pk)
 
         def _run_backfill():

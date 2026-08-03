@@ -16,8 +16,13 @@ interface Props {
 
 function NotificationBell({ buttonClassName }: Props) {
   const navigate = useNavigate();
-  const { items, unreadCount, markSeen } = useNotifications();
+  const { items, unreadCount, hasError, markSeen } = useNotifications();
   const [open, setOpen] = useState(false);
+
+  const openItem = (item: (typeof items)[number]) => {
+    setOpen(false);
+    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`);
+  };
 
   return (
     <Dropdown
@@ -37,14 +42,30 @@ function NotificationBell({ buttonClassName }: Props) {
             New releases from people you follow
           </Typography.Text>
           {items.length === 0 ? (
-            <Empty description="Nothing new in the last 30 days" style={{ padding: "24px 0" }} />
+            <Empty
+              description={
+                hasError ? (
+                  <Typography.Text type="danger" style={{ fontSize: FONT_SIZE.caption }}>
+                    Couldn't check for updates. Will retry automatically.
+                  </Typography.Text>
+                ) : (
+                  "Nothing new in the last 30 days"
+                )
+              }
+              style={{ padding: "24px 0" }}
+            />
           ) : (
             items.map((item) => (
               <div
                 key={`${item.type}-${item.id}`}
-                onClick={() => {
-                  setOpen(false);
-                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`);
+                role="button"
+                tabIndex={0}
+                onClick={() => openItem(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openItem(item);
+                  }
                 }}
                 style={{ display: "flex", gap: 10, padding: 8, cursor: "pointer", borderRadius: 6, alignItems: "center" }}
               >

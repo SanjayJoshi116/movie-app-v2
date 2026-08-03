@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   // Block all Django API calls; intercept as needed per test
-  await page.route("**/api/django/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+  await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
   await page.route("**/api/tmdb/**", (route) => route.fulfill({ json: { results: [], total_pages: 1, total_results: 0 } }));
 });
 
@@ -21,7 +21,7 @@ test.describe("Login page", () => {
 
   test("shows error on invalid credentials", async ({ page }) => {
     // Use 400 not 401: a 401 triggers the JWT refresh interceptor which redirects to /login
-    await page.route("**/api/django/auth/login/", (route) =>
+    await page.route("**/api/auth/login/", (route) =>
       route.fulfill({ status: 400, json: { detail: "Invalid credentials." } })
     );
 
@@ -35,7 +35,7 @@ test.describe("Login page", () => {
   });
 
   test("redirects to /movies after successful login", async ({ page }) => {
-    await page.route("**/api/django/auth/login/", (route) =>
+    await page.route("**/api/auth/login/", (route) =>
       route.fulfill({
         json: {
           access: "fake-access-token",
@@ -45,10 +45,11 @@ test.describe("Login page", () => {
       })
     );
     // Mock the API calls that fire on authenticated load
-    await page.route("**/api/django/watchlist/", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/django/ratings/", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/django/watched/", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/django/lists/", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/ratings/**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/watched/**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/lists/**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
 
     await page.goto("/login");
     await page.getByLabel("Username").fill("testuser");
@@ -97,7 +98,7 @@ test.describe("Forgot password page", () => {
   });
 
   test("shows success state after submission", async ({ page }) => {
-    await page.route("**/api/django/auth/password-reset/", (route) =>
+    await page.route("**/api/auth/password-reset/", (route) =>
       route.fulfill({ json: { detail: "If that email is registered, a reset link has been sent." } })
     );
 

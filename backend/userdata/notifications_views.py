@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from .models import NotificationCheckpoint
 from .social_views import _fetch_followed_people_credits
@@ -13,8 +14,13 @@ NEW_RELEASE_WINDOW_DAYS = 30
 MAX_ITEMS = 30
 
 
+class NotificationsThrottle(UserRateThrottle):
+    scope = "notifications"
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([NotificationsThrottle])
 def new_release_notifications(request):
     checkpoint, _ = NotificationCheckpoint.objects.get_or_create(
         user=request.user, defaults={"last_seen_at": timezone.now()}

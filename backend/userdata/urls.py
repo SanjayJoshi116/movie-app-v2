@@ -4,8 +4,12 @@ from .auth_views import SafeTokenRefreshView
 from .recommendations import personalized_recommendations, recommendations_for_you
 from .tmdb_proxy_views import tmdb_proxy
 from .notifications_views import new_release_notifications, mark_notifications_seen
+from .health_views import health
 
 urlpatterns = [
+    # Health check
+    path("health/", health),
+
     # TMDB proxy (key stays server-side)
     path("tmdb/<path:tmdb_path>", tmdb_proxy),
 

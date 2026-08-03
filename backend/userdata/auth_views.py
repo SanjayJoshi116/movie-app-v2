@@ -92,8 +92,13 @@ def password_reset_request(request):
                 fail_silently=False,
             )
         except Exception:
-            # Log but don't surface a distinct response — a different status
-            # here vs. the unregistered-email path would leak account existence.
+            # Broad on purpose: the configured EMAIL_BACKEND varies by deploy
+            # (console/SMTP/a 3rd-party API), each with its own exception
+            # types (smtplib.SMTPException, socket/OSError, SDK-specific
+            # errors) — narrowing would mean missing whichever backend isn't
+            # anticipated. Also: log but don't surface a distinct response —
+            # a different status here vs. the unregistered-email path would
+            # leak account existence.
             logger.exception("Failed to send password reset email to user %s", user.pk)
     except User.DoesNotExist:
         pass  # Don't reveal whether the email is registered

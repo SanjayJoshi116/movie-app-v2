@@ -16,7 +16,7 @@ from conftest import fulfill_json, MOCK_TOKENS, MOCK_USER, seed_auth, mock_base_
 @pytest.fixture(autouse=True)
 def block_api(page: Page):
     """Block all Django API calls by default; override per test as needed."""
-    page.route("**/api/django/**", lambda r: r.fulfill(status=401, content_type="application/json", body='{"detail":"Unauthorized"}'))
+    page.route("**/api/**", lambda r: r.fulfill(status=401, content_type="application/json", body='{"detail":"Unauthorized"}'))
     page.route("**/api/tmdb/**", lambda r: fulfill_json(r, {"results": [], "total_pages": 1, "total_results": 0}))
 
 
@@ -36,7 +36,7 @@ class TestLoginPage:
 
     def test_login_invalid_credentials_shows_error_toast(self, page: Page):
         # Use 400 (not 401) so the JWT interceptor doesn't trigger a redirect
-        page.route("**/api/django/auth/login/", lambda r: r.fulfill(
+        page.route("**/api/auth/login/", lambda r: r.fulfill(
             status=400, content_type="application/json",
             body=json.dumps({"detail": "Invalid credentials."})
         ))
@@ -49,15 +49,15 @@ class TestLoginPage:
         )
 
     def test_login_success_redirects_to_movies(self, page: Page):
-        page.route("**/api/django/auth/login/", lambda r: fulfill_json(r, {
+        page.route("**/api/auth/login/", lambda r: fulfill_json(r, {
             "access": MOCK_TOKENS["access"],
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
 
         page.goto("/login")
         page.get_by_label("Username").fill("testuser")
@@ -78,7 +78,7 @@ class TestLoginPage:
         expect(page.get_by_text("Enter your password")).to_be_visible()
 
     def test_login_server_error_shows_toast(self, page: Page):
-        page.route("**/api/django/auth/login/", lambda r: r.fulfill(
+        page.route("**/api/auth/login/", lambda r: r.fulfill(
             status=500, content_type="application/json",
             body=json.dumps({"detail": "Internal server error"})
         ))
@@ -162,15 +162,15 @@ class TestRegisterPage:
         expect(page.get_by_text("Enter a valid email")).to_be_visible()
 
     def test_register_success_redirects_to_movies(self, page: Page):
-        page.route("**/api/django/auth/register/", lambda r: fulfill_json(r, {
+        page.route("**/api/auth/register/", lambda r: fulfill_json(r, {
             "access": MOCK_TOKENS["access"],
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
 
         page.goto("/register")
         page.get_by_label("Username").fill("newuser")
@@ -181,7 +181,7 @@ class TestRegisterPage:
         expect(page).to_have_url("/movies", timeout=10_000)
 
     def test_register_duplicate_username_shows_error(self, page: Page):
-        page.route("**/api/django/auth/register/", lambda r: r.fulfill(
+        page.route("**/api/auth/register/", lambda r: r.fulfill(
             status=400, content_type="application/json",
             body=json.dumps({"username": ["A user with that username already exists."]})
         ))
@@ -212,7 +212,7 @@ class TestForgotPasswordPage:
         expect(page.get_by_role("button", name="Send Reset Link")).to_be_visible()
 
     def test_forgot_password_success_shows_inbox_state(self, page: Page):
-        page.route("**/api/django/auth/password-reset/", lambda r: fulfill_json(r, {
+        page.route("**/api/auth/password-reset/", lambda r: fulfill_json(r, {
             "detail": "If that email is registered, a reset link has been sent."
         }))
         page.goto("/forgot-password")
@@ -254,7 +254,7 @@ class TestResetPasswordPage:
         expect(page.get_by_text("Passwords do not match")).to_be_visible(timeout=5_000)
 
     def test_reset_password_success_navigates_to_login(self, page: Page):
-        page.route("**/api/django/auth/password-reset/confirm/", lambda r: fulfill_json(r, {
+        page.route("**/api/auth/password-reset/confirm/", lambda r: fulfill_json(r, {
             "detail": "Password reset successfully."
         }))
         page.goto("/reset-password/uid123/tok456")
@@ -264,7 +264,7 @@ class TestResetPasswordPage:
         expect(page).to_have_url("/login", timeout=10_000)
 
     def test_reset_password_invalid_token_shows_error(self, page: Page):
-        page.route("**/api/django/auth/password-reset/confirm/", lambda r: r.fulfill(
+        page.route("**/api/auth/password-reset/confirm/", lambda r: r.fulfill(
             status=400, content_type="application/json",
             body=json.dumps({"detail": "Invalid or expired reset link."})
         ))

@@ -28,7 +28,7 @@ class TestMovieDetailPage:
             "id": 99, "mediaId": 100, "mediaType": "movie", "title": "Movie 1",
             "posterPath": None, "voteAverage": 7.5, "addedAt": "2024-01-01T00:00:00Z", "watched": False,
         }
-        authed_page.route("**/api/django/watchlist/**", lambda r: (
+        authed_page.route("**/api/watchlist/**", lambda r: (
             fulfill_json(r, [])
             if r.request.method == "GET"
             else fulfill_json(r, added_item, status=201)
@@ -47,7 +47,7 @@ class TestMovieDetailPage:
             "id": 1, "mediaId": 100, "mediaType": "movie", "title": "Movie 1",
             "posterPath": None, "voteAverage": 7.5, "watchedAt": "2024-01-01T00:00:00Z",
         }
-        authed_page.route("**/api/django/watched/**", lambda r: (
+        authed_page.route("**/api/watched/**", lambda r: (
             fulfill_json(r, [])
             if r.request.method == "GET"
             else fulfill_json(r, watched_item, status=201)
@@ -87,7 +87,7 @@ class TestMovieDetailPage:
 
     def test_movie_detail_add_to_list_button_visible_with_lists(self, authed_page: Page):
         mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/django/lists/**", lambda r: fulfill_json(r, [MOCK_LIST]))
+        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, [MOCK_LIST]))
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Look for "Add to List" button or similar
@@ -153,7 +153,7 @@ class TestTVDetailPage:
 
     def test_tv_detail_watchlist_toggle_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/tv/1396")
         expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
         # Watchlist toggle should be present
@@ -173,3 +173,31 @@ class TestTVDetailPage:
         authed_page.goto("/tv/1396")
         expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
         expect(authed_page.get_by_text("Drama")).to_be_visible(timeout=5_000)
+
+    def test_tv_detail_next_episode_button_rolls_over_season(self, authed_page: Page):
+        # MOCK_TV_DETAIL's only season entry is season 1 with episode_count=7,
+        # so bookmarking S01E07 (the season's last episode) exercises the
+        # season-rollover branch: next should be S02E01, not S01E08.
+        mock_tv_detail_routes(authed_page, 1396)
+        posted = {}
+        authed_page.route(
+            "**/api/episode-progress/1396/**",
+            lambda r: (
+                fulfill_json(r, {"showId": 1396, "season": 1, "episode": 7})
+                if r.request.method == "GET"
+                else (
+                    posted.update(r.request.post_data_json)
+                    or fulfill_json(r, {"showId": 1396, **r.request.post_data_json})
+                )
+            ),
+        )
+
+        authed_page.goto("/tv/1396")
+        expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_text("Currently on")).to_be_visible(timeout=5_000)
+        expect(authed_page.get_by_text("S01E07")).to_be_visible()
+
+        authed_page.get_by_role("button", name="Next Episode →").click()
+
+        expect(authed_page.get_by_text("S02E01")).to_be_visible(timeout=5_000)
+        assert posted == {"season": 2, "episode": 1}

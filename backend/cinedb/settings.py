@@ -124,12 +124,16 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": "300/day",
+        "user": "5000/day",
         "login": "10/min",
         "register": "5/min",
         "password_reset": "5/hour",
+        "tmdb_proxy": "120/min",
+        "notifications": "30/min",
     },
     "DEFAULT_PAGINATION_CLASS": "userdata.pagination.DefaultPagination",
     "PAGE_SIZE": 100,

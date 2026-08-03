@@ -8,7 +8,9 @@ from datetime import timedelta
 from functools import partial, reduce
 
 import numpy as np
+import requests
 from django.db import IntegrityError
+from django.db import Error as DBError
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -57,7 +59,7 @@ def _ensure_cached(entry, prefetched=None):
         return cached
     try:
         details = tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
-    except Exception as e:
+    except (requests.RequestException, KeyError, TypeError, ValueError) as e:
         logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
         details = {"genre_ids": [], "top_cast": []}
     try:
@@ -98,12 +100,12 @@ def _fill_genre(entry):
     """Fetch and cache genre IDs for a single WatchedEntry."""
     try:
         ids = tmdb_client.get_genre_ids(entry.media_id, entry.media_type)
-    except Exception:
+    except (requests.RequestException, KeyError, TypeError, ValueError):
         ids = []
     entry.genre_ids = ids
     try:
         entry.save(update_fields=["genre_ids"])
-    except Exception:
+    except DBError:
         logger.exception("Failed to save genre_ids for WatchedEntry %s", entry.pk)
 
 
@@ -196,14 +198,14 @@ def _compute_for_you(user) -> list:
             **tmdb_client.get_genre_names("movie"),
             **tmdb_client.get_genre_names("tv"),
         }
-    except Exception:
+    except TypeError:
         genre_name_map = {}
 
     def discover_mixed(genre_id):
         mov, tv = [], []
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(requests.RequestException, ValueError):
             mov = [_tmdb_item(r, "movie") for r in tmdb_client.discover("movie", [genre_id])]
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(requests.RequestException, ValueError):
             tv = [_tmdb_item(r, "tv") for r in tmdb_client.discover("tv", [genre_id])]
         return _interleave(mov, tv)
 
@@ -227,7 +229,7 @@ def _compute_for_you(user) -> list:
         ])[:12]
         if trending_items:
             sections.append({"key": "trending", "label": "Trending This Week", "items": trending_items})
-    except Exception:
+    except (requests.RequestException, ValueError):
         pass
 
     # ── 3. Genre sections ─────────────────────────────────────────────────────
@@ -251,7 +253,7 @@ def _compute_for_you(user) -> list:
             else:
                 data = tmdb_client._get(f"/tv/{w.media_id}/recommendations")
             return w, [_tmdb_item(r, w.media_type) for r in data.get("results", [])]
-        except Exception:
+        except (requests.RequestException, ValueError):
             return w, []
 
     with ThreadPoolExecutor(max_workers=5) as ex:
@@ -277,7 +279,7 @@ def _compute_for_you(user) -> list:
                     "vote_count.lte": 1500,
                 }
             ).get("results", [])]
-        except Exception:
+        except (requests.RequestException, ValueError):
             return []
 
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -298,7 +300,7 @@ def _compute_for_you(user) -> list:
             ]
             items.sort(key=lambda x: -x["voteAverage"])
             return info["name"], items
-        except Exception:
+        except (requests.RequestException, ValueError):
             return info["name"], []
 
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -335,6 +337,10 @@ def _compute_personalized(user) -> list:
                 try:
                     f.result()
                 except Exception:
+                    # Broad on purpose: _fill_genre already narrowly handles
+                    # its own known TMDB/DB failures internally, so anything
+                    # that reaches here is unexpected — insulate the batch
+                    # (one entry's bug shouldn't abort the whole computation).
                     logger.exception("Failed to fill genre for a watched entry")
 
     # --- Build genre vocabulary ---
@@ -362,7 +368,7 @@ def _compute_personalized(user) -> list:
     # --- Fetch genre name maps ---
     try:
         genre_name_map = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
-    except Exception:
+    except TypeError:
         genre_name_map = {}
 
     watched_set = {(e.media_id, e.media_type) for e in watched}
@@ -387,7 +393,7 @@ def _compute_personalized(user) -> list:
         for media_type in ("movie", "tv"):
             try:
                 results = tmdb_client.discover(media_type, top_genre_ids)
-            except Exception:
+            except (requests.RequestException, ValueError):
                 results = []
             for r in results:
                 mid = r.get("id")
@@ -448,6 +454,11 @@ def _refresh_cache(user):
         )
         logger.info("Recommendation cache refreshed for user %s", user.id)
     except Exception as e:
+        # Broad on purpose: this spans TMDB I/O, numpy/sklearn computation,
+        # and a DB write in one background thread with no caller to report
+        # to — insulating the whole pipeline from any unexpected bug matters
+        # more here than precise typing, since an uncaught exception would
+        # just silently kill the thread with no visible error.
         logger.warning("Rec cache refresh failed for user %s: %s", user.id, e)
     finally:
         with _computing_lock:

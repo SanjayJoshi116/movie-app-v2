@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.5)
+CINE DB — Feature List (v0.15.6)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -21,7 +21,7 @@ DETAIL PAGES
 - Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle; one-click "Next Episode" advance (handles season rollover, hides at the series finale)
 - Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button
 - Following page: search + sort followed people, "Recommended From People You Follow" section
-- In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from people you follow, polled every 3 minutes
+- In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from people you follow, polled every 3 minutes; keyboard-accessible dropdown, visible "couldn't check for updates" state if a poll fails
 
 LIBRARY
 - Watchlist & Watched lists, tied to account

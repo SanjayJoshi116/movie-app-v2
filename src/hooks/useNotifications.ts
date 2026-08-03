@@ -9,14 +9,22 @@ export function useNotifications() {
   const { isAuthenticated } = useAuth();
   const [items, setItems] = useState<NewReleaseNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [hasError, setHasError] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       const { data } = await fetchNewReleaseNotifications();
-      setItems(data.items);
-      setUnreadCount(data.unreadCount);
+      // Defensive: an unmocked/misconfigured route or unexpected backend
+      // response could return something other than {items, unreadCount} —
+      // fall back rather than let a downstream .map() throw on undefined.
+      setItems(data.items ?? []);
+      setUnreadCount(data.unreadCount ?? 0);
+      setHasError(false);
     } catch {
-      // silent — a failed background poll shouldn't surface an error toast
+      // Background poll — no toast (would be noisy every 3 min if TMDB is
+      // rate-limited), but surface it in the dropdown so it's not silently
+      // invisible forever.
+      setHasError(true);
     }
   }, []);
 
@@ -41,5 +49,5 @@ export function useNotifications() {
     }
   }, []);
 
-  return { items, unreadCount, markSeen };
+  return { items, unreadCount, hasError, markSeen };
 }

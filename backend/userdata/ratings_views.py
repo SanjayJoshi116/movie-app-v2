@@ -1,12 +1,13 @@
 import logging
 
+import requests
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import RatingEntry
+from .models import RatingEntry, TMDBProfile
 from .pagination import DefaultPagination
 from .serializers import RatingEntrySerializer
 from . import tmdb_client
@@ -44,7 +45,7 @@ def ratings_list(request):
                 tmdb_profile.session_id,
                 entry.user_rating,
             )
-    except Exception:
+    except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
         logger.exception("Failed to sync rating to TMDB for user %s", request.user.pk)
 
     return Response(
@@ -62,7 +63,7 @@ def ratings_detail(request, pk):
             tmdb_profile = request.user.tmdb_profile
             if tmdb_profile.session_id:
                 tmdb_client.delete_rating(entry.media_type, entry.media_id, tmdb_profile.session_id)
-        except Exception:
+        except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
             logger.exception("Failed to delete rating on TMDB for user %s", request.user.pk)
         entry.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

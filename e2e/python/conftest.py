@@ -240,10 +240,14 @@ def mock_base_django_routes(page: Page) -> None:
     a loop. `lists/` isn't paginated so it never had this problem, but the wildcard
     is harmless there too.
     """
-    page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/ratings/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/watched/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/django/lists/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
+    # NotificationBell polls this on every authenticated page (Sidebar/BottomNav
+    # render it globally) — unmocked, it falls through to a real 401 and the
+    # refresh-interceptor redirects to /login, breaking every authed_page test.
+    page.route("**/api/notifications/new-releases/**", lambda r: fulfill_json(r, {"items": [], "unreadCount": 0}))
 
 
 def mock_tmdb_movies(page: Page, response=None) -> None:
@@ -276,7 +280,7 @@ def mock_movie_detail_routes(page: Page, movie_id: int = 100, detail=None) -> No
     page.route(f"**/api/tmdb/movie/{movie_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
     page.route(f"**/api/tmdb/movie/{movie_id}/release_dates**", lambda r: fulfill_json(r, {"results": []}))
     page.route("**/api/tmdb/person/**", lambda r: fulfill_json(r, {"id": 1, "name": "Actor", "profile_path": None}))
-    page.route("**/api/django/followed-people/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, []))
 
 
 def mock_tv_detail_routes(page: Page, show_id: int = 1396, detail=None) -> None:
@@ -292,9 +296,9 @@ def mock_tv_detail_routes(page: Page, show_id: int = 1396, detail=None) -> None:
     }))
     page.route(f"**/api/tmdb/tv/{show_id}/aggregate_credits**", lambda r: fulfill_json(r, {"cast": [], "crew": []}))
     page.route(f"**/api/tmdb/tv/{show_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
-    page.route(f"**/api/django/episode-progress/{show_id}/**", lambda r: fulfill_json(r, None))
-    page.route(f"**/api/django/episode-progress/{show_id}", lambda r: fulfill_json(r, None))
-    page.route("**/api/django/followed-people/**", lambda r: fulfill_json(r, []))
+    page.route(f"**/api/episode-progress/{show_id}/**", lambda r: fulfill_json(r, None))
+    page.route(f"**/api/episode-progress/{show_id}", lambda r: fulfill_json(r, None))
+    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, []))
 
 
 # ---------------------------------------------------------------------------

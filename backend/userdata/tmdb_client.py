@@ -70,7 +70,7 @@ def get_genre_names(media_type):
     try:
         data = _get(f"/genre/{media_type}/list")
         return {g["id"]: g["name"] for g in data.get("genres", [])}
-    except Exception:
+    except (requests.RequestException, ValueError, KeyError):
         return dict(STATIC_GENRE_NAMES)
 
 

@@ -29,10 +29,11 @@ test.beforeEach(async ({ page }) => {
   }, { ...MOCK_TOKENS, user: MOCK_USER });
 
   // Mock all Django API calls
-  await page.route("**/api/django/watchlist/", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/django/ratings/", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/django/watched/", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/django/lists/", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/ratings/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/watched/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/lists/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
 
   // Mock TMDB movie endpoints
   const movieResponse = { results: MOCK_MOVIES, total_pages: 3, total_results: 60, page: 1 };

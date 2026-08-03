@@ -28,7 +28,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 
 ## Highlights
 
-- **36 REST API endpoints** across TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
+- **37 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
 - **JWT auth** with silent refresh + rotation/blacklisting, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
@@ -76,6 +76,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 | Discovery | Browse/search movies, TV, anime, and people; advanced filters, genre tags, infinite scroll |
 | Detail Pages | Cast, videos, reviews, recommendations, watch providers, episode guide + progress tracker |
 | Library | Watchlist, Watched, ratings/reviews, custom lists, CSV import/export, Stats dashboard, Release Calendar |
+| Social | Follow people, personalized/followed-people recommendations, in-app notification bell for new releases from people you follow |
 | Auth | JWT login/register, email password reset, profile photo upload |
 | UI/UX | Dark/light themes, toasts, skeleton loaders, responsive 3-tier layout, Framer Motion transitions |
 
@@ -498,7 +499,9 @@ Nginx proxies `/api/*` straight to the `backend` service (which itself proxies T
 
 ## Deployment
 
-The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice. Set `DEBUG=False`, a real `SECRET_KEY`, and `ALLOWED_HOSTS` for your domain in `.env.docker` (see [Environment Variables](#environment-variables)) before deploying anywhere public.
+The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice.
+
+> **Warning:** `backend/cinedb/settings.py` defaults to `DEBUG=True` and an insecure hardcoded `SECRET_KEY` fallback — safe for local dev, not for a public deployment. Set `DEBUG=False`, a real `SECRET_KEY`, and `ALLOWED_HOSTS` for your domain in `.env.docker` (see [Environment Variables](#environment-variables)) before deploying anywhere public.
 
 ---
 
@@ -595,6 +598,7 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 
 | Method          | Endpoint                                    | Description                                        |
 | --------------- | ------------------------------------------- | -------------------------------------------------- |
+| GET             | `/api/health/`                              | Health check (no DB/TMDB calls)                    |
 | GET             | `/api/tmdb/<path>`                          | TMDB API passthrough (key stays server-side)       |
 | POST            | `/api/auth/register/`                       | Create account                                     |
 | POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
@@ -646,6 +650,8 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=SanjayJoshi116/movie-app-v2)](https://github.com/SanjayJoshi116/movie-app-v2/graphs/contributors)
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup and PR guidelines.
 
 ---
 

@@ -14,7 +14,13 @@ async function seedAuth(page: import("@playwright/test").Page) {
   // followed-people, etc.) never falls through to the real network and 401s — a 401 with
   // this fake refresh token triggers userApi's redirect-to-/login flow, which destroys the
   // page's JS context mid-test.
-  await page.route("**/api/django/**", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/**", (route) => route.fulfill({ json: [] }));
+
+  // Registered after the catch-all so it wins (Playwright checks routes
+  // last-registered-first) — the catch-all's bare `[]` doesn't match the
+  // {items, unreadCount} shape useNotifications.ts expects, which would
+  // throw on items.map() in NotificationBell's render.
+  await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
 
   const movieResponse = { results: [], total_pages: 1, total_results: 0, page: 1 };
   await page.route("**/api/tmdb/**", (route) => route.fulfill({ json: movieResponse }));
@@ -64,7 +70,7 @@ test.describe("Responsive layout", () => {
 
   test("narrow phone: login card doesn't overflow viewport", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 });
-    await page.route("**/api/django/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+    await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
     await page.route("**/api/tmdb/**", (route) => route.fulfill({ json: { results: [], total_pages: 1, total_results: 0 } }));
 
     await page.goto("/login");

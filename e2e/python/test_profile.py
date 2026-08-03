@@ -57,7 +57,7 @@ class TestProfileModalOpen:
 class TestProfileSave:
     def test_profile_save_changes_success(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
-        authed_page.route("**/api/django/auth/profile/**", lambda r: fulfill_json(r, {
+        authed_page.route("**/api/auth/profile/**", lambda r: fulfill_json(r, {
             **MOCK_USER, "first_name": "Test"
         }))
         authed_page.goto("/movies")
@@ -75,7 +75,7 @@ class TestProfileSave:
 
     def test_profile_save_network_error(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
-        authed_page.route("**/api/django/auth/profile/**", lambda r: r.fulfill(
+        authed_page.route("**/api/auth/profile/**", lambda r: r.fulfill(
             status=400, content_type="application/json",
             body='{"username": ["This username is already taken."]}'
         ))
@@ -144,7 +144,7 @@ class TestThemeToggle:
 
     def test_theme_toggle_persists_after_navigation(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
-        authed_page.route("**/api/django/watchlist/**", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         toggle = authed_page.locator("[aria-label*='Switch to']").first
