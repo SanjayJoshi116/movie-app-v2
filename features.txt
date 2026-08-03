@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.3)
+CINE DB — Feature List (v0.15.4)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -41,7 +41,7 @@ AUTH
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
 
 UI/UX
-- Skeleton loaders, toast notifications
+- Skeleton loaders (staggered fade-in), toast notifications
 - Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent — Poppins font throughout, unified size scale: caption/body/emphasis/display
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
 - Framer Motion page transitions

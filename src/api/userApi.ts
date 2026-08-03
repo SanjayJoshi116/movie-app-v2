@@ -2,7 +2,7 @@ import axios from "axios";
 import { fetchAllPages } from "../utils/fetchAllPages";
 
 const API_HOST = window.location.hostname;
-const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:3001/api/django`;
+const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:8000/api`;
 
 const userApi = axios.create({
   baseURL: DJANGO_BASE,

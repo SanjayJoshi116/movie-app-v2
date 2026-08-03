@@ -19,7 +19,7 @@ import type {
   SortOption,
 } from "../types";
 
-const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:3001/api/tmdb` });
+const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:8000/api/tmdb` });
 
 // Retry once on 500 after a brief pause — handles transient proxy/network blips,
 // matching the retry behavior in src/api/userApi.ts.

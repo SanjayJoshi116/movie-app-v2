@@ -42,10 +42,12 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId }: Props) => {
 
   if (loading) {
     return (
-      <Skeleton.Image
-        active
-        style={{ width: "100%", height: 420, borderRadius: 16, marginBottom: 28, display: "block" }}
-      />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}>
+        <Skeleton.Image
+          active
+          style={{ width: "100%", height: 420, borderRadius: 16, marginBottom: 28, display: "block" }}
+        />
+      </motion.div>
     );
   }
 

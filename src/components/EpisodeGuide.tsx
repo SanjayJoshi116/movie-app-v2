@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { motion } from "framer-motion";
 import { Select, Typography, Skeleton, Tag, Space, Collapse } from "antd";
 import { StarFilled, CalendarOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import { fetchTVSeason } from "../api/tmdb";
@@ -74,7 +75,14 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} active avatar={{ shape: "square", size: 80 }} paragraph={{ rows: 2 }} />
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: i * 0.05 }}
+            >
+              <Skeleton active avatar={{ shape: "square", size: 80 }} paragraph={{ rows: 2 }} />
+            </motion.div>
           ))}
         </div>
       ) : seasonData ? (

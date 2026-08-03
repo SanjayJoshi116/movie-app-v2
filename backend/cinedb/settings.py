@@ -14,8 +14,12 @@ TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
 # Fail closed: an unset ALLOWED_HOSTS env var means no hosts are allowed in
-# production (DEBUG=True still auto-allows localhost/127.0.0.1 via Django).
+# production. In DEBUG, wildcard so LAN devices (e.g. phone at 192.168.x.x)
+# hitting the dev server directly aren't rejected by the Host header check —
+# same relaxation CORS_ALLOW_ALL_ORIGINS already gets below.
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
+if DEBUG:
+    ALLOWED_HOSTS.append("*")
 
 if not DEBUG and SECRET_KEY == "django-insecure-dev-key-change-in-production":
     raise ImproperlyConfigured("Set SECRET_KEY env var before running in production.")

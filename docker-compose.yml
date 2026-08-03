@@ -35,31 +35,12 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.proxy
-    depends_on:
-      backend:
-        condition: service_healthy
-    env_file: .env.docker
-    environment:
-      DJANGO_API_URL: http://backend:8000/api
-      HOST_IP: ${HOST_IP:-}
-    healthcheck:
-      test: ["CMD", "node", "-e", "const net=require('net');const s=net.createConnection(3001,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     depends_on:
-      proxy:
+      backend:
         condition: service_healthy
     ports:
       - "80:80"

@@ -31,7 +31,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 - **33 REST API endpoints** across auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, and TMDB OAuth (`## API Overview` below)
 - **JWT auth** with silent refresh + rotation/blacklisting, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
-- **Dockerized, 4-service production stack** — nginx + React build, Express proxy, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
+- **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
 - **234 automated tests** — 28 Jest, 25 Django pytest, 25 Playwright (TS), 156 pytest-playwright — plus `ruff` lint, all run in CI on every push (`## Testing`)
 
@@ -141,7 +141,6 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - [Framer Motion](https://www.framer.com/motion/)
 - [Recharts](https://recharts.org/) — stats dashboard charts
 - [Axios](https://axios-http.com/)
-- [Express.js](https://expressjs.com/) — TMDB API proxy
 
 **Backend**
 - [Django 4](https://www.djangoproject.com/) + [Django REST Framework](https://www.django-rest-framework.org/)
@@ -159,13 +158,12 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 
 ```mermaid
 flowchart LR
-    Browser -->|React app| ExpressProxy["Express Proxy\n(server.js)"]
-    ExpressProxy -->|"/api/tmdb/*"| TMDB["TMDB API"]
-    ExpressProxy -->|"/api/django/*"| Django["Django REST API"]
+    Browser -->|React app| Django["Django REST API"]
+    Django -->|"/api/tmdb/*"| TMDB["TMDB API"]
     Django --> Postgres[("PostgreSQL")]
 ```
 
-All frontend requests — both TMDB lookups and app data (watchlist, watched, ratings, lists, stats, auth) — go through the one Express proxy, which forwards to either TMDB directly or the Django API depending on the path. This keeps the TMDB API key server-side only; the browser never sees it.
+All frontend requests — both TMDB lookups and app data (watchlist, watched, ratings, lists, stats, auth) — go to Django. A generic passthrough view proxies `/api/tmdb/*` to the real TMDB API; everything else is served directly from PostgreSQL. This keeps the TMDB API key server-side only; the browser never sees it.
 
 ```
 backend/
@@ -207,7 +205,7 @@ backend/
 
 src/
 ├── api/
-│   ├── tmdb.ts                  # TMDB API calls — typed, proxied through Express;
+│   ├── tmdb.ts                  # TMDB API calls — typed, proxied through Django;
 │   │                            #   filtersToTMDBParams() accepts mediaType to correctly
 │   │                            #   map year/sort params for movies vs TV
 │   └── userApi.ts               # Axios instance with Bearer token + auto 401 refresh;
@@ -378,17 +376,16 @@ python backend/manage.py compute_recommendations
 npm run dev
 ```
 
-The React app runs at `http://localhost:3000`. The Express proxy runs at `http://localhost:3001`. The Django API runs at `http://localhost:8000`.
+The React app runs at `http://localhost:3000`. The Django API runs at `http://localhost:8000`.
 
-> **Note:** All three must be running for the app to work fully. `npm run dev` starts them together using `concurrently`.
+> **Note:** Both must be running for the app to work fully. `npm run dev` starts them together using `concurrently` (and first runs `kill-port 3000 8000` to clear anything left over from a previous run).
 
 ### Available Scripts
 
 | Command                     | Description                                           |
 | --------------------------- | ----------------------------------------------------- |
-| `npm run dev`               | Start React, Express proxy, and Django (recommended)  |
-| `npm start`                 | Start React dev server only                           |
-| `npm run server`            | Start Express proxy server only                       |
+| `npm run dev`                | Start React and Django together (recommended, same as `npm start`) |
+| `npm start`                 | Same as `npm run dev`                                 |
 | `npm run django`            | Start Django API server only                          |
 | `npm run build`             | Production build                                      |
 | `npm test`                  | Run Jest unit tests                                   |
@@ -402,16 +399,15 @@ The React app runs at `http://localhost:3000`. The Express proxy runs at `http:/
 
 ## Environment Variables
 
-### `.env` — Frontend + Express Proxy (project root)
+### `.env` — Frontend (CRA dev server, project root)
 
-```
-TMDB_API_KEY=your_tmdb_api_key_here
-```
+Not required for a default local setup — only needed for LAN access (see `### LAN Access` below). CRA reads it directly (`HOST`, `DANGEROUSLY_DISABLE_HOST_CHECK`); nothing server-side lives here anymore.
 
 ### `backend/.env` — Django
 
 ```
 SECRET_KEY=your-django-secret-key
+TMDB_API_KEY=your_tmdb_api_key_here
 DB_NAME=cinedb
 DB_USER=postgres
 DB_PASSWORD=your_db_password
@@ -439,7 +435,7 @@ FRONTEND_URL=http://localhost:3000
 
 ## Docker Setup
 
-All four services (frontend, proxy, backend, database) run together via Docker Compose.
+All three services (frontend, backend, database) run together via Docker Compose.
 
 1. Create `.env.docker` in the project root:
 
@@ -453,7 +449,6 @@ DB_PORT=5432
 TMDB_API_KEY=your_tmdb_api_key
 SECRET_KEY=your-long-random-django-secret-key
 JWT_SIGNING_KEY=your-long-random-jwt-signing-key
-DJANGO_API_URL=http://backend:8000/api
 DEBUG=False
 ALLOWED_HOSTS=*
 FRONTEND_URL=http://localhost
@@ -464,9 +459,6 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=you@gmail.com
 EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
-
-# Optional: set to your machine's LAN IP so the proxy startup log shows the correct network URL
-# HOST_IP=192.168.x.x
 ```
 
 2. Build and start all services:
@@ -497,17 +489,16 @@ Find the host LAN IP:
 | Service    | Image                  | Port            |
 | ---------- | ---------------------- | --------------- |
 | `frontend` | nginx + React build    | 80 (public)     |
-| `proxy`    | Node/Express           | 3001 (internal) |
 | `backend`  | Python/Django          | 8000 (internal) |
 | `db`       | postgres:15-alpine     | 5432 (internal) |
 
-Nginx proxies `/api/*` to the Express proxy (which forwards TMDB requests and Django API calls) and `/media/*` straight to the `backend` service for uploaded avatars. PostgreSQL data persists in the `pgdata` Docker volume; uploaded avatars persist in the `media_data` volume.
+Nginx proxies `/api/*` straight to the `backend` service (which itself proxies TMDB requests, keeping the API key server-side, and serves Django API calls directly) and `/media/*` to `backend` for uploaded avatars. PostgreSQL data persists in the `pgdata` Docker volume; uploaded avatars persist in the `media_data` volume.
 
 ---
 
 ## Deployment
 
-The Docker Compose setup above is a complete production stack (nginx + React build, Express proxy, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice. Set `DEBUG=False`, a real `SECRET_KEY`, and `ALLOWED_HOSTS` for your domain in `.env.docker` (see [Environment Variables](#environment-variables)) before deploying anywhere public.
+The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice. Set `DEBUG=False`, a real `SECRET_KEY`, and `ALLOWED_HOSTS` for your domain in `.env.docker` (see [Environment Variables](#environment-variables)) before deploying anywhere public.
 
 ---
 

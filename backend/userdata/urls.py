@@ -2,8 +2,12 @@ from django.urls import path
 from . import views
 from .auth_views import SafeTokenRefreshView
 from .recommendations import personalized_recommendations, recommendations_for_you
+from .tmdb_proxy_views import tmdb_proxy
 
 urlpatterns = [
+    # TMDB proxy (key stays server-side)
+    path("tmdb/<path:tmdb_path>", tmdb_proxy),
+
     # Auth
     path("auth/register/", views.register),
     path("auth/login/", views.login),

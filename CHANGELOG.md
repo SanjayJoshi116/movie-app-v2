@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.4] - 2026-08-03
+
+### Changed
+- Removed the Express proxy (`server.js`, `Dockerfile.proxy`) entirely — its two real jobs (hiding the TMDB API key, forwarding `/api/django/*`) now live directly in Django. New `backend/userdata/tmdb_proxy_views.py` (`tmdb_proxy`, mounted at `api/tmdb/<path:tmdb_path>`) is a public (`AllowAny`) passthrough reusing `tmdb_client.py`'s `TMDB_BASE`; `src/api/tmdb.ts` and `src/api/userApi.ts` now point at Django (`:8000`) directly instead of the old `:3001` proxy, and `userApi.ts` drops the `/django` path segment Express used to strip. `nginx.conf` now proxies `/api/` straight to `backend:8000`; `docker-compose.yml` drops the `proxy` service (`frontend` now depends on `backend`); `Dockerfile.frontend`'s `REACT_APP_API_BASE_URL` build arg updated to match. `package.json` drops `express`/`cors`/`csv-writer`/`dotenv`/`body-parser` (all unused once `server.js` is gone) and the `dev`/`start` scripts' `concurrently` calls go from 3 processes to 2.
+- The dead `/api/mark-watched` CSV-writer endpoint (`server.js`, superseded by the Postgres-backed watched feature since 0.10.0, zero callers anywhere in `src/`) is gone along with the file — no replacement needed.
+- `SkeletonCard.tsx` cards now fade/slide in staggered instead of appearing all at once, and its poster placeholder uses a real `2/3` aspect ratio instead of a fixed 220px block. Extracted the byte-identical loading-skeleton block duplicated across `MovieDetailPage.tsx`/`TVDetailPage.tsx` into a shared `DetailPageSkeleton.tsx` (also fades in); `HeroBanner.tsx`'s and `EpisodeGuide.tsx`'s loading skeletons got the same fade/stagger treatment for consistency.
+- Added `predev`/`prestart` npm scripts (`kill-port 3000 8000`) so a stale process left on those ports from a previous run no longer silently blocks the next `npm run dev`.
+
+### Fixed
+- LAN access broke as a side effect of the Express removal above: Express always talked to Django via `localhost:8000` internally, so Django's `ALLOWED_HOSTS` check never saw a request's real Host header; with the browser now hitting Django directly, a LAN device (e.g. `192.168.x.x:8000`) got a `DisallowedHost` 400 on login. `backend/cinedb/settings.py` now appends `"*"` to `ALLOWED_HOSTS` under `DEBUG`, mirroring the wildcard `CORS_ALLOW_ALL_ORIGINS` already gets in dev.
+- The new `tmdb_proxy` view saw sporadic 502s under normal use — a movie/TV detail page fires ~6 concurrent proxy requests, and a bare per-call `requests.get()` (fresh TLS handshake each time, no pooling) occasionally hit a transient connection reset under that burst, unlike the old Express/axios proxy which kept a persistent connection pool. Now uses a shared module-level `requests.Session()` with an `HTTPAdapter`/`Retry` (2 retries, 0.3s backoff) mounted on it, and the timeout raised from 10s to 20s.
+
 ## [0.15.3] - 2026-07-14
 
 ### Changed

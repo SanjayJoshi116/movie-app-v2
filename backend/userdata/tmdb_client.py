@@ -3,6 +3,21 @@ from django.conf import settings
 
 TMDB_BASE = "https://api.themoviedb.org/3"
 
+# Static fallback so a failed /genre/{type}/list call never surfaces a raw
+# genre id to the user (e.g. "Your Taste: 18 & 10749" instead of names).
+# TMDB genre ids are stable/rarely change, so this only goes stale if TMDB
+# adds a brand-new genre.
+STATIC_GENRE_NAMES = {
+    28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+    99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy",
+    36: "History", 27: "Horror", 10402: "Music", 9648: "Mystery",
+    10749: "Romance", 878: "Science Fiction", 10770: "TV Movie",
+    53: "Thriller", 10752: "War", 37: "Western",
+    10759: "Action & Adventure", 10762: "Kids", 10763: "News",
+    10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap",
+    10767: "Talk", 10768: "War & Politics",
+}
+
 
 def _get(path, params=None):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
@@ -50,9 +65,13 @@ def get_details_with_cast(media_id, media_type):
 
 
 def get_genre_names(media_type):
-    """Return {genre_id: name} map for movie or tv."""
-    data = _get(f"/genre/{media_type}/list")
-    return {g["id"]: g["name"] for g in data.get("genres", [])}
+    """Return {genre_id: name} map for movie or tv. Falls back to a static
+    map on request failure so callers never get an empty result."""
+    try:
+        data = _get(f"/genre/{media_type}/list")
+        return {g["id"]: g["name"] for g in data.get("genres", [])}
+    except Exception:
+        return dict(STATIC_GENRE_NAMES)
 
 
 def _post(path, body=None, params=None):
