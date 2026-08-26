@@ -543,7 +543,7 @@ pip install -r backend/requirements-test.txt
 pytest backend/
 ```
 
-### E2E tests — Playwright (25 tests, 2 projects)
+### E2E tests — Playwright (27 tests, 2 projects)
 
 Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
 

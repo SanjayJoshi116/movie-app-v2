@@ -7,6 +7,7 @@ import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
@@ -19,7 +20,7 @@ import {
   filtersToTMDBParams,
 } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
-import { pageVariants } from "../constants/ui";
+import { pageVariants, POSTER_THUMB_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
 const MOVIE_CATEGORIES = [
@@ -175,19 +176,19 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
               <div
                 key={`${item.type}-${item.id}`}
                 onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`)}
+                title={item.title}
                 style={{ flexShrink: 0, width: 72, cursor: "pointer" }}
               >
-                <img
-                  src={
-                    item.posterPath
-                      ? `https://image.tmdb.org/t/p/w185${item.posterPath}`
-                      : "https://placehold.co/72x108?text=?"
-                  }
-                  alt={item.title}
-                  title={item.title}
-                  loading="lazy"
-                  style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
-                />
+                {item.posterPath ? (
+                  <img
+                    src={`${POSTER_THUMB_URL}${item.posterPath}`}
+                    alt={item.title}
+                    loading="lazy"
+                    style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
+                  />
+                ) : (
+                  <PosterPlaceholder style={{ width: 72, height: 108, borderRadius: 6 }} />
+                )}
               </div>
             ))}
           </div>

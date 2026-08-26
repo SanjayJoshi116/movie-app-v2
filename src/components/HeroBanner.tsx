@@ -6,8 +6,7 @@ import { StarFilled } from "@ant-design/icons";
 import { fetchTrending } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { FONT_SIZE } from "../constants/typography";
-
-const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
+import { BACKDROP_URL } from "../constants/ui";
 
 interface Props {
   mediaType: "movie" | "tv";

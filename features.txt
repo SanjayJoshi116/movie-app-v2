@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.6)
+CINE DB — Feature List (v0.15.7)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -40,6 +40,7 @@ AUTH
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
 - Profile photo upload/remove (JPEG/PNG/WebP, 5MB max), shown wherever the avatar appears
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
+- Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors
 
 UI/UX
 - Skeleton loaders (staggered fade-in), toast notifications

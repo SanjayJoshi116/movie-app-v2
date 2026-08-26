@@ -6,6 +6,8 @@ export const pageVariants = {
 
 export const IMG_URL = "https://image.tmdb.org/t/p/w500";
 
+export const POSTER_THUMB_URL = "https://image.tmdb.org/t/p/w185";
+
 export const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
 export const RATING_GOLD = "#f5c518";

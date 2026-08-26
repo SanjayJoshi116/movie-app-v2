@@ -19,6 +19,7 @@ import {
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 
 const SS_SEARCH = "foryou_search";
@@ -50,12 +51,16 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
         className="glass-card"
         onClick={() => navigate(path, { state: { from: "/recommendations" } })}
         cover={
-          <img
-            src={item.posterPath ? `${IMG_URL}${item.posterPath}` : "https://placehold.co/500x750?text=No+Image"}
-            alt={item.title}
-            loading="lazy"
-            className="movie-poster-img"
-          />
+          item.posterPath ? (
+            <img
+              src={`${IMG_URL}${item.posterPath}`}
+              alt={item.title}
+              loading="lazy"
+              className="movie-poster-img"
+            />
+          ) : (
+            <PosterPlaceholder className="movie-poster-img" />
+          )
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}

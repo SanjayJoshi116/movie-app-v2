@@ -15,6 +15,7 @@ import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
 import { genres } from "../../constants/genres";
 import { FONT_SIZE } from "../../constants/typography";
+import { RATING_GOLD } from "../../constants/ui";
 
 const { CheckableTag } = Tag;
 
@@ -198,7 +199,7 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
                   fontSize: FONT_SIZE.caption,
                   padding: "4px 12px",
                   borderRadius: 50,
-                  border: selected ? "1px solid #f5c518" : "1px solid rgba(128,128,128,0.4)",
+                  border: selected ? `1px solid ${RATING_GOLD}` : "1px solid rgba(128,128,128,0.4)",
                   cursor: "pointer",
                 }}
               >

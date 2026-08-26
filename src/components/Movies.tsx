@@ -34,7 +34,7 @@ function Movies({ movies, onKnowMore, searchTerm, hasFilters }: Props) {
   }
 
   return (
-    <main>
+    <main aria-label="Movie results">
       <Row gutter={[16, 20]}>
         {movies.map((movie) => (
           <Col key={movie.id} xs={12} sm={8} md={6} lg={4} xl={4}>

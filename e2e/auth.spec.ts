@@ -34,6 +34,35 @@ test.describe("Login page", () => {
     await expect(page.locator(".ant-message-notice-content")).toContainText("Invalid username or password.", { timeout: 8_000 });
   });
 
+  test("keeps username filled in after a failed login", async ({ page }) => {
+    await page.route("**/api/auth/login/", (route) =>
+      route.fulfill({ status: 400, json: { detail: "Invalid credentials." } })
+    );
+
+    await page.goto("/login");
+    await page.getByLabel("Username").fill("wronguser");
+    await page.getByLabel("Password").fill("wrongpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    await expect(page.locator(".ant-message-notice-content")).toContainText("Invalid username or password.", { timeout: 8_000 });
+    await expect(page.getByLabel("Username")).toHaveValue("wronguser");
+    await expect(page.getByLabel("Password")).toHaveValue("");
+  });
+
+  test("shows a connection error when the server is unreachable", async ({ page }) => {
+    await page.route("**/api/auth/login/", (route) => route.abort("connectionrefused"));
+
+    await page.goto("/login");
+    await page.getByLabel("Username").fill("testuser");
+    await page.getByLabel("Password").fill("testpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    await expect(page.locator(".ant-message-notice-content")).toContainText(
+      "Can't reach the server. Check your connection and try again.",
+      { timeout: 8_000 }
+    );
+  });
+
   test("redirects to /movies after successful login", async ({ page }) => {
     await page.route("**/api/auth/login/", (route) =>
       route.fulfill({

@@ -10,6 +10,7 @@ import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
+import { PosterPlaceholder } from "./PosterPlaceholder";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -45,12 +46,16 @@ const Movie = ({ movie, onKnowMore }: Props) => {
         hoverable
         className="glass-card"
         cover={
-          <img
-            src={poster_path ? `${IMG_URL}${poster_path}` : "https://placehold.co/500x750?text=No+Image"}
-            alt={title}
-            loading="lazy"
-            className="movie-poster-img"
-          />
+          poster_path ? (
+            <img
+              src={`${IMG_URL}${poster_path}`}
+              alt={title}
+              loading="lazy"
+              className="movie-poster-img"
+            />
+          ) : (
+            <PosterPlaceholder className="movie-poster-img" />
+          )
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}

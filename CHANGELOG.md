@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.7] - 2026-08-26
+
+### Fixed
+- Four remaining call sites (`Movie.tsx`, `TVShowCard.tsx`, `RecommendationsPage.tsx`'s `RecCard`, `SearchPage.tsx`'s Movies/TV tabs) were still falling back to a `placehold.co` SVG `<img>` for missing posters instead of the documented `PosterPlaceholder` component — swapped all four to match convention. `HomePage.tsx`'s recently-watched strip also switches its no-poster fallback to `PosterPlaceholder`, and its poster URL now uses a new `POSTER_THUMB_URL` (`w185`) constant instead of an inline hardcoded TMDB URL.
+- Failed login no longer clears the username field — only the password is cleared and refocused, so a typo doesn't force retyping both. Error messaging now distinguishes bad credentials (400/401 → "Invalid username or password.") from an unreachable backend (anything else → "Can't reach the server. Check your connection and try again."), previously both cases showed the same message.
+
+### Changed
+- `HeroBanner.tsx` now imports `BACKDROP_URL` from `src/constants/ui.ts` instead of redeclaring it locally; `FilterPanel.tsx`'s genre-tag selected border now uses the shared `RATING_GOLD` constant instead of a hardcoded `#f5c518`.
+- `LoginPage.tsx`: username/password inputs disable while a login request is in flight, username autofocuses on mount, and the submitted username is trimmed before the request.
+- `Movies.tsx`'s results `<main>` gained `aria-label="Movie results"`.
+
+### Added
+- 2 new Playwright cases in `e2e/auth.spec.ts` covering the above: username-retained-after-failed-login, and the unreachable-server message path. TS Playwright suite is now 27 tests (was 25).
+
 ## [0.15.6] - 2026-08-03
 
 ### Fixed

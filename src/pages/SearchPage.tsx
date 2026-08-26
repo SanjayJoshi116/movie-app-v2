@@ -15,6 +15,7 @@ import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../type
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
+import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { getApiError } from "../utils/apiError";
 import type { MediaType } from "../types";
 
@@ -158,12 +159,16 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                 hoverable
                 className="glass-card"
                 cover={
-                  <img
-                    src={m.poster_path ? `${IMG_URL}${m.poster_path}` : "https://placehold.co/500x750?text=No+Image"}
-                    alt={m.title}
-                    loading="lazy"
-                    className="movie-poster-img"
-                  />
+                  m.poster_path ? (
+                    <img
+                      src={`${IMG_URL}${m.poster_path}`}
+                      alt={m.title}
+                      loading="lazy"
+                      className="movie-poster-img"
+                    />
+                  ) : (
+                    <PosterPlaceholder className="movie-poster-img" />
+                  )
                 }
                 styles={{ body: { padding: "10px 12px" } }}
                 style={{ height: "100%" }}
@@ -273,12 +278,16 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                 hoverable
                 className="glass-card"
                 cover={
-                  <img
-                    src={t.poster_path ? `${IMG_URL}${t.poster_path}` : "https://placehold.co/500x750?text=No+Image"}
-                    alt={t.name}
-                    loading="lazy"
-                    className="movie-poster-img"
-                  />
+                  t.poster_path ? (
+                    <img
+                      src={`${IMG_URL}${t.poster_path}`}
+                      alt={t.name}
+                      loading="lazy"
+                      className="movie-poster-img"
+                    />
+                  ) : (
+                    <PosterPlaceholder className="movie-poster-img" />
+                  )
                 }
                 styles={{ body: { padding: "10px 12px" } }}
                 style={{ height: "100%" }}

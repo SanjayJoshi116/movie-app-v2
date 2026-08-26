@@ -14,18 +14,22 @@ export default function LoginPage() {
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/movies";
 
   const onFinish = async (values: { username: string; password: string }) => {
+    const username = values.username.trim();
     setLoading(true);
     try {
-      await login(values.username, values.password);
+      await login(username, values.password);
       navigate(from, { replace: true });
     } catch (err) {
-      form.resetFields();
       const status = (err as AxiosError).response?.status;
+      form.setFieldsValue({ username, password: "" });
       if (status === 429) {
         message.error("Too many login attempts. Please wait a moment and try again.");
-      } else {
+      } else if (status === 400 || status === 401) {
         message.error("Invalid username or password.");
+      } else {
+        message.error("Can't reach the server. Check your connection and try again.");
       }
+      setTimeout(() => form.getFieldInstance("password")?.focus(), 0);
     } finally {
       setLoading(false);
     }
@@ -39,10 +43,10 @@ export default function LoginPage() {
         </Typography.Title>
         <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="username" label="Username" rules={[{ required: true, message: "Enter your username" }]}>
-            <Input size="large" autoComplete="username" />
+            <Input size="large" autoComplete="username" autoFocus disabled={loading} />
           </Form.Item>
           <Form.Item name="password" label="Password" rules={[{ required: true, message: "Enter your password" }]}>
-            <Input.Password size="large" autoComplete="current-password" />
+            <Input.Password size="large" autoComplete="current-password" disabled={loading} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block size="large" loading={loading}>
