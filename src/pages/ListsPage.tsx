@@ -1,38 +1,53 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Typography, Button, Modal, Form, Input, Select, Card, Row, Col, Empty,
+  Typography, Button, Modal, Form, Input, Card, Row, Col, Empty,
   Space, Popconfirm, Tag, Spin,
 } from "antd";
 import {
-  PlusOutlined, DeleteOutlined, UnorderedListOutlined, UploadOutlined, SearchOutlined,
+  PlusOutlined, DeleteOutlined, UnorderedListOutlined, UploadOutlined,
 } from "@ant-design/icons";
 
 import { useListsContext } from "../context/useListsContext";
+import type { UserList } from "../types";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
+import FilterBar from "../components/FilterBar";
 import { pageVariants, RATING_GOLD, IMG_URL } from "../constants/ui";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
-
-const SS_SEARCH = "lists_search";
-const SS_SORT = "lists_sort";
+import { useLibraryFilters } from "../hooks/useLibraryFilters";
 
 type SortKey = "created-desc" | "created-asc" | "name-asc" | "items-desc";
+
+const SORT_FNS: Record<SortKey, (a: UserList, b: UserList) => number> = {
+  "created-desc": (a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
+  "created-asc": (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+  "name-asc": (a, b) => a.name.localeCompare(b.name),
+  "items-desc": (a, b) => b.items.length - a.items.length,
+};
 
 function ListsPage() {
   const navigate = useNavigate();
   const { lists, isLoading, createList, deleteList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importListOpen, setImportListOpen] = useState(false);
-  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
-  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "created-desc");
   const [form] = Form.useForm();
   const { showSuccess, showError } = useToast();
+
+  const {
+    search, setSearch, sortKey, setSortKey, filtered: filteredLists, isDefault, resetFilters,
+  } = useLibraryFilters<UserList>({
+    keyPrefix: "lists",
+    items: lists,
+    sortFns: SORT_FNS,
+    defaultSort: "created-desc",
+    getTitle: (l) => l.name,
+  });
 
   const handleCreate = () => {
     form.validateFields().then(async (values) => {
@@ -46,21 +61,6 @@ function ListsPage() {
       }
     });
   };
-
-  const filteredLists = useMemo(() => {
-    let items = [...lists];
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter((l) => l.name.toLowerCase().includes(q));
-    }
-    switch (sortKey) {
-      case "created-asc": items.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "")); break;
-      case "name-asc":    items.sort((a, b) => a.name.localeCompare(b.name)); break;
-      case "items-desc":  items.sort((a, b) => b.items.length - a.items.length); break;
-      default:            items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
-    }
-    return items;
-  }, [lists, search, sortKey]);
 
   return (
     <motion.div
@@ -87,38 +87,22 @@ function ListsPage() {
       </div>
 
       {lists.length > 0 && (
-        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
-          <Input
-            id="lists-search"
-            name="search"
-            autoComplete="off"
-            prefix={<SearchOutlined />}
-            placeholder="Search lists…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
-            style={{ width: "100%", maxWidth: 200 }}
-          />
-          <Select
-            value={sortKey}
-            onChange={setSortKey}
-            style={{ width: "100%", maxWidth: 180 }}
-            options={[
+        <FilterBar
+          search={{ value: search, onChange: setSearch, id: "lists-search", placeholder: "Search lists…" }}
+          sort={{
+            value: sortKey,
+            onChange: setSortKey,
+            maxWidth: 180,
+            options: [
               { label: "Created (newest)", value: "created-desc" },
               { label: "Created (oldest)", value: "created-asc" },
               { label: "Name A–Z", value: "name-asc" },
               { label: "Item count ↓", value: "items-desc" },
-            ]}
-          />
-          {(search.trim() !== "" || sortKey !== "created-desc") && (
-            <Button
-              type="text"
-              onClick={() => { setSearch(""); setSortKey("created-desc"); }}
-            >
-              Clear filters
-            </Button>
-          )}
-        </Space>
+            ],
+          }}
+          showClear={!isDefault}
+          onClear={resetFilters}
+        />
       )}
 
       {isLoading ? (

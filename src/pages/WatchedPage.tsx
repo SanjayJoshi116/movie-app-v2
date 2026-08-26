@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Input, Select, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Select, Tooltip,
 } from "antd";
-import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
@@ -13,6 +13,7 @@ import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
 import MediaGrid from "../components/MediaGrid";
+import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, WATCHED_GREEN } from "../constants/ui";
@@ -131,52 +132,32 @@ function WatchedPage() {
       )}
 
       {watchedList.length > 0 && (
-        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
-          <Input
-            id="watched-search"
-            name="search"
-            autoComplete="off"
-            prefix={<SearchOutlined />}
-            placeholder="Search title…"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPageState(1, pageSize); }}
-            allowClear
-            style={{ width: "100%", maxWidth: 200 }}
-          />
-          <Select
-            value={sortKey}
-            onChange={(v) => { setSortKey(v); setPageState(1, pageSize); }}
-            style={{ width: "100%", maxWidth: 180 }}
-            options={[
+        <FilterBar
+          search={{
+            value: search,
+            onChange: (v) => { setSearch(v); setPageState(1, pageSize); },
+            id: "watched-search",
+            placeholder: "Search title…",
+          }}
+          sort={{
+            value: sortKey,
+            onChange: (v) => { setSortKey(v); setPageState(1, pageSize); },
+            maxWidth: 180,
+            options: [
               { label: "Watched (newest)", value: "watched-desc" },
               { label: "Title A–Z", value: "title-asc" },
               { label: "TMDB Rating ↓", value: "tmdb-desc" },
               { label: "My Rating ↓", value: "my-rating-desc" },
-            ]}
-          />
-          <Select
-            value={typeFilter}
-            onChange={(v) => { setTypeFilter(v); setPageState(1, pageSize); }}
-            style={{ width: "100%", maxWidth: 130 }}
-            options={[
-              { label: "All Types", value: "all" },
-              { label: "Movies", value: "movie" },
-              { label: "TV Shows", value: "tv" },
-            ]}
-          />
-          <InfoTooltip title="TMDB Rating is the public community score; My Rating is your personal rating." />
-          {!isDefault && (
-            <Button
-              type="text"
-              onClick={() => {
-                resetFilters();
-                setPageState(1, pageSize);
-              }}
-            >
-              Clear filters
-            </Button>
-          )}
-        </Space>
+            ],
+          }}
+          typeFilter={{ value: typeFilter, onChange: (v) => { setTypeFilter(v); setPageState(1, pageSize); } }}
+          extra={<InfoTooltip title="TMDB Rating is the public community score; My Rating is your personal rating." />}
+          showClear={!isDefault}
+          onClear={() => {
+            resetFilters();
+            setPageState(1, pageSize);
+          }}
+        />
       )}
 
       {watchedList.length === 0 ? (

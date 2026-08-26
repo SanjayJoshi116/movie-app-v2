@@ -2,15 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Button, Tag, Typography, Empty, Space, Popconfirm, Input, Select, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Select, Tooltip,
 } from "antd";
-import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, SearchOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
+import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import LibraryItemCard from "../components/LibraryItemCard";
 import MediaGrid from "../components/MediaGrid";
+import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
@@ -126,61 +127,38 @@ function WatchlistPage() {
       </div>
 
       {watchlist.length > 0 && (
-        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
-          <Input
-            id="watchlist-search"
-            name="search"
-            autoComplete="off"
-            prefix={<SearchOutlined />}
-            placeholder="Search title…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
-            style={{ width: "100%", maxWidth: 200 }}
-          />
-          <Select
-            value={sortKey}
-            onChange={setSortKey}
-            style={{ width: "100%", maxWidth: 170 }}
-            options={[
+        <FilterBar
+          search={{ value: search, onChange: setSearch, id: "watchlist-search", placeholder: "Search title…" }}
+          sort={{
+            value: sortKey,
+            onChange: setSortKey,
+            maxWidth: 170,
+            options: [
               { label: "Added (newest)", value: "added-desc" },
               { label: "Added (oldest)", value: "added-asc" },
               { label: "Title A–Z", value: "title-asc" },
               { label: "TMDB Rating ↓", value: "rating-desc" },
-            ]}
-          />
-          <Select
-            value={typeFilter}
-            onChange={setTypeFilter}
-            style={{ width: "100%", maxWidth: 130 }}
-            options={[
-              { label: "All Types", value: "all" },
-              { label: "Movies", value: "movie" },
-              { label: "TV Shows", value: "tv" },
-            ]}
-          />
-          <Select
-            value={watchedFilter}
-            onChange={setWatchedFilter}
-            style={{ width: "100%", maxWidth: 150 }}
-            options={[
-              { label: "All", value: "all" },
-              { label: "Watched", value: "watched" },
-              { label: "Unwatched", value: "unwatched" },
-            ]}
-          />
-          {(!isDefault || watchedFilter !== "all") && (
-            <Button
-              type="text"
-              onClick={() => {
-                resetFilters();
-                setWatchedFilter("all");
-              }}
-            >
-              Clear filters
-            </Button>
-          )}
-        </Space>
+            ],
+          }}
+          typeFilter={{ value: typeFilter, onChange: setTypeFilter }}
+          extra={
+            <Select
+              value={watchedFilter}
+              onChange={setWatchedFilter}
+              style={{ width: "100%", maxWidth: 150 }}
+              options={[
+                { label: "All", value: "all" },
+                { label: "Watched", value: "watched" },
+                { label: "Unwatched", value: "unwatched" },
+              ]}
+            />
+          }
+          showClear={!isDefault || watchedFilter !== "all"}
+          onClear={() => {
+            resetFilters();
+            setWatchedFilter("all");
+          }}
+        />
       )}
 
       {watchlist.length === 0 ? (

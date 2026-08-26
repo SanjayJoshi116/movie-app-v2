@@ -36,6 +36,6 @@ def tmdb_proxy(request, tmdb_path):
     try:
         r = _session.get(f"{TMDB_BASE}/{tmdb_path}", params=params, timeout=20)
         return Response(r.json(), status=r.status_code)
-    except Exception:
+    except (requests.RequestException, ValueError):
         logger.exception("tmdb_proxy request failed for path %s", tmdb_path)
         return Response({"error": "TMDB request failed."}, status=502)

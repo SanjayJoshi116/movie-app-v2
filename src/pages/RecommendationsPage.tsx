@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Input, Select, Tooltip, Space } from "antd";
+import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Tooltip } from "antd";
 import { StarFilled, BulbOutlined, SearchOutlined, EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useUIContext } from "../context/UIContext";
@@ -20,12 +20,12 @@ import { pageVariants, IMG_URL } from "../constants/ui";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
+import FilterBar from "../components/FilterBar";
+import type { LibraryTypeFilter } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 
 const SS_SEARCH = "foryou_search";
 const SS_TYPE_FILTER = "foryou_type_filter";
-
-type TypeFilter = "all" | "movie" | "tv";
 
 function getRatingColor(vote: number): string {
   if (vote >= 8) return "#52c41a";
@@ -203,7 +203,7 @@ function RecommendationsPage() {
   const { watchedList, isDataLoading } = useAppContext();
 
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as TypeFilter) ?? "all");
+  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as LibraryTypeFilter) ?? "all");
 
   useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
   useEffect(() => { sessionStorage.setItem(SS_TYPE_FILTER, typeFilter); }, [typeFilter]);
@@ -339,34 +339,12 @@ function RecommendationsPage() {
       </Typography.Text>
 
       {totalItems > 0 && (
-        <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
-          <Input
-            id="recommendations-search"
-            name="search"
-            autoComplete="off"
-            prefix={<SearchOutlined />}
-            placeholder="Search title…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
-            style={{ width: "100%", maxWidth: 200 }}
-          />
-          <Select
-            value={typeFilter}
-            onChange={setTypeFilter}
-            style={{ width: "100%", maxWidth: 130 }}
-            options={[
-              { label: "All Types", value: "all" },
-              { label: "Movies", value: "movie" },
-              { label: "TV Shows", value: "tv" },
-            ]}
-          />
-          {hasActiveFilters && (
-            <Button type="text" onClick={() => { setSearch(""); setTypeFilter("all"); }}>
-              Clear filters
-            </Button>
-          )}
-        </Space>
+        <FilterBar
+          search={{ value: search, onChange: setSearch, id: "recommendations-search", placeholder: "Search title…" }}
+          typeFilter={{ value: typeFilter, onChange: setTypeFilter }}
+          showClear={hasActiveFilters}
+          onClear={() => { setSearch(""); setTypeFilter("all"); }}
+        />
       )}
 
       {isDataLoading ? (

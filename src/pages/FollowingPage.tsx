@@ -1,30 +1,39 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Button, Typography, Empty, Spin, Space, Input, Select } from "antd";
-import { UserAddOutlined, SearchOutlined } from "@ant-design/icons";
+import { Row, Col, Button, Typography, Empty, Spin } from "antd";
+import { UserAddOutlined } from "@ant-design/icons";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
-import { fetchFollowedPeopleRecommendations, type PersonalizedRecSection } from "../api/userApi";
+import { fetchFollowedPeopleRecommendations, type PersonalizedRecSection, type FollowedPersonEntry } from "../api/userApi";
 import PersonCard from "../components/PersonCard";
+import FilterBar from "../components/FilterBar";
+import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { SectionRow } from "./RecommendationsPage";
 import { pageVariants, RATING_GOLD } from "../constants/ui";
 
 const { Title } = Typography;
 
-const SS_SEARCH = "following_search";
-const SS_SORT = "following_sort";
-
 type SortKey = "name-asc" | "name-desc";
+
+const SORT_FNS: Record<SortKey, (a: FollowedPersonEntry, b: FollowedPersonEntry) => number> = {
+  "name-asc": (a, b) => a.name.localeCompare(b.name),
+  "name-desc": (a, b) => b.name.localeCompare(a.name),
+};
 
 function FollowingPage() {
   const navigate = useNavigate();
   const { followed, loading } = useFollowedPeople();
-  const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
-  const [sortKey, setSortKey] = useState<SortKey>(() => (sessionStorage.getItem(SS_SORT) as SortKey) ?? "name-asc");
   const [recSections, setRecSections] = useState<PersonalizedRecSection[]>([]);
 
-  useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
-  useEffect(() => { sessionStorage.setItem(SS_SORT, sortKey); }, [sortKey]);
+  const {
+    search, setSearch, sortKey, setSortKey, filtered: filteredFollowed, isDefault, resetFilters,
+  } = useLibraryFilters<FollowedPersonEntry>({
+    keyPrefix: "following",
+    items: followed,
+    sortFns: SORT_FNS,
+    defaultSort: "name-asc",
+    getTitle: (p) => p.name,
+  });
 
   useEffect(() => {
     if (followed.length === 0) { setRecSections([]); return; }
@@ -32,16 +41,6 @@ function FollowingPage() {
       .then((res) => setRecSections(res.data))
       .catch(() => setRecSections([]));
   }, [followed.length]);
-
-  const filteredFollowed = useMemo(() => {
-    let items = [...followed];
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter((p) => p.name.toLowerCase().includes(q));
-    }
-    items.sort((a, b) => sortKey === "name-asc" ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
-    return items;
-  }, [followed, search, sortKey]);
 
   if (loading) {
     return (
@@ -76,36 +75,20 @@ function FollowingPage() {
         </Empty>
       ) : (
         <>
-          <Space style={{ marginBottom: 16, flexWrap: "wrap" }}>
-            <Input
-              id="following-search"
-              name="search"
-              autoComplete="off"
-              prefix={<SearchOutlined />}
-              placeholder="Search people…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              allowClear
-              style={{ width: "100%", maxWidth: 200 }}
-            />
-            <Select
-              value={sortKey}
-              onChange={setSortKey}
-              style={{ width: "100%", maxWidth: 150 }}
-              options={[
+          <FilterBar
+            search={{ value: search, onChange: setSearch, id: "following-search", placeholder: "Search people…" }}
+            sort={{
+              value: sortKey,
+              onChange: setSortKey,
+              maxWidth: 150,
+              options: [
                 { label: "Name A–Z", value: "name-asc" },
                 { label: "Name Z–A", value: "name-desc" },
-              ]}
-            />
-            {(search.trim() !== "" || sortKey !== "name-asc") && (
-              <Button
-                type="text"
-                onClick={() => { setSearch(""); setSortKey("name-asc"); }}
-              >
-                Clear filters
-              </Button>
-            )}
-          </Space>
+              ],
+            }}
+            showClear={!isDefault}
+            onClear={resetFilters}
+          />
 
           {filteredFollowed.length === 0 ? (
             <Empty description={`No results for "${search}"`} style={{ padding: "40px 0" }} />

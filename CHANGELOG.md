@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.8] - 2026-08-26
+
+### Changed
+- Extracted the search `Input`/sort `Select`/type-filter `Select`/"Clear filters" `Button` chrome duplicated across all 6 list/browse pages (`WatchlistPage`, `WatchedPage`, `ListDetailPage`, `ListsPage`, `FollowingPage`, `RecommendationsPage`) into a new shared `FilterBar.tsx` component — presentational only, no change to any page's filtering behavior.
+- Widened `useLibraryFilters.ts` with optional `getTitle`/`getType` accessor params (dropped its `T extends LibraryItem` generic constraint) and `MediaGrid.tsx` with an optional `colSpan` override — both default to prior behavior, so `WatchlistPage`/`WatchedPage` needed no changes. `ListsPage.tsx` and `FollowingPage.tsx` now run through `useLibraryFilters` instead of hand-rolled `search`/`sortKey` state + sessionStorage effects; `ListDetailPage.tsx` now renders through `MediaGrid` (`colSpan={{ md: 4 }}`, preserving its existing 6-cards-per-tablet-row density) instead of its own `Row`/`Col`. `RecommendationsPage.tsx` stays off both — grouped-sections shape and no sort control, a structural mismatch documented in CLAUDE.md rather than left as an open migration candidate.
+
+### Fixed
+- `tmdb_proxy_views.py`'s `tmdb_proxy` view narrowed its bare `except Exception:` to `except (requests.RequestException, ValueError):`, matching the project's stated exception-handling convention and the two failure modes the try block can actually raise (TMDB connection failure, non-JSON response) — a genuinely unexpected exception now surfaces as a 500 instead of a misleading 502. Added `test_tmdb_proxy.py` confirming the clean-502 behavior is unchanged.
+
 ## [0.15.7] - 2026-08-26
 
 ### Fixed

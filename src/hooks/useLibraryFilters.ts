@@ -3,18 +3,17 @@ import type { MediaType } from "../types";
 
 export type LibraryTypeFilter = "all" | "movie" | "tv";
 
-interface LibraryItem {
-  type: MediaType;
-  title: string;
-}
-
-interface Options<T extends LibraryItem> {
+interface Options<T> {
   keyPrefix: string;
   items: T[];
   sortFns: Record<string, (a: T, b: T) => number>;
   defaultSort: string;
   /** Page-specific extra predicate (e.g. Watchlist's watched-status filter) applied on top of type/search. */
   extraFilter?: (item: T) => boolean;
+  /** Defaults to reading `.title` — override for items whose display/search field is named differently (e.g. List.name). */
+  getTitle?: (item: T) => string;
+  /** Omit entirely for items with no movie/tv distinction (e.g. List, Person) — the type filter then becomes a no-op. */
+  getType?: (item: T) => MediaType;
 }
 
 /**
@@ -23,8 +22,8 @@ interface Options<T extends LibraryItem> {
  * keyPrefix must match each page's existing sessionStorage keys so no one's
  * persisted filters reset on upgrade.
  */
-export function useLibraryFilters<T extends LibraryItem>({
-  keyPrefix, items, sortFns, defaultSort, extraFilter,
+export function useLibraryFilters<T>({
+  keyPrefix, items, sortFns, defaultSort, extraFilter, getTitle, getType,
 }: Options<T>) {
   const ssSearch = `${keyPrefix}_search`;
   const ssSort = `${keyPrefix}_sort`;
@@ -41,22 +40,23 @@ export function useLibraryFilters<T extends LibraryItem>({
   useEffect(() => { sessionStorage.setItem(ssTypeFilter, typeFilter); }, [ssTypeFilter, typeFilter]);
 
   const filtered = useMemo(() => {
+    const resolveTitle = getTitle ?? ((i: T) => (i as unknown as { title: string }).title);
     let result = [...items];
-    if (typeFilter !== "all") {
-      result = result.filter((i) => i.type === typeFilter);
+    if (getType && typeFilter !== "all") {
+      result = result.filter((i) => getType(i) === typeFilter);
     }
     if (extraFilter) {
       result = result.filter(extraFilter);
     }
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter((i) => i.title.toLowerCase().includes(q));
+      result = result.filter((i) => resolveTitle(i).toLowerCase().includes(q));
     }
     const sortFn = sortFns[sortKey] ?? sortFns[defaultSort];
     result.sort(sortFn);
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, search, sortKey, typeFilter, extraFilter, sortFns, defaultSort]);
+  }, [items, search, sortKey, typeFilter, extraFilter, getTitle, getType, sortFns, defaultSort]);
 
   const isDefault = search.trim() === "" && sortKey === defaultSort && typeFilter === "all";
 
