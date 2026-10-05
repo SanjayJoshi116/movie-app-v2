@@ -13,6 +13,7 @@ import {
   fetchForYouRecommendations,
   fetchPersonalizedRecommendations,
   fetchFollowedPeopleRecommendations,
+  saveSessionCache,
   type PersonalizedRecSection,
   type PersonalizedRecItem,
 } from "../api/userApi";
@@ -241,7 +242,7 @@ function RecommendationsPage() {
   useEffect(() => {
     return () => {
       const { sections: s, personalizedSections: ps, followedSections: fs } = latestData.current;
-      sessionStorage.setItem(REC_CACHE_KEY, JSON.stringify({
+      saveSessionCache(REC_CACHE_KEY, JSON.stringify({
         sections: s, personalizedSections: ps, followedSections: fs,
         scrollY: window.scrollY,
         ts: Date.now(),

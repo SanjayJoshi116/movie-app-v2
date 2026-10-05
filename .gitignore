@@ -49,7 +49,11 @@ desktop.ini
 .env.development.local
 .env.test.local
 .env.production.local
+# .env.docker holds real secrets (TMDB key, mail password); also catch the
+# backups people make while editing it (.env.docker.bak, .env.docker.old, ...)
 .env.docker
+.env.docker.*
+*.env.bak
 
 # local setup scripts (may contain IPs or credentials)
 enable-lan.ps1

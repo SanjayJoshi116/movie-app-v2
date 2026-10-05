@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.15.8)
+CINE DB — Feature List (v0.16.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -35,10 +35,13 @@ LIBRARY
 - Release Calendar: 7-day lookahead, grouped by date, title search, sticky date headers, "Jump to Today", iCal export
 
 AUTH
-- JWT login/register
-- Email-based password reset
+- JWT login/register; stay signed in for the full 7-day session (silent token refresh, works with several tabs open)
+- Sign Out revokes the session on the server too, and clears everything account-related from the tab (cached recommendations, search results, filters, recent searches) so the next person to sign in sees none of it; theme and sidebar preferences are kept
+- Changing your password signs out every other device (this one stays signed in); completing a password reset signs out all devices
+- Changing your account email asks for your current password, rejects an email already used by another account, and notifies your old address
+- Email-based password reset; reset links expire after 1 hour
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
-- Profile photo upload/remove (JPEG/PNG/WebP, 5MB max), shown wherever the avatar appears
+- Profile photo upload/remove (JPEG/PNG/WebP, 5MB max, checked by the image's actual content rather than its file name), shown wherever the avatar appears
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
 - Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors
 

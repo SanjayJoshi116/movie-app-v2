@@ -117,8 +117,15 @@ class TMDBProfile(models.Model):
         return f"{self.user.username} — TMDB {'connected' if self.session_id else 'disconnected'}"
 
 
+AVATAR_EXTENSIONS = {"jpg", "png", "webp"}
+
+
 def avatar_upload_path(instance, filename):
+    # The avatar view already renames uploads from the decoded image format;
+    # this is defense in depth so no other code path can store e.g. `.html`.
     ext = filename.rsplit(".", 1)[-1].lower()
+    if ext not in AVATAR_EXTENSIONS:
+        raise ValueError(f"Refusing to store avatar with extension {ext!r}")
     return f"avatars/user_{instance.user_id}.{ext}"
 
 

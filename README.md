@@ -28,12 +28,12 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 
 ## Highlights
 
-- **37 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
-- **JWT auth** with silent refresh + rotation/blacklisting, email-based password reset
+- **38 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
+- **JWT auth** with silent refresh + rotation/blacklisting (coordinated across browser tabs), server-side logout, all other sessions revoked on password change/reset, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
-- **234 automated tests** — 28 Jest, 25 Django pytest, 25 Playwright (TS), 156 pytest-playwright — plus `ruff` lint, all run in CI on every push (`## Testing`)
+- **328 automated tests** — 52 Jest, 92 Django pytest, 27 Playwright (TS), 157 pytest-playwright — plus `ruff` lint; all but the TS Playwright suite run in CI on every push (`## Testing`)
 
 ---
 
@@ -169,7 +169,8 @@ All frontend requests — both TMDB lookups and app data (watchlist, watched, ra
 ```
 backend/
 ├── cinedb/
-│   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email, throttle rates)
+│   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email, throttle rates);
+│   │                            #   fails closed: DEBUG off by default, refuses wildcard/empty ALLOWED_HOSTS
 │   └── urls.py                  # Root URL config — mounts /api/
 ├── userdata/
 │   ├── models.py                # WatchlistEntry, WatchedEntry (incl. runtime_minutes, platform),
@@ -182,7 +183,11 @@ backend/
 │   │                            #   next/previous are plain page numbers, not absolute URLs
 │   ├── views.py                 # Thin re-export barrel — import from domain modules below
 │   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes,
-│   │                            #   SafeTokenRefreshView (guards against a since-deleted token owner)
+│   │                            #   SafeTokenRefreshView (guards against a since-deleted token owner),
+│   │                            #   revoke-all-sessions on password change/reset
+│   ├── health_views.py          # /api/health/ liveness check (never throttled)
+│   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout
+│   ├── logging.py               # RedactingFormatter: strips the TMDB API key from log output
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list)
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + TMDB mirror
@@ -199,9 +204,10 @@ backend/
 │   │       └── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
 │   │                                       #   run at container startup via docker-entrypoint.sh
 │   ├── tmdb_client.py           # Server-side TMDB API client
-│   └── tests/                   # pytest suite: auth, delete-account, password reset, avatar upload,
-│                                #   watchlist/watched/ratings pagination, bulk_watched
-├── docker-entrypoint.sh         # Prod container entrypoint: migrate --run-syncdb → gunicorn
+│   └── tests/                   # pytest suite (see ## Testing)
+├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable →
+│                                #   compute_recommendations (capped at 30s) → gunicorn
+├── pytest_dev_env.py            # pytest plugin (-p in pytest.ini): defaults DEBUG=True before settings load
 └── manage.py
 
 src/
@@ -427,9 +433,14 @@ DEFAULT_FROM_EMAIL=noreply@cinedb.app
 # Must match the port the React app runs on (3000)
 FRONTEND_URL=http://localhost:3000
 
-# Production overrides (required when DEBUG=False)
-# DEBUG=False
+# DEBUG defaults to OFF when unset. `npm run dev` and pytest turn it on
+# themselves; only set this for hand-run manage.py commands in local dev.
+# DEBUG=True
+
+# Required when DEBUG is off (empty or `*` is refused at startup)
 # ALLOWED_HOSTS=yourdomain.com
+# Reverse proxies in front of Django (rate-limit client identity); 0 = none
+# TRUSTED_PROXY_COUNT=0
 ```
 
 ---
@@ -451,7 +462,7 @@ TMDB_API_KEY=your_tmdb_api_key
 SECRET_KEY=your-long-random-django-secret-key
 JWT_SIGNING_KEY=your-long-random-jwt-signing-key
 DEBUG=False
-ALLOWED_HOSTS=*
+ALLOWED_HOSTS=localhost,<host-lan-ip>
 FRONTEND_URL=http://localhost
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
@@ -480,10 +491,12 @@ http://<host-lan-ip>:3000   # port 3000
 ```
 
 Find the host LAN IP:
-- **Windows:** `ipconfig` → look for **IPv4 Address** under Wi-Fi or Ethernet (e.g. `192.168.0.110`)
+- **Windows:** `ipconfig` → look for **IPv4 Address** under Wi-Fi or Ethernet
 - **Mac/Linux:** `ifconfig` or `ip addr` → look for `inet 192.168.x.x`
 
-> **Note:** `ALLOWED_HOSTS=*` in `.env.docker` is required for LAN access so Django accepts requests from any IP. This is safe for local network use. For public deployments, restrict to specific domains.
+> **Note:** nginx forwards the browser's `Host` header to Django, so every name or IP you browse to must be listed in `ALLOWED_HOSTS` (e.g. `ALLOWED_HOSTS=localhost,<host-lan-ip>`). Keep `localhost` in the list — the backend healthcheck calls `localhost:8000`. A wildcard `ALLOWED_HOSTS=*` is refused at startup when `DEBUG` is off.
+>
+> **Breaking change:** earlier versions documented `ALLOWED_HOSTS=*` here. An existing `.env.docker` with that value will stop the backend from starting with an `ImproperlyConfigured` error naming `ALLOWED_HOSTS` — replace it with your real hosts.
 
 **Service layout:**
 
@@ -501,45 +514,60 @@ Nginx proxies `/api/*` straight to the `backend` service (which itself proxies T
 
 The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice.
 
-> **Warning:** `backend/cinedb/settings.py` defaults to `DEBUG=True` and an insecure hardcoded `SECRET_KEY` fallback — safe for local dev, not for a public deployment. Set `DEBUG=False`, a real `SECRET_KEY`, and `ALLOWED_HOSTS` for your domain in `.env.docker` (see [Environment Variables](#environment-variables)) before deploying anywhere public.
+> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY` or an empty/wildcard `ALLOWED_HOSTS`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` sets `TRUSTED_PROXY_COUNT=1` for the bundled nginx; if you put another proxy/TLS terminator in front, raise it to match.
 
 ---
 
 ## Testing
 
-### Unit tests — Jest (28 tests, 4 suites)
+### Unit tests — Jest (52 tests, 7 suites)
 
-Covers core hook and context logic. All hooks are tested with mocked `AuthContext` and `userApi` — no backend required.
+Covers core hook and context logic plus the authenticated API client's session handling. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
 
 ```
 src/hooks/__tests__/
+├── useLibraryFilters.test.ts
 ├── useLocalStorage.test.ts
 ├── useWatchlist.test.ts
 └── useRatings.test.ts
 
 src/context/__tests__/
-└── AppContext.test.tsx
+├── AppContext.test.tsx
+└── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
+
+src/api/__tests__/
+└── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
+                                  #   logout during refresh, retry-on-500 for safe methods only
 ```
 
 ```bash
 npm test
 ```
 
-### Unit tests — pytest (Django, 25 tests)
+### Unit tests — pytest (Django, 92 tests)
 
-Covers register/password-validation, delete-account (password re-confirmation), password-reset-confirm validation, avatar upload/validation/delete, and pagination + `bulk_watched` behavior. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing, notifications, and pagination + `bulk_watched`. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
-├── test_auth.py       # Register password strength, delete-account confirmation, reset-confirm
-├── test_avatar.py     # Upload/delete/replace, content-type + size + corrupt-image validation
-├── test_watchlist.py  # Pagination shape + cross-user isolation
-├── test_watched.py    # Pagination shape + bulk_watched (dedup, batch cap, transaction)
-└── test_ratings.py    # Pagination shape
+├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
+├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry
+├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
+├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images)
+├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS refused
+├── test_throttle_identity.py       # Spoofed X-Forwarded-For, shared-cache counters under load
+├── test_health.py                  # Health check never throttled
+├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout
+├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to
+├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors
+├── test_notifications.py           # New-release notifications
+├── test_watchlist.py               # Pagination shape + cross-user isolation
+├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
+└── test_ratings.py                 # Pagination shape
 ```
 
 ```bash
-pip install -r backend/requirements-test.txt
+pip install -r backend/requirements-test.txt   # needs pytest >= 8.4
 pytest backend/
 ```
 
@@ -560,7 +588,7 @@ e2e/
 npx playwright test
 ```
 
-### E2E tests — pytest-playwright (156 tests)
+### E2E tests — pytest-playwright (157 tests)
 
 Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
 
@@ -569,7 +597,7 @@ e2e/python/
 ├── conftest.py        # Shared fixtures + mock data (users, tokens, movies, TV shows)
 ├── test_auth.py       # Login, register, password reset, redirect guards (29)
 ├── test_browse.py     # Movie/TV browse, categories, filters (13)
-├── test_detail.py     # Movie/TV detail pages, cast, recommendations (16)
+├── test_detail.py     # Movie/TV detail pages, cast, recommendations (17)
 ├── test_lists.py      # User lists CRUD + CSV export (16)
 ├── test_profile.py    # Profile edit, password change, TMDB connect (11)
 ├── test_ratings.py    # Rate + review flow (11)
@@ -603,6 +631,7 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 | POST            | `/api/auth/register/`                       | Create account                                     |
 | POST            | `/api/auth/login/`                          | Login (returns access + refresh tokens)            |
 | POST            | `/api/auth/token/refresh/`                  | Refresh access token                               |
+| POST            | `/api/auth/logout/`                         | Revoke a refresh token (server-side logout)        |
 | GET/PATCH       | `/api/auth/profile/`                        | Get or update profile (requires auth)              |
 | POST/DELETE     | `/api/auth/avatar/`                         | Upload or remove profile photo (requires auth)     |
 | DELETE          | `/api/auth/delete-account/`                 | Permanently delete account and all data            |

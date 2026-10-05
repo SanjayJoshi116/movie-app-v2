@@ -64,13 +64,32 @@ class UserProfileUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("This username is already taken.")
         return value
 
+    def validate_email(self, value):
+        user = self.context["request"].user
+        # Skip the check on an unchanged resubmit: legacy accounts from before
+        # registration enforced uniqueness may share an email, and they'd
+        # otherwise be unable to save any profile edit at all.
+        if value.lower() == (user.email or "").lower():
+            return value
+        if User.objects.exclude(pk=user.pk).filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
+    def _require_current_password(self, data, purpose):
+        if not data.get("current_password"):
+            raise serializers.ValidationError({"current_password": f"Required to change {purpose}."})
+        if not self.context["request"].user.check_password(data["current_password"]):
+            raise serializers.ValidationError({"current_password": "Incorrect password."})
+
     def validate(self, data):
+        user = self.context["request"].user
+        # Email is where password resets go, so changing it with only a (possibly
+        # stolen) access token would be a full account takeover. The profile form
+        # resubmits the unchanged email on every save, so compare case-insensitively.
+        if "email" in data and data["email"].lower() != (user.email or "").lower():
+            self._require_current_password(data, "email")
         if data.get("new_password"):
-            if not data.get("current_password"):
-                raise serializers.ValidationError({"current_password": "Required to change password."})
-            user = self.context["request"].user
-            if not user.check_password(data["current_password"]):
-                raise serializers.ValidationError({"current_password": "Incorrect password."})
+            self._require_current_password(data, "password")
             try:
                 validate_password(data["new_password"], user=user)
             except DjangoValidationError as exc:

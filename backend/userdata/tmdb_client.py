@@ -1,7 +1,12 @@
+import os
+
 import requests
 from django.conf import settings
 
-TMDB_BASE = "https://api.themoviedb.org/3"
+# api.tmdb.org is TMDB's official alternate API host. Some network paths reset
+# roughly half of TLS handshakes to api.themoviedb.org (SNI-based filtering)
+# while the alternate name gets through far more reliably.
+TMDB_BASE = f"https://{os.getenv('TMDB_API_HOST', 'api.tmdb.org')}/3"
 
 # Static fallback so a failed /genre/{type}/list call never surfaces a raw
 # genre id to the user (e.g. "Your Taste: 18 & 10749" instead of names).

@@ -1,7 +1,9 @@
 import logging
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import IntegrityError
+from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
@@ -9,6 +11,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -19,6 +22,7 @@ from .serializers import RegisterSerializer, UserSerializer, UserProfileUpdateSe
 
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
+AVATAR_EXT_BY_FORMAT = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +39,35 @@ class PasswordResetThrottle(AnonRateThrottle):
     scope = "password_reset"
 
 
+def _reset_link_lifetime():
+    """PASSWORD_RESET_TIMEOUT as the reset email states it, so the two can't drift apart."""
+    hours = settings.PASSWORD_RESET_TIMEOUT // 3600
+    return f"{hours} hour{'' if hours == 1 else 's'}"
+
+
 def _tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+def _revoke_all_refresh_tokens(user):
+    """Blacklist every refresh token ever issued to user, rotated ones included.
+
+    Access tokens stay valid until they expire (stateless JWTs), so other
+    sessions end at their next refresh. Relies on simplejwt >= 5.5.0 recording
+    rotated refresh tokens as outstanding — older versions would miss them.
+
+    Only live, not-yet-blacklisted tokens: expired ones already fail validation,
+    and OutstandingToken is never flushed, so a per-row loop over the whole
+    history grew without bound. Two queries regardless of history;
+    ignore_conflicts covers a concurrent logout blacklisting one of them.
+    """
+    live = OutstandingToken.objects.filter(
+        user=user, expires_at__gt=timezone.now(), blacklistedtoken__isnull=True,
+    )
+    BlacklistedToken.objects.bulk_create(
+        [BlacklistedToken(token=t) for t in live], ignore_conflicts=True,
+    )
 
 
 class SafeTokenRefreshSerializer(TokenRefreshSerializer):
@@ -84,7 +114,7 @@ def password_reset_request(request):
                 message=(
                     f"Hi {user.username},\n\n"
                     f"Click the link below to reset your password:\n{reset_url}\n\n"
-                    f"This link expires in 1 hour.\n\n"
+                    f"This link expires in {_reset_link_lifetime()}.\n\n"
                     f"If you didn't request this, you can ignore this email."
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
@@ -139,6 +169,9 @@ def password_reset_confirm(request):
 
     user.set_password(new_password)
     user.save()
+    # Whoever triggered the reset may be locking out an attacker: end every
+    # existing session (at its next refresh) along with the old password.
+    _revoke_all_refresh_tokens(user)
     return Response({"detail": "Password reset successfully."})
 
 
@@ -195,13 +228,46 @@ def profile(request):
     data = serializer.validated_data
 
     user = request.user
+    old_email = user.email
     for field in ("first_name", "last_name", "username", "email"):
         if field in data:
             setattr(user, field, data[field])
     if data.get("new_password"):
         user.set_password(data["new_password"])
     user.save()
-    return Response(UserSerializer(user).data)
+    if old_email and user.email.lower() != old_email.lower():
+        _notify_email_changed(user, old_email)
+    body = dict(UserSerializer(user).data)
+    if data.get("new_password"):
+        # Revoke first, then issue the fresh pair, so this session survives
+        # while every other session ends at its next refresh.
+        _revoke_all_refresh_tokens(user)
+        body.update(_tokens_for_user(user))
+    return Response(body)
+
+
+def _notify_email_changed(user, old_email):
+    """Tell the previous address its account email changed (best-effort)."""
+    from django.core.mail import send_mail
+
+    try:
+        send_mail(
+            subject="Your CINE DB email was changed",
+            message=(
+                f"Hi {user.username},\n\n"
+                f"The email address on your CINE DB account was just changed from this "
+                f"address to a new one.\n\n"
+                f"If you didn't do this, reset your password and contact support right away."
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[old_email],
+            fail_silently=False,
+        )
+    except Exception:
+        # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
+        # password_reset_request's send_mail. The email change itself already
+        # succeeded and must not be reported as failed because of this.
+        logger.exception("Failed to send email-change notice for user %s", user.pk)
 
 
 @api_view(["POST", "DELETE"])
@@ -228,10 +294,22 @@ def avatar(request):
     if file.size > MAX_AVATAR_BYTES:
         return Response({"detail": "Image must be smaller than 5MB."}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        Image.open(file).verify()
+        with Image.open(file) as img:
+            image_format = img.format
+            img.verify()
         file.seek(0)
-    except UnidentifiedImageError:
+    except (UnidentifiedImageError, OSError):
         return Response({"detail": "File is not a valid image."}, status=status.HTTP_400_BAD_REQUEST)
+    # The stored extension (and so the served Content-Type) comes from the
+    # decoded format, never the client's filename — `x.html` that decodes as a
+    # PNG polyglot must not be served back as text/html on our origin.
+    ext = AVATAR_EXT_BY_FORMAT.get(image_format)
+    if ext is None:
+        return Response(
+            {"detail": "Unsupported image type. Use JPEG, PNG, or WebP."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    file.name = f"avatar.{ext}"
 
     if profile.avatar:
         profile.avatar.delete(save=False)

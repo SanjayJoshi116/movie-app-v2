@@ -92,7 +92,11 @@ jobs:
           cache: pip
       - run: pip install -r e2e/python/requirements.txt
       - run: playwright install --with-deps chromium
-      - run: npx wait-on http://127.0.0.1:3000 -t 300000
+      # Node 18 resolves localhost to ::1 first, but the CRA dev server only
+      # listens on IPv4 — without ipv4first, wait-on hangs forever.
+      - run: npx wait-on http://localhost:3000 -t 300000
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
       - name: Show dev server output
         if: always()
         run: |

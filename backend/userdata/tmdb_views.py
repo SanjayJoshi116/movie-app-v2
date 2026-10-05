@@ -1,3 +1,6 @@
+import logging
+from urllib.parse import urlencode
+
 import requests
 from django.db import Error as DBError
 from rest_framework import status
@@ -8,6 +11,10 @@ from rest_framework.response import Response
 from .models import TMDBProfile
 from . import tmdb_client
 
+logger = logging.getLogger(__name__)
+
+TMDB_UNREACHABLE = "Couldn't reach TMDB. Try again."
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -16,10 +23,13 @@ def tmdb_request_token(request):
     try:
         data = tmdb_client.get_request_token()
         token = data["request_token"]
-        redirect_url = f"https://www.themoviedb.org/authenticate/{token}?redirect_to={redirect_to}"
+        redirect_url = f"https://www.themoviedb.org/authenticate/{token}?{urlencode({'redirect_to': redirect_to})}"
         return Response({"redirect_url": redirect_url, "request_token": token})
     except (requests.RequestException, ValueError, KeyError) as e:
-        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        # str(e) embeds the request URL incl. ?api_key= — log it (redacted by
+        # RedactingFormatter), never echo it to the client.
+        logger.warning("TMDB request-token failed: %s", e)
+        return Response({"error": TMDB_UNREACHABLE}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 @api_view(["POST"])
@@ -36,7 +46,8 @@ def tmdb_create_session(request):
         profile.save()
         return Response({"connected": True})
     except (requests.RequestException, ValueError, KeyError, DBError) as e:
-        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        logger.warning("TMDB create-session failed for user %s: %s", request.user.id, e)
+        return Response({"error": TMDB_UNREACHABLE}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 @api_view(["GET"])

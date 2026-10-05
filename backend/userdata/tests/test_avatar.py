@@ -83,3 +83,121 @@ class AvatarUploadTests(APITestCase):
         self.assertNotEqual(first_name, second_name)
         self.assertFalse(storage.exists(first_name))
         self.assertTrue(storage.exists(second_name))
+
+
+def make_polyglot_file(name="x.html"):
+    # A real PNG with an HTML payload appended — decodes fine, but a browser
+    # served it as text/html would run the script.
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), color="blue").save(buf, format="PNG")
+    payload = buf.getvalue() + b"<html><script>alert(document.domain)</script></html>"
+    return SimpleUploadedFile(name, payload, content_type="image/png")
+
+
+class AvatarTypeFromContentTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="gwen", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        self.addCleanup(self._remove_avatar_file)
+
+    def _remove_avatar_file(self):
+        profile = Profile.objects.filter(user=self.user).first()
+        if profile and profile.avatar:
+            profile.avatar.delete(save=False)
+
+    def _upload(self, f):
+        return self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+
+    def test_png_named_html_stored_as_png(self):
+        res = self._upload(make_image_file(name="avatar.html"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(Profile.objects.get(user=self.user).avatar.name.endswith(".png"))
+
+    def test_jpeg_named_png_stored_as_jpg(self):
+        res = self._upload(make_image_file(name="a.png", fmt="JPEG", content_type="image/png"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(Profile.objects.get(user=self.user).avatar.name.endswith(".jpg"))
+
+    def test_gif_declared_jpeg_rejected(self):
+        res = self._upload(make_image_file(name="a.jpg", fmt="GIF", content_type="image/jpeg"))
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data["detail"], "Unsupported image type. Use JPEG, PNG, or WebP.")
+        self.assertFalse(Profile.objects.get(user=self.user).avatar)
+
+    def test_text_declared_png_rejected(self):
+        f = SimpleUploadedFile("a.png", b"just text", content_type="image/png")
+        res = self._upload(f)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data["detail"], "File is not a valid image.")
+
+    def test_polyglot_served_as_image(self):
+        res = self._upload(make_polyglot_file())
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        name = Profile.objects.get(user=self.user).avatar.name
+        self.assertTrue(name.endswith(".png"))
+        served = self.client.get(f"/media/{name}")
+        self.assertEqual(served.status_code, 200)
+        self.assertTrue(served["Content-Type"].startswith("image/"))
+        self.assertEqual(served["X-Content-Type-Options"], "nosniff")
+        b"".join(served.streaming_content)  # exhaust via the client wrapper; .close() would drop the test DB connection
+
+    def test_upload_path_refuses_unsafe_extension(self):
+        from ..models import avatar_upload_path
+
+        profile = Profile(user=self.user)
+        self.assertEqual(avatar_upload_path(profile, "a.WEBP"), f"avatars/user_{self.user.id}.webp")
+        with self.assertRaises(ValueError):
+            avatar_upload_path(profile, "a.html")
+
+
+class LegacyAvatarCleanupMigrationTests(APITestCase):
+    def setUp(self):
+        import importlib
+
+        from django.core.files.storage import default_storage
+
+        self.migration = importlib.import_module("userdata.migrations.0018_cleanup_unsafe_avatar_extensions")
+        self.storage = default_storage
+        self.user = User.objects.create_user(username="hal", password="Xk9#mQ2vTz8p")
+        self.profile = Profile.objects.create(user=self.user)
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self):
+        self.profile.refresh_from_db()
+        if self.profile.avatar:
+            self.profile.avatar.delete(save=False)
+
+    def _seed(self, content):
+        name = self.storage.save(f"avatars/user_{self.user.id}.html", io.BytesIO(content))
+        Profile.objects.filter(pk=self.profile.pk).update(avatar=name)
+        return name
+
+    def _run(self):
+        from django.apps import apps
+
+        self.migration.cleanup_unsafe_avatars(apps, None)
+        self.profile.refresh_from_db()
+
+    def test_valid_image_with_html_extension_is_renamed(self):
+        old = self._seed(make_polyglot_file().read())
+        self._run()
+        self.assertTrue(self.profile.avatar.name.endswith(".png"))
+        self.assertTrue(self.storage.exists(self.profile.avatar.name))
+        self.assertFalse(self.storage.exists(old))
+
+    def test_non_image_with_html_extension_is_cleared(self):
+        old = self._seed(b"<script>alert(1)</script>")
+        self._run()
+        self.assertFalse(self.profile.avatar)
+        self.assertFalse(self.storage.exists(old))
+
+    def test_missing_file_is_cleared(self):
+        Profile.objects.filter(pk=self.profile.pk).update(avatar=f"avatars/user_{self.user.id}.html")
+        self._run()
+        self.assertFalse(self.profile.avatar)
+
+    def test_safe_extension_untouched(self):
+        name = self.storage.save(f"avatars/user_{self.user.id}.png", io.BytesIO(b"not even decoded"))
+        Profile.objects.filter(pk=self.profile.pk).update(avatar=name)
+        self._run()
+        self.assertEqual(self.profile.avatar.name, name)

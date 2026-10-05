@@ -3,6 +3,53 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.16.0] - 2026-10-05
+
+Bug-audit release. Implements four OpenSpec changes (`harden-security-p0`, `fix-ops-reliability`, `fix-session-lifecycle`, `fix-session-followups`; archived under `openspec/changes/archive/`). Remaining audit findings are tracked in the new `docs/BUG_BACKLOG.md`.
+
+### ⚠️ Breaking (deploy config)
+- **Production settings fail closed.** `DEBUG` now defaults to **off** when unset (was on). With it off, the backend refuses to start on an empty or wildcard `ALLOWED_HOSTS`, or on the built-in dev `SECRET_KEY`.
+  - Any `.env.docker` with `ALLOWED_HOSTS=*` must list real hosts, e.g. `ALLOWED_HOSTS=localhost,<host-lan-ip>`. Keep `localhost`: the compose healthcheck calls it.
+  - `npm run dev` (`start.py`) and pytest (`backend/pytest_dev_env.py`) turn `DEBUG` on themselves. For hand-run `manage.py` commands, set `DEBUG=True` in `backend/.env`.
+
+### Security
+- **TMDB API key leak:** TMDB-auth endpoints echoed upstream exception text, which included the request URL with `?api_key=`. They now return a generic 502. Server logs redact the key (`userdata/logging.py` `RedactingFormatter`). `redirect_to` is URL-encoded instead of interpolated raw.
+- **Stored XSS via avatar upload:** the stored extension came from the client filename, so a PNG/HTML polyglot named `x.html` was served as `text/html` from the app's own origin. The extension now comes from the decoded image format (JPEG/PNG/WebP only). Migration `0018` renames or removes legacy avatars with unsafe extensions.
+- **Account takeover:** changing the account email now requires the current password, is rejected when another account already uses that email (case-insensitive), and notifies the old address. Previously a stolen access token → email change → password reset was a full takeover.
+- **Sessions revoked on password change/reset:** both now revoke every outstanding refresh token for the account. A profile password change returns a fresh token pair so the current session stays signed in.
+- **Server-side logout:** new `POST /api/auth/logout/` blacklists the session's refresh token. The client calls it best-effort on logout.
+- **Password reset links** now expire after 1 hour, matching what the email says (Django's default was 3 days).
+- **Rate-limit bypass:**
+  - Client identity uses a configured trusted-proxy count (`TRUSTED_PROXY_COUNT`; compose sets 1 for nginx), so a spoofed `X-Forwarded-For` no longer mints a fresh bucket.
+  - Counters live in a shared `DatabaseCache` instead of per-worker LocMem, which had tripled every limit. The cache is sized to 50k entries; the default 300 culled live counters.
+
+### Fixed
+- **Forced logout ~2 hours into every session:** the client never stored the rotated refresh token, so the second refresh always sent a blacklisted one. Rotated tokens are now persisted.
+- **Concurrent 401s:**
+  - A late 401 for a request sent with an already-replaced access token is replayed with the current token instead of triggering a second refresh.
+  - Two tabs refreshing at once no longer log each other out: refreshes are serialized with `navigator.locks`, and a tab that loses the race waits up to 1.5s for the other tab's rotation to reach it.
+  - A refresh that completes after logout no longer signs the user back in.
+- **Previous user's data leaking in a shared tab:** logout left the previous account's data in the tab for the next user. One teardown (`clearSession()`) now clears tokens, cached user, all `sessionStorage` caches and recent searches, and keeps theme/sidebar prefs. Recommendations/Search unmount saves go through `saveSessionCache()`, so they can't write data back after logout.
+- **Duplicate writes on 500:** the automatic retry-on-500 re-sent POSTs (e.g. duplicate lists). It now applies to `GET`/`HEAD`/`OPTIONS` only.
+- **Docker backend marked unhealthy after ~50 minutes:** the health endpoint was subject to the anonymous throttle (300/day) while compose polls it every 10s. It is now unthrottled.
+- **Docker entrypoint could hang before starting gunicorn:** its `compute_recommendations` warm-up had no timeout. Now capped at 30s, like `start.py`.
+- **Recommendation refresh storm:**
+  - Clearing a 500-item watched history started 500 concurrent refresh threads. Refreshes are now coalesced per user (one running + at most one follow-up), deferred until the transaction commits, and skipped during account deletion.
+  - A DB error while loading the user no longer leaves recommendations stuck on "pending" until restart.
+- **Slow password change/reset:** revoke-all touches only live, not-yet-blacklisted tokens in two queries. It used to run 2 queries per token ever issued.
+- **TMDB proxy could hold a gunicorn worker ~100s** (20s timeout × 5 attempts). The worst case is now ~22s: `timeout=(3.05, 6)`, `Retry(total=2, connect=2, read=1)`. A test enforces it against the now-explicit `gunicorn --timeout 30`.
+- `useLibraryFilters` Jest test "filters by type" had been failing since 0.15.8 (no `getType` passed, so the filter was a deliberate no-op), which kept the CI Jest job red.
+
+### Changed
+- `djangorestframework-simplejwt>=5.5.0` (records rotated tokens as outstanding, needed for revoke-all) and `pytest>=8.4` (needed by `pytest.ini`'s `-p pytest_dev_env`).
+- The TMDB host is configurable via `TMDB_API_HOST` and defaults to `api.tmdb.org` (official alternate host; fewer TLS resets on some networks).
+- New `.gitattributes` forces LF for `*.sh`, so `docker-entrypoint.sh` runs when the image is built from a Windows checkout.
+
+### Added
+- 6 new OpenSpec capability specs in `openspec/specs/`: `auth-session`, `account-security`, `avatar-upload`, `api-hardening`, `service-health`, `recommendation-refresh`.
+- `docs/BUG_BACKLOG.md`: the remaining audit findings, grouped into planned changes.
+- Tests: Django pytest now 92 (new: account security, session revocation, settings fail-closed, throttle identity, health, TMDB auth, refresh coalescing). Jest now 52 (new: API client session handling, logout teardown). README test counts, which were stale, are corrected.
+
 ## [0.15.8] - 2026-08-26
 
 ### Changed
@@ -170,7 +217,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Backdrop images in the Images section now open a full-size lightbox on click (`Image`'s `preview.src` pointed at `BACKDROP_URL`) instead of only showing the thumbnail-cropped version.
 
 ### Fixed
-- `GET /api/watched/` (and any other paginated list endpoint once a user has more than `page_size` rows) 500'd with `django.core.exceptions.DisallowedHost` — DRF's default `PageNumberPagination.get_paginated_response()` builds an absolute `next`/`previous` URL via `request.build_absolute_uri()`, which validates the request's Host header against `ALLOWED_HOSTS` (only bare `localhost`/`127.0.0.1` are implicitly allowed under `DEBUG=True`; a LAN IP or any other host 500s). Only fired for endpoints where a user has enough rows to need a `next` page — small lists (watchlist, followed-people) never hit it. `DefaultPagination` (`backend/userdata/pagination.py`) now overrides `get_next_link`/`get_previous_link` to return plain page numbers instead of absolute URLs; the frontend's `fetchAllPages.ts` only ever checked `next` for truthiness, so this is a drop-in fix with no frontend changes.
+- `GET /api/watched/` (and any other paginated list endpoint once a user has more than `page_size` rows) 500'd with `django.core.exceptions.DisallowedHost` — DRF's default `PageNumberPagination.get_paginated_response()` builds an absolute `next`/`previous` URL via `request.build_absolute_uri()`, which validates the request's Host header against `ALLOWED_HOSTS` (only bare `localhost` and its loopback address are implicitly allowed under `DEBUG=True`; a LAN IP or any other host 500s). Only fired for endpoints where a user has enough rows to need a `next` page — small lists (watchlist, followed-people) never hit it. `DefaultPagination` (`backend/userdata/pagination.py`) now overrides `get_next_link`/`get_previous_link` to return plain page numbers instead of absolute URLs; the frontend's `fetchAllPages.ts` only ever checked `next` for truthiness, so this is a drop-in fix with no frontend changes.
 - Sidebar drifted upward while scrolling instead of staying pinned — `src/index.css` set `overflow-x: hidden` on `html, body, #root` with no explicit `overflow-y`, and per the CSS overflow spec that silently promotes `overflow-y` to `auto` too, turning `#root` into an unintended scroll container sitting between `.app-sidebar` and the real viewport scroller. `position: sticky` sticks to the *nearest* scrolling ancestor, so it locked onto `#root` (whose `scrollTop` never actually moves) instead of `<html>`, and the sidebar just rode along with normal page scroll. Fixed by scoping `overflow-x: hidden` to `html` only.
 - Recent-searches dropdown visibly jumped up/down mid-scroll — antd's `Dropdown` mounts its popup in `document.body` by default and repositions it via scroll-linked recalculation built for a trigger that scrolls with the page; once the sidebar (and the search input inside it) became genuinely sticky (previous fix), that recalculation briefly miscomputed on each scroll tick before self-correcting. `SearchBox.tsx`'s `Dropdown` now sets `getPopupContainer` to mount the popup inside the sidebar's own search wrapper (`Sidebar.tsx`, given `position: relative`) instead of `document.body`, so it never needs scroll-based repositioning at all.
 

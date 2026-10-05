@@ -11,6 +11,7 @@ import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
+import { saveSessionCache } from "../api/userApi";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -105,7 +106,7 @@ function usePaginatedSearch<T extends { id: number }>(
     return () => {
       const { query: q, adult: a, items: i, page: p, hasMore: h } = stateRef.current;
       if (q && i.length > 0) {
-        sessionStorage.setItem(cacheKey, JSON.stringify({ query: q, adult: a, items: i, page: p, hasMore: h, scrollY: window.scrollY }));
+        saveSessionCache(cacheKey, JSON.stringify({ query: q, adult: a, items: i, page: p, hasMore: h, scrollY: window.scrollY }));
       }
     };
   }, [cacheKey]);

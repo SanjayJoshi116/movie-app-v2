@@ -66,9 +66,13 @@ const ProfileModal = ({ open, onClose }: Props) => {
     confirm_password?: string;
   }) => {
     const { confirm_password, ...payload } = values;
+    // The backend requires the current password to change the email too (it's
+    // where reset links go); the form always resubmits the email, so compare.
+    const emailChanged =
+      (payload.email ?? "").trim().toLowerCase() !== (user?.email ?? "").toLowerCase();
     if (!payload.new_password) {
-      delete payload.current_password;
       delete payload.new_password;
+      if (!emailChanged) delete payload.current_password;
     }
     setLoading(true);
     try {
@@ -243,7 +247,12 @@ const ProfileModal = ({ open, onClose }: Props) => {
 
         {sectionHeader(<LockOutlined />, "Change Password")}
 
-        <Form.Item label="Current Password" name="current_password" style={{ marginBottom: 12 }}>
+        <Form.Item
+          label="Current Password"
+          name="current_password"
+          extra="Required to change email or password"
+          style={{ marginBottom: 12 }}
+        >
           <Input.Password placeholder="Leave blank to keep current" />
         </Form.Item>
 

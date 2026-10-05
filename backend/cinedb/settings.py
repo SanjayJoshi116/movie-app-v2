@@ -11,15 +11,23 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-change-in-production")
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
-DEBUG = os.environ.get("DEBUG", "True") == "True"
+# Fail closed: debug is off unless explicitly enabled. `npm run dev` (start.py)
+# and CI set DEBUG=True themselves; a bare `manage.py` on a server stays safe.
+DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-# Fail closed: an unset ALLOWED_HOSTS env var means no hosts are allowed in
-# production. In DEBUG, wildcard so LAN devices (e.g. phone at 192.168.x.x)
-# hitting the dev server directly aren't rejected by the Host header check —
-# same relaxation CORS_ALLOW_ALL_ORIGINS already gets below.
+# An unset ALLOWED_HOSTS env var means no hosts are allowed in production. In
+# DEBUG, wildcard so LAN devices (e.g. phone at 192.168.x.x) hitting the dev
+# server directly aren't rejected by the Host header check â€” same relaxation
+# CORS_ALLOW_ALL_ORIGINS already gets below.
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 if DEBUG:
     ALLOWED_HOSTS.append("*")
+elif not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        "ALLOWED_HOSTS must list this deployment's real hostnames (comma-separated, "
+        "e.g. ALLOWED_HOSTS=localhost,cinedb.example.com) when DEBUG is off; "
+        "empty or '*' is refused."
+    )
 
 if not DEBUG and SECRET_KEY == "django-insecure-dev-key-change-in-production":
     raise ImproperlyConfigured("Set SECRET_KEY env var before running in production.")
@@ -41,7 +49,8 @@ INSTALLED_APPS = [
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "formatters": {"redacting": {"()": "userdata.logging.RedactingFormatter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "redacting"}},
     "loggers": {
         "userdata": {"handlers": ["console"], "level": "INFO"},
     },
@@ -135,9 +144,33 @@ REST_FRAMEWORK = {
         "tmdb_proxy": "120/min",
         "notifications": "30/min",
     },
+    # How many reverse proxies sit in front of Django. DRF then takes the
+    # client address from that position in X-Forwarded-For (counting from the
+    # right, i.e. the entry our own proxy appended). 0 = ignore XFF entirely and
+    # use REMOTE_ADDR â€” right for `npm run dev`; leaving it unset used to make
+    # the whole client-supplied XFF string the throttle key, so any made-up
+    # header value got a fresh rate-limit bucket.
+    "NUM_PROXIES": int(os.environ.get("TRUSTED_PROXY_COUNT", "0")),
     "DEFAULT_PAGINATION_CLASS": "userdata.pagination.DefaultPagination",
     "PAGE_SIZE": 100,
 }
+
+# Throttle counters live in the cache. Per-process LocMem under gunicorn's 3
+# workers effectively tripled every rate limit, so production shares one
+# DB-backed cache (table created by `manage.py createcachetable` at boot).
+# DEBUG's single runserver process is fine with LocMem.
+# MAX_ENTRIES: DatabaseCache's default of 300 culls a third of all keys once
+# exceeded (after dropping expired ones), which reset live throttle counters as
+# soon as a few hundred clients were active. One key per client per scope.
+PRODUCTION_CACHE = {
+    "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+    "LOCATION": "cinedb_cache",
+    "OPTIONS": {"MAX_ENTRIES": 50_000},
+}
+if DEBUG:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+else:
+    CACHES = {"default": PRODUCTION_CACHE}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
@@ -156,3 +189,7 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@cinedb.app")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Reset links expire after 1 hour (Django default is 3 days); the reset
+# email builds its "expires in" sentence from this value.
+PASSWORD_RESET_TIMEOUT = 3600

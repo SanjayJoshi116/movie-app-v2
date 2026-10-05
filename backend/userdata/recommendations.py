@@ -9,6 +9,7 @@ from functools import partial, reduce
 
 import numpy as np
 import requests
+from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.db import Error as DBError
 from django.db.models import Q
@@ -29,15 +30,32 @@ RECOMMENDATIONS_TTL_HOURS = 12
 
 _computing_lock = threading.Lock()
 _computing_users = set()  # user ids currently being (re)computed, in-process only
+_rerun_users = set()  # in-flight user ids that got another trigger; get one follow-up run
+
+
+def _spawn_refresh(user_id):
+    threading.Thread(target=_refresh_cache_by_id, args=(user_id,), daemon=True).start()
+
+
+def request_refresh(user_id, *, rerun_if_running):
+    """Schedule a background refresh for user_id, coalesced per user.
+
+    At most one refresh runs per user at a time. If one is already running and
+    rerun_if_running is set (the data changed, so its result will be stale),
+    exactly one follow-up run is queued no matter how many triggers arrive.
+    """
+    with _computing_lock:
+        if user_id in _computing_users:
+            if rerun_if_running:
+                _rerun_users.add(user_id)
+            return
+        _computing_users.add(user_id)
+    _spawn_refresh(user_id)
 
 
 def _start_refresh_if_needed(user):
     """Start a background refresh for user unless one is already running. Returns True if now computing."""
-    with _computing_lock:
-        if user.id in _computing_users:
-            return True
-        _computing_users.add(user.id)
-    threading.Thread(target=_refresh_cache, args=(user,), daemon=True).start()
+    request_refresh(user.id, rerun_if_running=False)
     return True
 
 
@@ -443,6 +461,35 @@ def _compute_personalized(user) -> list:
     return sections
 
 
+def _refresh_cache_by_id(user_id):
+    """Background-thread target: load the user fresh, exit quietly if they're gone."""
+    try:
+        user = User.objects.filter(pk=user_id).first()
+    except DBError as e:
+        # Outside _refresh_cache's try/finally: without this, one DB blip leaves
+        # user_id in _computing_users for the life of the process ("pending" forever).
+        logger.warning("Rec cache refresh could not load user %s: %s", user_id, e)
+        _finish_refresh(user_id)
+        return
+    if user is None:
+        _finish_refresh(user_id)
+        return
+    _refresh_cache(user)
+
+
+def _finish_refresh(user_id):
+    """Release user_id's in-flight slot, or hand it to one queued follow-up run."""
+    with _computing_lock:
+        if user_id in _rerun_users:
+            _rerun_users.discard(user_id)
+            rerun = True  # stays in _computing_users for the follow-up
+        else:
+            _computing_users.discard(user_id)
+            rerun = False
+    if rerun:
+        _spawn_refresh(user_id)
+
+
 def _refresh_cache(user):
     """Recompute both recommendation types and save to DB. Safe to run in background thread."""
     try:
@@ -461,8 +508,7 @@ def _refresh_cache(user):
         # just silently kill the thread with no visible error.
         logger.warning("Rec cache refresh failed for user %s: %s", user.id, e)
     finally:
-        with _computing_lock:
-            _computing_users.discard(user.id)
+        _finish_refresh(user.id)
 
 
 def _is_stale(cache) -> bool:

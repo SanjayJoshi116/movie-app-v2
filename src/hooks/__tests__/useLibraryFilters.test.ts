@@ -50,8 +50,15 @@ describe("useLibraryFilters", () => {
   });
 
   it("filters by type", () => {
+    // Type filtering needs a getType accessor; without one it's a deliberate no-op.
     const { result } = renderHook(() =>
-      useLibraryFilters({ keyPrefix: "test", items: ITEMS, sortFns: SORT_FNS, defaultSort: "added-desc" })
+      useLibraryFilters({
+        keyPrefix: "test",
+        items: ITEMS,
+        sortFns: SORT_FNS,
+        defaultSort: "added-desc",
+        getType: (i) => i.type,
+      })
     );
 
     act(() => result.current.setTypeFilter("tv"));

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
-import userApi, { publicApi } from "../api/userApi";
+import userApi, { clearSession, logoutSession, publicApi } from "../api/userApi";
 
 interface AuthUser {
   id: number;
@@ -71,9 +71,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("cinedb_access");
-    localStorage.removeItem("cinedb_refresh");
-    localStorage.removeItem("cinedb_user");
+    // Revoke server-side, but never let that block or fail the local logout
+    // (offline, expired/invalid token, server down all still sign out here).
+    const refresh = localStorage.getItem("cinedb_refresh");
+    if (refresh) logoutSession(refresh).catch(() => {});
+    clearSession();
     setUser(null);
   }, []);
 
@@ -83,7 +85,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback(async (data: ProfileUpdateData) => {
-    const { data: updated } = await userApi.patch("/auth/profile/", data);
+    const { data: body } = await userApi.patch("/auth/profile/", data);
+    // A password change revokes every existing refresh token server-side and
+    // returns a fresh pair for this session — store it, or the next refresh fails.
+    const { access, refresh, ...updated } = body;
+    if (access) localStorage.setItem("cinedb_access", access);
+    if (refresh) localStorage.setItem("cinedb_refresh", refresh);
     setUserData(updated);
   }, [setUserData]);
 
