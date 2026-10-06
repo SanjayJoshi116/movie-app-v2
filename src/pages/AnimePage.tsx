@@ -7,6 +7,7 @@ import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
@@ -130,7 +131,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy, includeAdult]
   );
 
-  const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore } =
+  const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } =
     usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
       fetchPage,
       restore: { isReturning, savedLoadedPages, savedScrollY },
@@ -203,6 +204,8 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       {loading ? (
         <SkeletonCard count={18} />
+      ) : error ? (
+        <LoadError onRetry={retry} />
       ) : animeTab === "tv" ? (
         <TVShows
           tvShows={visibleItems as TMDBTVSummary[]}

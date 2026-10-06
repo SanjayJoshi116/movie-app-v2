@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 from rest_framework import status
@@ -18,7 +18,15 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import InvalidToken
 
 from .models import Profile
-from .serializers import RegisterSerializer, UserSerializer, UserProfileUpdateSerializer
+from .serializers import (
+    LoginInputSerializer,
+    PasswordInputSerializer,
+    PasswordResetConfirmInputSerializer,
+    PasswordResetRequestInputSerializer,
+    RegisterSerializer,
+    UserProfileUpdateSerializer,
+    UserSerializer,
+)
 
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -92,7 +100,9 @@ def password_reset_request(request):
     from django.core.mail import send_mail
     from django.conf import settings
 
-    email = request.data.get("email", "").strip()
+    body = PasswordResetRequestInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    email = body.validated_data["email"].strip()
     if not email:
         return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -146,9 +156,11 @@ def password_reset_confirm(request):
     from django.utils.http import urlsafe_base64_decode
     from django.utils.encoding import force_str
 
-    uid = request.data.get("uid", "")
-    token = request.data.get("token", "")
-    new_password = request.data.get("new_password", "")
+    body = PasswordResetConfirmInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    uid = body.validated_data["uid"]
+    token = body.validated_data["token"]
+    new_password = body.validated_data["new_password"]
 
     if not uid or not token or not new_password:
         return Response({"detail": "uid, token, and new_password are required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -198,8 +210,10 @@ def register(request):
 def login(request):
     from django.contrib.auth import authenticate
 
-    username = request.data.get("username", "")
-    password = request.data.get("password", "")
+    body = LoginInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    username = body.validated_data["username"]
+    password = body.validated_data["password"]
     user = authenticate(username=username, password=password)
     if user is None:
         return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -210,7 +224,9 @@ def login(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_account(request):
-    password = request.data.get("password", "")
+    body = PasswordInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    password = body.validated_data["password"]
     if not password or not request.user.check_password(password):
         return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
     request.user.delete()
@@ -234,7 +250,16 @@ def profile(request):
             setattr(user, field, data[field])
     if data.get("new_password"):
         user.set_password(data["new_password"])
-    user.save()
+    try:
+        # The serializer's uniqueness check can't see a concurrent rename that
+        # commits first; the DB constraint can. atomic() keeps the connection
+        # usable after the failed INSERT/UPDATE.
+        with transaction.atomic():
+            user.save()
+    except IntegrityError:
+        return Response(
+            {"username": ["This username is already taken."]}, status=status.HTTP_400_BAD_REQUEST
+        )
     if old_email and user.email.lower() != old_email.lower():
         _notify_email_changed(user, old_email)
     body = dict(UserSerializer(user).data)
@@ -293,13 +318,23 @@ def avatar(request):
         )
     if file.size > MAX_AVATAR_BYTES:
         return Response({"detail": "Image must be smaller than 5MB."}, status=status.HTTP_400_BAD_REQUEST)
+    invalid = Response({"detail": "File is not a valid image."}, status=status.HTTP_400_BAD_REQUEST)
     try:
         with Image.open(file) as img:
+            # Pillow raises DecompressionBombError only above 2x MAX_IMAGE_PIXELS
+            # and merely warns between 1x and 2x; reject that band too. An
+            # explicit check rather than warnings.catch_warnings(), which mutates
+            # process-global state and isn't thread-safe.
+            if img.width * img.height > Image.MAX_IMAGE_PIXELS:
+                return invalid
             image_format = img.format
             img.verify()
         file.seek(0)
-    except (UnidentifiedImageError, OSError):
-        return Response({"detail": "File is not a valid image."}, status=status.HTTP_400_BAD_REQUEST)
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, SyntaxError, ValueError, IndexError):
+        # DecompressionBombError isn't an OSError. Several Pillow plugins raise
+        # SyntaxError/ValueError on malformed headers or chunks during verify(),
+        # and PNG verify() raises IndexError on a file with no IDAT chunk.
+        return invalid
     # The stored extension (and so the served Content-Type) comes from the
     # decoded format, never the client's filename — `x.html` that decodes as a
     # PNG polyglot must not be served back as text/html on our origin.

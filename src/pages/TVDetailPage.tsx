@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Result, Button } from "antd";
 import TVShowDetails from "../components/TVShowDetails";
 import type { TVShowDetailData } from "../components/TVShowDetails";
 import DetailPageSkeleton from "../components/DetailPageSkeleton";
@@ -14,12 +13,15 @@ import {
   fetchTVReviews,
 } from "../api/tmdb";
 import { pageVariants } from "../constants/ui";
+import { LoadError } from "../components/LoadError";
+import { settledData, isNotFound } from "../utils/settled";
 
 function TVDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"not-found" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
@@ -31,51 +33,47 @@ function TVDetailPage() {
     let cancelled = false;
 
     const load = async () => {
-      try {
-        const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, providersRes, reviewsRes] =
-          await Promise.all([
-            fetchTVDetails(id),
-            fetchTVCredits(id),
-            fetchTVAggregateCredits(id),
-            fetchTVImages(id),
-            fetchTVWatchProviders(id),
-            fetchTVReviews(id),
-          ]);
-        if (cancelled) return;
+      // Only the details call is essential; each secondary section degrades
+      // to empty on its own instead of failing the whole page.
+      const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, providersRes, reviewsRes] =
+        await Promise.allSettled([
+          fetchTVDetails(id),
+          fetchTVCredits(id),
+          fetchTVAggregateCredits(id),
+          fetchTVImages(id),
+          fetchTVWatchProviders(id),
+          fetchTVReviews(id),
+        ]);
+      if (cancelled) return;
 
-        setTVShow({
-          ...detailsRes.data,
-          credits: creditsRes.data,
-          aggregate_credits: aggregateCreditsRes.data,
-          images: imagesRes.data,
-          watchProviders: providersRes.data.results,
-          reviews: reviewsRes.data.results,
-        });
-      } catch (err) {
-        if (cancelled) return;
-        console.error("Error fetching TV show details:", err);
-        setError("Failed to load TV show details.");
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (detailsRes.status === "rejected") {
+        console.error("Error fetching TV show details:", detailsRes.reason);
+        setError(isNotFound(detailsRes.reason) ? "not-found" : "failed");
+        setLoading(false);
+        return;
       }
+
+      setTVShow({
+        ...detailsRes.value.data,
+        credits: settledData(creditsRes) ?? { cast: [], crew: [] },
+        aggregate_credits: settledData(aggregateCreditsRes),
+        images: settledData(imagesRes) ?? { backdrops: [], posters: [] },
+        watchProviders: settledData(providersRes)?.results ?? {},
+        reviews: settledData(reviewsRes)?.results ?? [],
+      });
+      setLoading(false);
     };
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, reloadKey]);
 
   if (loading) return <DetailPageSkeleton />;
+  if (error === "not-found") return <LoadError notFound title="TV show not found" />;
   if (error)
-    return (
-      <Result
-        status="error"
-        title="Failed to load"
-        subTitle={error}
-        extra={<Button onClick={() => window.location.reload()}>Retry</Button>}
-      />
-    );
+    return <LoadError title="Failed to load TV show details" onRetry={() => setReloadKey((k) => k + 1)} />;
   if (!tvShow) return null;
 
   return (

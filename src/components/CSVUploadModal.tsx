@@ -1,22 +1,15 @@
 import React, { useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
-import { bulkMarkWatched } from "../api/userApi";
+import { bulkImport } from "../api/userApi";
 import { fetchMoviePoster, fetchTVPoster } from "../api/tmdb";
 import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
-import { parseCSVForImport } from "../utils/csvParse";
+import { parseCSVForImport, type ParsedEntry } from "../utils/csvParse";
 import { getApiError } from "../utils/apiError";
 import { FONT_SIZE } from "../constants/typography";
 
 const { Text } = Typography;
-
-interface ParsedRow {
-  mediaId: number;
-  title: string;
-  posterPath?: string | null;
-  voteAverage?: number;
-}
 
 interface Props {
   open: boolean;
@@ -49,7 +42,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
   const { reloadWatched } = useAppContext();
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
-  const [parsed, setParsed] = useState<ParsedRow[]>([]);
+  const [parsed, setParsed] = useState<ParsedEntry[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +50,8 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Reset so picking the same file again (e.g. after an error) fires `change` again.
+    e.target.value = "";
     if (!file) return;
     setFileName(file.name);
     setParsed([]);
@@ -87,8 +82,9 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
           enriched.slice(i, i + BATCH).map(async (row, offset) => {
             const idx = i + offset;
             try {
-              const { data } = await (mediaType === "tv" ? fetchTVPoster(row.mediaId) : fetchMoviePoster(row.mediaId));
-              enriched[idx] = { mediaId: row.mediaId, title: row.title, posterPath: data.poster_path, voteAverage: data.vote_average };
+              const rowType = row.type ?? mediaType;
+              const { data } = await (rowType === "tv" ? fetchTVPoster(row.mediaId) : fetchMoviePoster(row.mediaId));
+              enriched[idx] = { ...row, posterPath: data.poster_path, voteAverage: data.vote_average };
             } catch {
               // leave without poster data on failure
             }
@@ -96,10 +92,24 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         );
       }
 
-      const { data } = await bulkMarkWatched(enriched, mediaType);
-      showSuccess(`Import complete: ${data.added} added, ${data.skipped} already watched.`);
+      const result = await bulkImport(
+        "watched",
+        enriched.map((row) => ({
+          mediaId: row.mediaId,
+          mediaType: row.type ?? mediaType,
+          title: row.title,
+          posterPath: row.posterPath ?? null,
+          voteAverage: row.voteAverage,
+        })),
+      );
       await reloadWatched();
-      handleClose();
+      const summary = `${result.added} added, ${result.skipped} already watched`;
+      if (result.failed > 0) {
+        showError(`Import finished: ${summary}, ${result.failed} failed.`);
+      } else {
+        showSuccess(`Import complete: ${summary}.`);
+        handleClose();
+      }
     } catch (err) {
       showError(getApiError(err, "Failed to import watched movies. Please try again."));
     } finally {
@@ -128,13 +138,14 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     >
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
-          Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.
+          Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. An optional <code>type</code> column
+          (<code>movie</code>/<code>tv</code>) sets each row&apos;s type; the default type applies to rows without one.
         </Text>
       </div>
 
       <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
-          <Text style={{ marginRight: 12 }}>Type:</Text>
+          <Text style={{ marginRight: 12 }}>Default type:</Text>
           <Radio.Group value={mediaType} onChange={(e) => setMediaType(e.target.value)}>
             <Radio.Button value="movie">Movies</Radio.Button>
             <Radio.Button value="tv">TV Shows</Radio.Button>
@@ -170,21 +181,22 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
       {parsed.length > 0 && (
         <>
           <Text style={{ display: "block", marginBottom: 8 }}>
-            {parsed.length} {mediaType === "tv" ? "TV show" : "movie"}{parsed.length !== 1 ? "s" : ""} found
+            {parsed.length} entr{parsed.length !== 1 ? "ies" : "y"} found
             {parsed.length > 10 ? ` — showing first 10` : ""}:
           </Text>
           <Table
             size="small"
             pagination={false}
-            dataSource={preview.map((r) => ({ ...r, key: r.mediaId }))}
+            dataSource={preview.map((r, i) => ({ ...r, type: r.type ?? mediaType, key: `${i}-${r.mediaId}` }))}
             columns={[
               { title: "TMDB ID", dataIndex: "mediaId", width: 100 },
+              { title: "Type", dataIndex: "type", width: 70 },
               { title: "Title", dataIndex: "title", ellipsis: true },
             ]}
             style={{ marginBottom: 16 }}
           />
           <Button type="primary" block loading={loading} onClick={handleSubmit}>
-            Import {parsed.length} {mediaType === "tv" ? "TV Show" : "Movie"}{parsed.length !== 1 ? "s" : ""}
+            Import {parsed.length} entr{parsed.length !== 1 ? "ies" : "y"}
           </Button>
         </>
       )}

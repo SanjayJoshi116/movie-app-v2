@@ -3,6 +3,55 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.17.0] - 2026-10-06
+
+Bug-audit release, part 2. Implements three OpenSpec changes from `docs/BUG_BACKLOG.md` (`harden-input-validation`, `fix-backup-roundtrip`, `surface-failures`; archived under `openspec/changes/archive/`).
+
+### ⚠️ Notes for deploy
+- **Migration `0019_bulk_import_timestamps`:** `added_at` / `watched_at` / `rated_at` move from `auto_now_add` to `default=timezone.now`, so bulk imports can keep original timestamps. Single-item creates behave as before.
+- **Watchlist and rating `PATCH` can no longer change `mediaId`/`mediaType`** (now a `400`). The frontend never sent these.
+
+### Security / input validation
+- Malformed input gets a `400` with a field message, never a `500`, and is never stored in a form that breaks later reads.
+  - `NaN`/`Infinity` rejected for every float input. A stored `NaN` used to make every later GET of that account's watchlist/watched/ratings/lists/stats return `500`.
+  - String inputs limited to their column length; ids must be positive and fit Postgres `integer`; `mediaType` is `movie`/`tv` only; `releaseYear`, `runtimeMinutes`, episode `season`/`episode` bounded.
+  - Endpoints that read the body directly (bulk watched, follow, episode progress, login, delete account, password reset ×2, TMDB session) return `400` on a JSON array body or wrong field types.
+  - Ratings must be a multiple of 0.5 (TMDB rejects anything else).
+- Avatar: decompression-bomb images and any other decoder failure get a `400` ("File is not a valid image.").
+- Profile username follows the registration character rules; two concurrent renames to the same name return `400` instead of an IntegrityError `500`.
+
+### Fixed — backup and import
+- **Backup format v2:** the ZIP gains `manifest.json` (lists with names, descriptions and empty lists) and `ratings.csv`; `watched.csv` gains `runtime_minutes` and `platform`. v1 backups still import unchanged.
+- Restore keeps original `watched_at`/`added_at`/`rated_at`, runtime, platform, ratings with reviews, and list names/descriptions. Existing entries are never overwritten, and re-running an import creates no duplicates.
+- Every import write is awaited; each section reports what it actually added, skipped and failed, and one failed section no longer stops the others.
+- New `POST /api/watchlist/bulk/` and `POST /api/ratings/bulk/`; `POST /api/watched/bulk/` accepts per-entry type, timestamp, runtime and platform. All create-only and all-or-nothing per request; the client sends at most 500 entries per request.
+- One RFC 4180 CSV parser for every import (quoted commas/quotes/newlines, CRLF, BOM, `,`/`;`/tab delimiters). Single-file imports honor a `type`/`media_type` column and let you re-select the same file.
+- Paginated watched/watchlist/ratings/followed-people/lists endpoints add an `id` tiebreaker, so bulk-imported rows with identical timestamps no longer page as duplicates or get skipped.
+
+### Fixed — failures shown as empty or success (frontend)
+- Every load now ends as loading, error with Retry, empty, or content:
+  - A failed watchlist/watched/ratings/lists load shows an error with Retry instead of "your watchlist is empty". Library pages show a skeleton on the first frame instead of the empty-state call to action.
+  - A failed Stats request shows an error, not "Start watching…".
+  - Movie/TV detail pages only fail when the main details request fails; a failed reviews/similar/providers/credits/images call just empties that section. Unknown ids show "not found". Retry refetches in place instead of reloading the browser.
+  - Person page: unknown id shows "not found" instead of a blank page; switching people never shows the previous person; a title the person has several roles in appears once.
+  - Browse/search grids clear the previous category's results, show an error with Retry when the first page fails, and drop "load more" responses from an earlier query.
+  - Episode guide no longer gets stuck on its skeleton when switching back to a loaded season; episode progress resets when the show changes.
+- Writes report their real outcome:
+  - "Marked as watched/unwatched", clear watchlist, clear/delete list, remove from list, follow/unfollow and episode-progress updates show success only after the server confirms, and an error otherwise.
+  - The rating dialog stays open with the stars and review text when a save fails.
+  - A double-click on any watchlist/watched/follow/list toggle sends one request and shows one message.
+- Notifications: one poller for the whole app (the sidebar and bottom-nav badges always agree), and items that were unread when you open the dropdown stay bold until you close it.
+- The profile dialog's Danger Zone password and new-password fields are cleared when it closes and after a failed account deletion.
+
+### Added
+- **Remove rating** button in the rating dialog for titles you've rated.
+- 5 new OpenSpec capability specs in `openspec/specs/`: `input-validation`, `data-backup`, `load-states`, `write-feedback`, `notifications`; `account-security` and `avatar-upload` gained requirements.
+- Tests: Django pytest now 151 (new: input validation, bulk import). Jest now 93 in 14 suites (new: bulk-import client, backup/CSV round-trip, in-flight dedupe, library-hook load/error states, `usePaginatedFetch`). pytest-playwright now 158 (stats error + Retry).
+
+### Changed
+- Followed people and notifications state moved into app-wide providers (`FollowedPeopleProvider`, `NotificationsProvider`); a grid of person cards makes one request instead of one per card.
+- `useToast` is memoized and collapses identical messages.
+
 ## [0.16.0] - 2026-10-05
 
 Bug-audit release. Implements four OpenSpec changes (`harden-security-p0`, `fix-ops-reliability`, `fix-session-lifecycle`, `fix-session-followups`; archived under `openspec/changes/archive/`). Remaining audit findings are tracked in the new `docs/BUG_BACKLOG.md`.

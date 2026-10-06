@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Row, Col, Typography, Input } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
@@ -35,7 +36,7 @@ function PeoplePage() {
     [searchTerm, includeAdult]
   );
 
-  const { items: allPeople, currentPage, hasMore, loading, loadingMore, loadMore } = usePaginatedFetch<TMDBPersonSummary>({
+  const { items: allPeople, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<TMDBPersonSummary>({
     fetchPage,
     restore: { isReturning, savedLoadedPages, savedScrollY },
   });
@@ -86,6 +87,8 @@ function PeoplePage() {
         <Row gutter={[16, 20]}>
           <SkeletonCard count={12} />
         </Row>
+      ) : error ? (
+        <LoadError onRetry={retry} />
       ) : (
         <>
           <Row gutter={[16, 20]}>

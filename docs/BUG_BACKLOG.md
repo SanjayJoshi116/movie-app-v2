@@ -14,9 +14,9 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | — | `fix-ops-reliability` | ✅ 2026-10-04 | Healthcheck throttle, entrypoint timeout, refresh-thread storm |
 | — | `fix-session-lifecycle` | ✅ 2026-10-05 | Refresh rotation, revoke-all, logout endpoint, teardown, safe retries |
 | 0 | `fix-session-followups` | ✅ 2026-10-05 | Regressions/gaps in the uncommitted work above, to fix **before committing** |
-| 1 | `harden-input-validation` | ⏳ | Backend: bad input → 400, never 500 |
-| 2 | `fix-backup-roundtrip` | ⏳ | Export/import loses or corrupts data |
-| 3 | `surface-failures` | ⏳ | Frontend: errors shown as empty/success; unsafe writes |
+| 1 | `harden-input-validation` | ✅ 2026-10-05 | Backend: bad input → 400, never 500 |
+| 2 | `fix-backup-roundtrip` | ✅ 2026-10-05 | Export/import loses or corrupts data |
+| 3 | `surface-failures` | ✅ 2026-10-06 | Frontend: errors shown as empty/success; unsafe writes |
 | 4 | `fix-browse-filters` | ⏳ | Browse/list filter, restore and pagination UX bugs |
 | 5 | `user-local-dates` | ⏳ needs design decision | UTC vs local dates |
 | 6 | `fix-data-correctness` | ⏳ | Backend: quietly wrong numbers/orders |
@@ -41,7 +41,9 @@ See `openspec/changes/archive/2026-10-05-fix-session-followups/` for the full pr
 - `docker-entrypoint.sh` has CRLF line endings; needs `.gitattributes`.
 - **Manual:** `.env.docker` still has `ALLOWED_HOSTS=*`, so `docker compose up` fails until real hosts are listed.
 
-## 1. `harden-input-validation` (backend)
+## 1. `harden-input-validation` (backend) (✅ archived 2026-10-05)
+
+See `openspec/changes/archive/2026-10-05-harden-input-validation/`. All items below are fixed. Fuzzing also found a PNG with no `IDAT` chunk 500ing the avatar upload via `IndexError`, which is fixed too.
 
 One rule: any malformed input gets a `400`, never a `500` and never stored data that breaks reads.
 - **NaN/Infinity floats are accepted** (`serializers.py:104,117,147,160`; `watched_views.py:90`). `"NaN"` passes `min/max_value`, Postgres stores it, and then every GET of watchlist/watched/ratings/lists/stats 500s for that account permanently. Fix: reject non-finite values with `math.isfinite`.
@@ -55,7 +57,9 @@ One rule: any malformed input gets a `400`, never a `500` and never stored data 
 - Profile PATCH skips `UnicodeUsernameValidator`. Two concurrent renames to the same name → IntegrityError 500 (`serializers.py:56,61-65`; `auth_views.py:227`).
 - Ratings aren't forced to 0.5 steps, and TMDB silently rejects such a value (`serializers.py:147`).
 
-## 2. `fix-backup-roundtrip`
+## 2. `fix-backup-roundtrip` (✅ archived 2026-10-05)
+
+See `openspec/changes/archive/2026-10-05-fix-backup-roundtrip/`. All items below are fixed. It introduced backup format v2 (additive: `manifest.json`, `ratings.csv`, extra watched columns), and it also took the pagination `-id` tiebreaker from item 6.
 
 - **Import All crashes** when the backup has a list that doesn't exist yet. `res.data.find` is called on the paginated `/lists/` response, by which point the watchlist/watched data is already written and an empty list created. Re-running duplicates lists (`CSVImportAllModal.tsx:151-156`).
 - Export omits ratings, runtime and platform, and import drops `watched_at`, so a restore wipes stats history and all ratings and reviews (`utils/export.ts:34-38`, `CSVImportAllModal.tsx:136-139`). **Format decision needed:** add ratings to the export while keeping old backups importable.
@@ -66,9 +70,9 @@ One rule: any malformed input gets a `400`, never a `500` and never stored data 
   - media type is chosen separately from the file and applied to every row (`CSVUploadModal.tsx`, `CSVListImportModal.tsx`)
   - the file input isn't reset after an error, so re-selecting the same file does nothing
 - `bulk_watched` uses `bulk_create`, which sends no `post_save`, so recommendations never refresh after an import (`watched_views.py:100`).
-- `bulk_watched` miscounts mixed int/str ids, and its pre-check runs outside the transaction (`watched_views.py:80,102`).
+- `bulk_watched`'s pre-check runs outside the transaction (`watched_views.py`). The mixed int/str id miscount was fixed in `harden-input-validation`, which dedupes on the validated int id.
 
-## 3. `surface-failures` (frontend)
+## 3. `surface-failures` (frontend) (✅ archived 2026-10-06)
 
 Possibly split into read-path and write-path changes.
 - **Reads:**
@@ -118,7 +122,7 @@ Possibly split into read-path and write-path changes.
 
 ## 6. `fix-data-correctness` (backend)
 
-- Pagination orders by a non-unique timestamp with no tiebreaker. After a bulk import (`auto_now_add` ties), `fetchAllPages` can return duplicates or skip rows. Add `-id` (`watched_views.py:19`, `watchlist_views.py:16`, `ratings_views.py:22`, `social_views.py:51`).
+- ~~Pagination orders by a non-unique timestamp with no tiebreaker.~~ Fixed in `fix-backup-roundtrip` (`-id` tiebreaker on all five list endpoints).
 - Notifications only check the 10 most recently followed people (`notifications_views.py:29` → `social_views.py:88,93`).
 - Genre stats are always empty with fewer than 3 watched titles, because `genre_ids` is only filled inside `_compute_personalized` (`stats_views.py:69,149`; `recommendations.py:341,350`).
 - A failed TMDB fetch is cached as empty for 7 days and overwrites good data (`recommendations.py:78-88`).
@@ -139,7 +143,10 @@ Possibly split into read-path and write-path changes.
 - **Test mocks:**
   - e2e mocks return a bare `[]` where the real API returns paginated `{results}`.
   - TS specs' notifications route lacks a trailing `**`, mark-seen is unmocked, and 3 specs have no catch-all route.
-- **Missing tests:** profile, lists, recommendations, stats, episode-progress, followed-people, `usePaginatedFetch`.
+- **Missing tests:** profile, lists, recommendations, episode-progress, followed-people. (`usePaginatedFetch` unit tests and a stats error/retry e2e test landed with `surface-failures`.)
+- **Stale TS e2e tests** (fail locally against current UI; found while verifying `surface-failures`):
+  - `e2e/auth.spec.ts:103,112`: `getByLabel("Password")` now also matches "Confirm Password" (strict-mode violation), and the short-password message text has changed.
+  - `e2e/movies.spec.ts:120` (mobile-chrome only): fills the sidebar search box, which is hidden below 768px.
 - **Drift:**
   - `requirements.txt` pins `django<5.0` but the env has 5.2.17; migrations 0010+ say "Generated by Django 6.0".
   - Stale Express references in `docs/ARCHITECTURE.md`, `.env.docker`, `.env.example` and `e2e/python/conftest.py:4`.
@@ -150,6 +157,15 @@ Possibly split into read-path and write-path changes.
   - raw TMDB URLs in `EpisodeGuide.tsx:11` and `WatchProviders.tsx:30`
   - fixed widths in FilterPanel/NotificationBell
   - `AddToListModal` inputs missing `id`/`name`
+- **CRA leftovers** (found 2026-10-06; frontend is otherwise TS-only, `allowJs: false`, no tracked `.js`):
+  - `public/manifest.json` still names the app "React App" / "Create React App Sample", so a PWA install shows the wrong name.
+  - `public/index.html` keeps CRA's `meta description` ("Web site created using create-react-app") and template comments.
+  - `src/logo.svg` is unused; `reportWebVitals()` is called with no callback (a no-op). Check whether `favicon.ico`/`logo192.png`/`logo512.png` are still the default React icons.
+- **Loose types:** 7 explicit `any`s, mostly fields missing from `src/types/tmdb.ts`:
+  - `TVShowDetails.tsx:81-82` (`created_by`), `MovieDetails.tsx:82-83` (crew `job`), `MovieDetailPage.tsx:56` (`recommendations`), `CalendarPage.tsx:195` (`first_air_date`)
+  - `RegisterPage.tsx:14` `catch (err: any)` → `unknown` + `getApiError()`
+  - stale `eslint-disable no-unused-vars` above `TMDBCallbackPage` (`App.tsx:33`); it is used by `/tmdb-callback`
+  - `RecommendationsPage.tsx:406` Retry still does `window.location.reload()`; move to an in-place refetch like the `surface-failures` pages
 - **Docker:**
   - `.dockerignore` lacks `media/`
   - container runs as root

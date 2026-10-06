@@ -5,11 +5,11 @@ import type { ListsContextType } from "../types";
 export const ListsContext = createContext<ListsContextType | null>(null);
 
 export function ListsProvider({ children }: { children: ReactNode }) {
-  const { lists, isLoading, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists } = useLists();
+  const { lists, isLoading, error, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists } = useLists();
 
   const value = useMemo<ListsContextType>(
-    () => ({ lists, isLoading, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists }),
-    [lists, isLoading, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists]
+    () => ({ lists, isLoading, error, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists }),
+    [lists, isLoading, error, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists]
   );
 
   return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;

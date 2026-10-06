@@ -4,6 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import { ListsProvider } from "./context/ListsContext";
+import { FollowedPeopleProvider } from "./context/FollowedPeopleContext";
+import { NotificationsProvider } from "./hooks/useNotifications";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import App from "./App";
@@ -23,7 +25,11 @@ root.render(
         <AuthProvider>
           <AppProvider>
             <ListsProvider>
-              <App />
+              <FollowedPeopleProvider>
+                <NotificationsProvider>
+                  <App />
+                </NotificationsProvider>
+              </FollowedPeopleProvider>
             </ListsProvider>
           </AppProvider>
         </AuthProvider>

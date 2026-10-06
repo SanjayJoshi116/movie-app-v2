@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Select, Typography, Skeleton, Tag, Space, Collapse } from "antd";
+import { LoadError } from "./LoadError";
 import { StarFilled, CalendarOutlined, ClockCircleOutlined } from "@ant-design/icons";
 import { fetchTVSeason } from "../api/tmdb";
 import type { TMDBTVSeason, TMDBSeasonDetail } from "../types";
@@ -26,12 +27,17 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
   const [loading, setLoading] = useState(false);
   const cache = useRef<Record<number, TMDBSeasonDetail>>({});
   const [seasonData, setSeasonData] = useState<TMDBSeasonDetail | null>(null);
+  const [failed, setFailed] = useState(false);
   const requestedSeason = useRef<number | null>(null);
 
   const loadSeason = async (seasonNumber: number) => {
     requestedSeason.current = seasonNumber;
+    setFailed(false);
     if (cache.current[seasonNumber]) {
       setSeasonData(cache.current[seasonNumber]);
+      // Another season's request may still be in flight and its `finally`
+      // won't clear this (it's no longer the requested one), so clear it here.
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -40,6 +46,8 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
       cache.current[seasonNumber] = res.data;
       if (requestedSeason.current !== seasonNumber) return;
       setSeasonData(res.data);
+    } catch {
+      if (requestedSeason.current === seasonNumber) setFailed(true);
     } finally {
       if (requestedSeason.current === seasonNumber) setLoading(false);
     }
@@ -85,6 +93,8 @@ const EpisodeGuide = ({ tvId, seasons }: Props) => {
             </motion.div>
           ))}
         </div>
+      ) : failed ? (
+        <LoadError title="Couldn't load this season" onRetry={() => loadSeason(selectedSeason)} />
       ) : seasonData ? (
         <Collapse
           ghost

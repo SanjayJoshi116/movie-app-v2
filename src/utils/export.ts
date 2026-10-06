@@ -1,9 +1,9 @@
-import JSZip from "jszip";
-import type { WatchlistEntry, WatchedEntry, UserList } from "../types";
+import type { WatchlistEntry, WatchedEntry, RatingEntry, UserList } from "../types";
+import { buildBackupZip } from "./backup";
 
 function escape(v: unknown): string {
   const s = String(v ?? "");
-  return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function buildCSVString(rows: Record<string, unknown>[]): string {
@@ -20,37 +20,10 @@ export function downloadCSV(rows: Record<string, unknown>[], filename: string): 
 export async function downloadAllAsZip(
   watchlist: WatchlistEntry[],
   watchedList: WatchedEntry[],
+  ratings: RatingEntry[],
   lists: UserList[],
 ): Promise<void> {
-  const zip = new JSZip();
-
-  zip.file(
-    "watchlist.csv",
-    buildCSVString(
-      watchlist.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt, poster_path: i.posterPath ?? "" }))
-    ),
-  );
-
-  zip.file(
-    "watched.csv",
-    buildCSVString(
-      watchedList.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, watched_at: i.watchedAt, poster_path: i.posterPath ?? "" }))
-    ),
-  );
-
-  const listsFolder = zip.folder("lists")!;
-  for (const list of lists) {
-    if (list.items.length === 0) continue;
-    const safeName = list.name.replace(/[/\\?%*:|"<>]/g, "_");
-    listsFolder.file(
-      `${safeName}.csv`,
-      buildCSVString(
-        list.items.map((i) => ({ tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, added_at: i.addedAt, poster_path: i.posterPath ?? "" }))
-      ),
-    );
-  }
-
-  const blob = await zip.generateAsync({ type: "blob" });
+  const blob = await buildBackupZip(watchlist, watchedList, ratings, lists).generateAsync({ type: "blob" });
   const date = new Date().toISOString().slice(0, 10);
   triggerDownload(blob, `cinedb-backup-${date}.zip`, "application/zip");
 }

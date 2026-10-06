@@ -30,14 +30,34 @@ class TestStatsEmpty:
         # Eventually the page renders
         expect(authed_page.get_by_role("heading", name="Your Stats")).to_be_visible(timeout=10_000)
 
-    def test_stats_network_error_falls_back_to_empty_state(self, authed_page: Page):
+    def test_stats_network_error_shows_error_with_retry(self, authed_page: Page):
         authed_page.route("**/api/stats/**", lambda r: r.fulfill(
             status=500, content_type="application/json", body='{"detail": "Server error"}'
         ))
         authed_page.goto("/stats")
-        # Error path → data=null → shows empty state
+        # A failed request is an error with Retry, never the "start watching" empty state
         expect(authed_page.get_by_role("heading", name="Your Stats")).to_be_visible(timeout=8_000)
-        expect(authed_page.get_by_text("Start watching movies and TV shows", exact=False)).to_be_visible(timeout=5_000)
+        expect(authed_page.get_by_text("Couldn't load your stats")).to_be_visible(timeout=8_000)
+        expect(authed_page.get_by_role("button", name="Retry")).to_be_visible()
+        expect(authed_page.get_by_text("Start watching movies and TV shows", exact=False)).to_have_count(0)
+
+    def test_stats_retry_after_error_loads_stats(self, authed_page: Page):
+        # Fail every request until the error state is up (userApi's own 500
+        # retry and StrictMode's double effect make call counts unreliable).
+        state = {"fail": True}
+
+        def handler(r):
+            if state["fail"]:
+                r.fulfill(status=500, content_type="application/json", body='{"detail": "Server error"}')
+            else:
+                fulfill_json(r, MOCK_STATS)
+
+        authed_page.route("**/api/stats/**", handler)
+        authed_page.goto("/stats")
+        expect(authed_page.get_by_text("Couldn't load your stats")).to_be_visible(timeout=15_000)
+        state["fail"] = False
+        authed_page.get_by_role("button", name="Retry").click()
+        expect(authed_page.get_by_text("Total Watched", exact=False)).to_be_visible(timeout=8_000)
 
 
 class TestStatsCards:

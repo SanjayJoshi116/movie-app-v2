@@ -9,7 +9,8 @@ from rest_framework.response import Response
 
 from .models import RatingEntry, TMDBProfile
 from .pagination import DefaultPagination
-from .serializers import RatingEntrySerializer
+from .bulk_import import bulk_import, timestamp_or_now
+from .serializers import BulkRatingEntrySerializer, RatingEntrySerializer
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 @permission_classes([IsAuthenticated])
 def ratings_list(request):
     if request.method == "GET":
-        entries = RatingEntry.objects.filter(user=request.user).order_by("-rated_at")
+        entries = RatingEntry.objects.filter(user=request.user).order_by("-rated_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(entries, request)
         return paginator.get_paginated_response(RatingEntrySerializer(page, many=True).data)
@@ -71,3 +72,24 @@ def ratings_detail(request, pk):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_ratings(request):
+    """Create-only restore: an existing rating is never overwritten, and nothing
+    is pushed to a connected TMDB account (a backup restore shouldn't fire
+    hundreds of third-party writes)."""
+
+    def build(user, media_type, item):
+        return RatingEntry(
+            user=user,
+            media_id=item["mediaId"],
+            media_type=media_type,
+            title=item["title"],
+            user_rating=item["userRating"],
+            review=item["review"],
+            rated_at=timestamp_or_now(item.get("ratedAt")),
+        )
+
+    return bulk_import(request, model=RatingEntry, entry_serializer=BulkRatingEntrySerializer, build=build)

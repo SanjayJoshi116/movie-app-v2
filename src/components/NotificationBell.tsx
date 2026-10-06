@@ -18,19 +18,32 @@ function NotificationBell({ buttonClassName }: Props) {
   const navigate = useNavigate();
   const { items, unreadCount, hasError, markSeen } = useNotifications();
   const [open, setOpen] = useState(false);
+  // Keys of items that were unread when the dropdown opened. Rendering bold
+  // from this snapshot (and marking seen only on close) means the user actually
+  // sees which items are new before the server forgets.
+  const [unreadSnapshot, setUnreadSnapshot] = useState<Set<string>>(new Set());
+
+  const itemKey = (item: (typeof items)[number]) => `${item.type}-${item.id}`;
+
+  const setOpenState = (visible: boolean) => {
+    setOpen(visible);
+    if (visible) {
+      setUnreadSnapshot(new Set(items.filter((i) => i.isUnread).map(itemKey)));
+    } else {
+      if (unreadCount > 0 || unreadSnapshot.size > 0) markSeen();
+      setUnreadSnapshot(new Set());
+    }
+  };
 
   const openItem = (item: (typeof items)[number]) => {
-    setOpen(false);
+    setOpenState(false);
     navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`);
   };
 
   return (
     <Dropdown
       open={open}
-      onOpenChange={(visible) => {
-        setOpen(visible);
-        if (visible && unreadCount > 0) markSeen();
-      }}
+      onOpenChange={setOpenState}
       trigger={["click"]}
       getPopupContainer={(triggerNode) => (triggerNode.parentElement as HTMLElement) ?? document.body}
       popupRender={() => (
@@ -57,7 +70,7 @@ function NotificationBell({ buttonClassName }: Props) {
           ) : (
             items.map((item) => (
               <div
-                key={`${item.type}-${item.id}`}
+                key={itemKey(item)}
                 role="button"
                 tabIndex={0}
                 onClick={() => openItem(item)}
@@ -75,7 +88,7 @@ function NotificationBell({ buttonClassName }: Props) {
                   <PosterPlaceholder style={THUMB_STYLE} />
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <Typography.Text ellipsis style={{ display: "block", fontWeight: item.isUnread ? 700 : 400 }}>
+                  <Typography.Text ellipsis style={{ display: "block", fontWeight: item.isUnread || unreadSnapshot.has(itemKey(item)) ? 700 : 400 }}>
                     {item.title}
                   </Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block" }}>

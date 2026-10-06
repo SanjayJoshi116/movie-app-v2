@@ -6,11 +6,11 @@ type RatingsContextType = ReturnType<typeof useRatings>;
 export const RatingsContext = createContext<RatingsContextType | null>(null);
 
 export function RatingsProvider({ children }: { children: ReactNode }) {
-  const { ratings, isLoading, set, get, remove } = useRatings();
+  const { ratings, isLoading, error, set, get, remove, reload } = useRatings();
 
   const value = useMemo<RatingsContextType>(() => ({
-    ratings, isLoading, set, get, remove,
-  }), [ratings, isLoading, set, get, remove]);
+    ratings, isLoading, error, set, get, remove, reload,
+  }), [ratings, isLoading, error, set, get, remove, reload]);
 
   return <RatingsContext.Provider value={value}>{children}</RatingsContext.Provider>;
 }

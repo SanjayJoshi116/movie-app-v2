@@ -31,6 +31,7 @@ urlpatterns = [
     # Watchlist
     path("watchlist/", views.watchlist_list),
     path("watchlist/clear/", views.watchlist_clear),
+    path("watchlist/bulk/", views.bulk_watchlist),
     path("watchlist/<int:pk>/", views.watchlist_detail),
 
     # Watched
@@ -41,6 +42,7 @@ urlpatterns = [
 
     # Ratings
     path("ratings/", views.ratings_list),
+    path("ratings/bulk/", views.bulk_ratings),
     path("ratings/<int:pk>/", views.ratings_detail),
 
     # Lists

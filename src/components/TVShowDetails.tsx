@@ -48,7 +48,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating, isWatched, toggleWatched, theme } = useAppContext();
+  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
   const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -255,8 +255,12 @@ const TVShowDetails = ({ tvShow }: Props) => {
                           type="link"
                           style={{ padding: 0 }}
                           onClick={async () => {
-                            await updateEpProgress(nextSeason, nextEpisode);
-                            showSuccess(`Progress saved: S${String(nextSeason).padStart(2, "0")}E${String(nextEpisode).padStart(2, "0")}`);
+                            try {
+                              await updateEpProgress(nextSeason, nextEpisode);
+                              showSuccess(`Progress saved: S${String(nextSeason).padStart(2, "0")}E${String(nextEpisode).padStart(2, "0")}`);
+                            } catch (err) {
+                              showError(getApiError(err, "Failed to save episode progress."));
+                            }
                           }}
                         >
                           Next Episode →
@@ -273,8 +277,12 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     <Popconfirm
                       title="Remove episode progress?"
                       onConfirm={async () => {
-                        await clearEpProgress();
-                        showSuccess("Episode progress removed.");
+                        try {
+                          await clearEpProgress();
+                          showSuccess("Episode progress removed.");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to remove episode progress."));
+                        }
                       }}
                       okText="Remove"
                       okType="danger"
@@ -299,9 +307,14 @@ const TVShowDetails = ({ tvShow }: Props) => {
                       size="small"
                       type="primary"
                       onClick={async () => {
-                        await updateEpProgress(epSeason, epEpisode);
-                        setEpEditing(false);
-                        showSuccess(`Progress saved: S${String(epSeason).padStart(2, "0")}E${String(epEpisode).padStart(2, "0")}`);
+                        try {
+                          await updateEpProgress(epSeason, epEpisode);
+                          setEpEditing(false);
+                          showSuccess(`Progress saved: S${String(epSeason).padStart(2, "0")}E${String(epEpisode).padStart(2, "0")}`);
+                        } catch (err) {
+                          // Editor stays open with the chosen season/episode so the user can retry.
+                          showError(getApiError(err, "Failed to save episode progress."));
+                        }
                       }}
                     >
                       Save
@@ -337,6 +350,16 @@ const TVShowDetails = ({ tvShow }: Props) => {
               showSuccess(`Rated ${name} ${r}/10`);
             } catch (err) {
               showError(getApiError(err, "Failed to save rating."));
+              throw err;
+            }
+          }}
+          onRemove={async () => {
+            try {
+              await removeRating(id, "tv");
+              showSuccess("Rating removed");
+            } catch (err) {
+              showError(getApiError(err, "Failed to remove rating."));
+              throw err;
             }
           }}
           onClose={() => setShowRatingModal(false)}

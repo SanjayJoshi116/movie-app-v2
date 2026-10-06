@@ -9,6 +9,7 @@ import {
   PlusOutlined, DeleteOutlined, UnorderedListOutlined, UploadOutlined,
 } from "@ant-design/icons";
 
+import { LoadError } from "../components/LoadError";
 import { useListsContext } from "../context/useListsContext";
 import type { UserList } from "../types";
 import { formatDateDMY } from "../utils/formatDate";
@@ -33,7 +34,7 @@ const SORT_FNS: Record<SortKey, (a: UserList, b: UserList) => number> = {
 
 function ListsPage() {
   const navigate = useNavigate();
-  const { lists, isLoading, createList, deleteList } = useListsContext();
+  const { lists, isLoading, error: loadError, reloadLists, createList, deleteList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importListOpen, setImportListOpen] = useState(false);
   const [form] = Form.useForm();
@@ -109,6 +110,8 @@ function ListsPage() {
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
           <Spin size="large" />
         </div>
+      ) : lists.length === 0 && loadError ? (
+        <LoadError title="Couldn't load your lists" onRetry={() => { reloadLists().catch(() => {}); }} />
       ) : lists.length === 0 ? (
         <Empty
           image={<UnorderedListOutlined style={{ fontSize: 48, color: RATING_GOLD }} />}

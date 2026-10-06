@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { createContext, createElement, useContext, useMemo, useState, useEffect, useCallback, ReactNode } from "react";
 import { fetchNewReleaseNotifications, markNotificationsSeen } from "../api/userApi";
 import type { NewReleaseNotification } from "../api/userApi";
 import { useAuth } from "../context/AuthContext";
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 
-export function useNotifications() {
+function useNotificationsState() {
   const { isAuthenticated } = useAuth();
   const [items, setItems] = useState<NewReleaseNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -49,5 +49,25 @@ export function useNotifications() {
     }
   }, []);
 
-  return { items, unreadCount, hasError, markSeen };
+  return useMemo(() => ({ items, unreadCount, hasError, markSeen }), [items, unreadCount, hasError, markSeen]);
+}
+
+type NotificationsContextType = ReturnType<typeof useNotificationsState>;
+
+const NotificationsContext = createContext<NotificationsContextType | null>(null);
+
+/**
+ * Single poller for the whole app. The bell is mounted in both Sidebar and
+ * BottomNav (CSS hides one per breakpoint); with a hook instance each they ran
+ * two pollers whose badges could disagree.
+ */
+export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const value = useNotificationsState();
+  return createElement(NotificationsContext.Provider, { value }, children);
+}
+
+export function useNotifications(): NotificationsContextType {
+  const ctx = useContext(NotificationsContext);
+  if (ctx === null) throw new Error("useNotifications must be used within NotificationsProvider");
+  return ctx;
 }

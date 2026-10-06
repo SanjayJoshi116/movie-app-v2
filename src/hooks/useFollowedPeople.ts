@@ -1,43 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  getFollowedPeople,
-  followPerson,
-  unfollowPerson,
-  type FollowedPersonEntry,
-} from "../api/userApi";
-import { useAuth } from "../context/AuthContext";
+import { useContext, useEffect } from "react";
+import { FollowedPeopleContext, type FollowedPeopleContextType } from "../context/FollowedPeopleContext";
 
-export function useFollowedPeople() {
-  const { isAuthenticated } = useAuth();
-  const [followed, setFollowed] = useState<FollowedPersonEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isAuthenticated) { setFollowed([]); return; }
-    setLoading(true);
-    getFollowedPeople()
-      .then((data) => setFollowed(data))
-      .catch(() => setFollowed([]))
-      .finally(() => setLoading(false));
-  }, [isAuthenticated]);
-
-  const isFollowing = useCallback(
-    (personId: number) => followed.some((f) => f.personId === personId),
-    [followed]
-  );
-
-  const follow = useCallback(
-    async (personId: number, name: string, profilePath: string | null) => {
-      const res = await followPerson(personId, name, profilePath);
-      setFollowed((prev) => [...prev.filter((f) => f.personId !== personId), res.data]);
-    },
-    []
-  );
-
-  const unfollow = useCallback(async (personId: number) => {
-    await unfollowPerson(personId);
-    setFollowed((prev) => prev.filter((f) => f.personId !== personId));
-  }, []);
-
-  return { followed, loading, isFollowing, follow, unfollow };
+/** Reads the shared followed-people state from `FollowedPeopleProvider`, fetching it on first use. */
+export function useFollowedPeople(): FollowedPeopleContextType {
+  const ctx = useContext(FollowedPeopleContext);
+  if (ctx === null) throw new Error("useFollowedPeople must be used within FollowedPeopleProvider");
+  const { request } = ctx;
+  useEffect(() => { request(); }, [request]);
+  return ctx;
 }

@@ -269,6 +269,53 @@ export const bulkMarkWatched = (
   mediaType: "movie" | "tv",
 ) => userApi.post<{ added: number; skipped: number }>("/watched/bulk/", { entries, mediaType });
 
+/** Server-side cap per bulk request (MAX_BULK_ENTRIES in bulk_import.py). */
+export const BULK_CHUNK_SIZE = 500;
+
+export interface BulkImportEntry {
+  mediaId: number;
+  mediaType?: "movie" | "tv";
+  title: string;
+  posterPath?: string | null;
+  voteAverage?: number;
+  addedAt?: string;
+  watchedAt?: string;
+  runtimeMinutes?: number | null;
+  platform?: string | null;
+  userRating?: number;
+  review?: string;
+  ratedAt?: string;
+}
+
+export interface BulkImportResult {
+  added: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Import any number of entries through a bulk endpoint, BULK_CHUNK_SIZE per
+ * request, sequentially. Each request is all-or-nothing server-side, so a
+ * rejected chunk counts all its entries as failed and the rest still go through.
+ */
+export async function bulkImport(
+  kind: "watched" | "watchlist" | "ratings",
+  entries: BulkImportEntry[],
+): Promise<BulkImportResult> {
+  const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
+  for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
+    const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
+    try {
+      const { data } = await userApi.post<{ added: number; skipped: number }>(`/${kind}/bulk/`, { entries: chunk });
+      result.added += data.added;
+      result.skipped += data.skipped;
+    } catch {
+      result.failed += chunk.length;
+    }
+  }
+  return result;
+}
+
 export const getTMDBRequestToken = (callbackUrl: string) =>
   userApi.get<{ redirect_url: string; request_token: string }>("/tmdb-auth/request-token/", {
     params: { redirect_to: callbackUrl },

@@ -13,7 +13,7 @@ from .serializers import UserListSerializer, UserListItemSerializer
 @permission_classes([IsAuthenticated])
 def lists_list(request):
     if request.method == "GET":
-        user_lists = UserList.objects.filter(user=request.user).prefetch_related("items").order_by("-created_at")
+        user_lists = UserList.objects.filter(user=request.user).prefetch_related("items").order_by("-created_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(user_lists, request)
         return paginator.get_paginated_response(UserListSerializer(page, many=True).data)

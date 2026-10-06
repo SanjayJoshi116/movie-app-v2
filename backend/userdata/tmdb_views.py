@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import TMDBProfile
+from .serializers import TMDBSessionInputSerializer
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,9 @@ def tmdb_request_token(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def tmdb_create_session(request):
-    request_token = request.data.get("request_token", "")
+    body = TMDBSessionInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    request_token = body.validated_data["request_token"]
     if not request_token:
         return Response({"error": "request_token is required."}, status=status.HTTP_400_BAD_REQUEST)
     try:

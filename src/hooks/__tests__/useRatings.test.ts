@@ -122,4 +122,13 @@ describe("useRatings", () => {
     const entry = result.current.get(1, "movie");
     expect(Number.isFinite(Date.parse(entry!.ratedAt))).toBe(true);
   });
+
+  it("reports loading on the first render, then an error when the load fails", async () => {
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useRatings(), { wrapper });
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.ratings).toEqual({});
+  });
 });

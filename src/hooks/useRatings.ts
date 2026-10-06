@@ -9,39 +9,53 @@ function ratingKey(id: number, type: string) { return `${type}-${id}`; }
 export function useRatings() {
   const { isAuthenticated } = useAuth();
   const [ratings, setRatings] = useState<RatingsMap>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(isAuthenticated);
+  const [error, setError] = useState<unknown>(null);
   const dbIdMap = useRef<Record<string, number>>({});
   const ratingsRef = useRef(ratings);
   ratingsRef.current = ratings;
+
+  const reload = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const data = await fetchAllPages<RatingEntryDTO>(userApi, "/ratings/");
+      const map: Record<string, number> = {};
+      const ratingsMap: RatingsMap = {};
+      data.forEach((item) => {
+        const k = ratingKey(item.mediaId, item.mediaType);
+        map[k] = item.id;
+        ratingsMap[k] = {
+          id: item.mediaId,
+          type: item.mediaType,
+          title: item.title,
+          userRating: item.userRating,
+          review: item.review,
+          ratedAt: item.ratedAt,
+        };
+      });
+      dbIdMap.current = map;
+      setRatings(ratingsMap);
+      setError(null);
+    } catch (err) {
+      // Keep whatever was already loaded; the page decides how to surface it.
+      setError(err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
       setRatings({});
       dbIdMap.current = {};
+      setError(null);
+      setIsLoading(false);
       return;
     }
-    setIsLoading(true);
-    fetchAllPages<RatingEntryDTO>(userApi, "/ratings/")
-      .then((data) => {
-        const map: Record<string, number> = {};
-        const ratingsMap: RatingsMap = {};
-        data.forEach((item) => {
-          const k = ratingKey(item.mediaId, item.mediaType);
-          map[k] = item.id;
-          ratingsMap[k] = {
-            id: item.mediaId,
-            type: item.mediaType,
-            title: item.title,
-            userRating: item.userRating,
-            review: item.review,
-            ratedAt: item.ratedAt,
-          };
-        });
-        dbIdMap.current = map;
-        setRatings(ratingsMap);
-      })
-      .finally(() => setIsLoading(false));
-  }, [isAuthenticated]);
+    reload().catch(() => { /* recorded in `error` */ });
+  }, [isAuthenticated, reload]);
 
   const set = useCallback(async (
     id: number,
@@ -91,5 +105,5 @@ export function useRatings() {
     });
   }, [isAuthenticated]);
 
-  return { ratings, isLoading, set, get, remove };
+  return { ratings, isLoading, error, set, get, remove, reload };
 }

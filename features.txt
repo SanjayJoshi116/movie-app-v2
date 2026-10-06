@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.16.0)
+CINE DB — Feature List (v0.17.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -28,7 +28,8 @@ LIBRARY
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Watchlist's watched status is shared live with the Watched list (mark watched from any page, the Watchlist card reflects it immediately); marking watched opens the same runtime/platform-capture modal used everywhere else
 - Search/sort/CSV export on Watchlist and Watched
-- Ratings (0.5-10) + written reviews
+- Full backup (ZIP) and restore: watchlist, watched (runtime/platform), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import
+- Ratings (0.5-10) + written reviews; remove a rating from the rating dialog; a failed save keeps your stars and review
 - User Lists: create, rename, add/remove items, CSV export, CSV import; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
 - Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap
 - Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card
@@ -46,7 +47,8 @@ AUTH
 - Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors
 
 UI/UX
-- Skeleton loaders (staggered fade-in), toast notifications
+- Skeleton loaders (staggered fade-in), toast notifications (success only after the server confirms; double-clicks send one request, one toast)
+- Every page shows loading, an error with in-place Retry, empty, or content — a failed load never looks like an empty library; detail pages degrade per section and show "not found" for bad ids
 - Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent — Poppins font throughout, unified size scale: caption/body/emphasis/display
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
 - Framer Motion page transitions

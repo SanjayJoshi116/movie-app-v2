@@ -6,10 +6,13 @@ import {
 } from "antd";
 import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useWatchlistContext } from "../context/WatchlistContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import LibraryItemCard from "../components/LibraryItemCard";
+import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
 import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
@@ -48,8 +51,9 @@ interface PendingWatch {
 function WatchlistPage() {
   const navigate = useNavigate();
   const {
-    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, isWatched, toggleWatched, theme,
+    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched, theme,
   } = useAppContext();
+  const { isLoading, error: loadError, reload } = useWatchlistContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
@@ -113,7 +117,14 @@ function WatchlistPage() {
             <Popconfirm
               title="Clear entire watchlist?"
               description="This will permanently remove all items."
-              onConfirm={async () => { await clearAllWatchlist(); showSuccess("Watchlist cleared"); }}
+              onConfirm={async () => {
+                try {
+                  await clearAllWatchlist();
+                  showSuccess("Watchlist cleared");
+                } catch (err) {
+                  showError(getApiError(err, "Failed to clear watchlist."));
+                }
+              }}
               okText="Clear All"
               okType="danger"
               cancelText="Cancel"
@@ -161,7 +172,11 @@ function WatchlistPage() {
         />
       )}
 
-      {watchlist.length === 0 ? (
+      {watchlist.length === 0 && isLoading ? (
+        <SkeletonCard count={12} />
+      ) : watchlist.length === 0 && loadError ? (
+        <LoadError title="Couldn't load your watchlist" onRetry={() => { reload().catch(() => {}); }} />
+      ) : watchlist.length === 0 ? (
         <Empty
           image={<BookOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
           description="Your watchlist is empty. Browse movies and TV shows to add them."
@@ -285,6 +300,16 @@ function WatchlistPage() {
               showSuccess("Rating saved");
             } catch (err) {
               showError(getApiError(err, "Failed to save rating."));
+              throw err;
+            }
+          }}
+          onRemove={async () => {
+            try {
+              await removeRating(ratingTarget.id, ratingTarget.type);
+              showSuccess("Rating removed");
+            } catch (err) {
+              showError(getApiError(err, "Failed to remove rating."));
+              throw err;
             }
           }}
           onClose={() => setRatingTarget(null)}
@@ -296,12 +321,16 @@ function WatchlistPage() {
         mediaId={pendingWatch?.id ?? 0}
         mediaType={pendingWatch?.type ?? "movie"}
         onCancel={() => setPendingWatch(null)}
-        onConfirm={(details) => {
-          if (pendingWatch) {
-            toggleWatched({ ...pendingWatch, ...details });
-            showSuccess("Marked as watched");
-          }
+        onConfirm={async (details) => {
+          const target = pendingWatch;
           setPendingWatch(null);
+          if (!target) return;
+          try {
+            await toggleWatched({ ...target, ...details });
+            showSuccess("Marked as watched");
+          } catch (err) {
+            showError(getApiError(err, "Failed to mark as watched."));
+          }
         }}
       />
     </motion.div>

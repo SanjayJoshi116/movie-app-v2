@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from .models import EpisodeProgress, FollowedPerson, WatchedEntry
 from .pagination import DefaultPagination
+from .serializers import INT32_MAX, EpisodeProgressInputSerializer, FollowPersonInputSerializer
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -28,13 +29,14 @@ def episode_progress(request, show_id: int):
         EpisodeProgress.objects.filter(user=request.user, show_id=show_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    try:
-        season = int(request.data.get("season", 1))
-        episode = int(request.data.get("episode", 1))
-    except (TypeError, ValueError):
-        return Response({"detail": "season and episode must be integers."}, status=status.HTTP_400_BAD_REQUEST)
-    if season < 1 or episode < 1:
-        return Response({"detail": "season and episode must be >= 1."}, status=status.HTTP_400_BAD_REQUEST)
+    # The path converter accepts any digits; an id past `integer` range would
+    # be a DataError on insert. Reads/deletes above just match nothing.
+    if not 1 <= show_id <= INT32_MAX:
+        return Response({"detail": "Invalid show id."}, status=status.HTTP_400_BAD_REQUEST)
+    body = EpisodeProgressInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    season = body.validated_data["season"]
+    episode = body.validated_data["episode"]
 
     prog, _ = EpisodeProgress.objects.update_or_create(
         user=request.user,
@@ -48,7 +50,7 @@ def episode_progress(request, show_id: int):
 @permission_classes([IsAuthenticated])
 def followed_people_list(request):
     if request.method == "GET":
-        people = FollowedPerson.objects.filter(user=request.user).order_by("-followed_at")
+        people = FollowedPerson.objects.filter(user=request.user).order_by("-followed_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(people, request)
         data = [
@@ -57,9 +59,11 @@ def followed_people_list(request):
         ]
         return paginator.get_paginated_response(data)
 
-    person_id = request.data.get("personId")
-    name = request.data.get("name", "")
-    profile_path = request.data.get("profilePath")
+    body = FollowPersonInputSerializer(data=request.data)
+    body.is_valid(raise_exception=True)
+    person_id = body.validated_data.get("personId")
+    name = body.validated_data["name"]
+    profile_path = body.validated_data.get("profilePath")
     if not person_id:
         return Response({"detail": "personId is required."}, status=status.HTTP_400_BAD_REQUEST)
 

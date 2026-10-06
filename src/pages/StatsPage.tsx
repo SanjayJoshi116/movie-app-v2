@@ -34,6 +34,7 @@ import {
 import { fetchStats, type StatsData } from "../api/userApi";
 import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL } from "../constants/ui";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
+import { LoadError } from "../components/LoadError";
 
 const { Title, Text } = Typography;
 
@@ -304,15 +305,21 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
 function StatsPage() {
   const [data, setData] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeStatsTab = searchParams.get("tab") ?? "top-rated";
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
     fetchStats()
-      .then((res) => setData(res.data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, []);
+      .then((res) => { if (!cancelled) setData(res.data); })
+      .catch(() => { if (!cancelled) setLoadFailed(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [reloadKey]);
 
   if (loading) {
     return (
@@ -322,7 +329,16 @@ function StatsPage() {
     );
   }
 
-  if (!data || data.totalWatched === 0) {
+  if (loadFailed || !data) {
+    return (
+      <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.2 }}>
+        <Title level={2} style={{ marginBottom: 24 }}>Your Stats</Title>
+        <LoadError title="Couldn't load your stats" onRetry={() => setReloadKey((k) => k + 1)} />
+      </motion.div>
+    );
+  }
+
+  if (data.totalWatched === 0) {
     return (
       <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.2 }}>
         <Title level={2} style={{ marginBottom: 24 }}>Your Stats</Title>

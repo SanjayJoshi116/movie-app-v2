@@ -7,6 +7,7 @@ import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
@@ -132,7 +133,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     [isMovie, searchTerm, selectedGenres, activeCategory, externalFilters, externalSortBy, includeAdult]
   );
 
-  const { items: allItems, currentPage, hasMore, loading, loadingMore, loadMore } = usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
+  const { items: allItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
     fetchPage,
     restore: { isReturning, savedLoadedPages, savedScrollY },
   });
@@ -220,6 +221,8 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
       {/* Results */}
       {loading ? (
         <SkeletonCard count={18} />
+      ) : error ? (
+        <LoadError onRetry={retry} />
       ) : isMovie ? (
         <Movies
           movies={visibleItems as TMDBMovieSummary[]}

@@ -62,7 +62,7 @@ const MovieDetails = ({ movie }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating } = useAppContext();
+  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
@@ -232,6 +232,16 @@ const MovieDetails = ({ movie }: Props) => {
               showSuccess(`Rated ${title} ${r}/10`);
             } catch (err) {
               showError(getApiError(err, "Failed to save rating."));
+              throw err;
+            }
+          }}
+          onRemove={async () => {
+            try {
+              await removeRating(id, "movie");
+              showSuccess("Rating removed");
+            } catch (err) {
+              showError(getApiError(err, "Failed to remove rating."));
+              throw err;
             }
           }}
           onClose={() => setShowRatingModal(false)}

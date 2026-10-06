@@ -49,6 +49,8 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Reset so picking the same file again (e.g. after an error) fires `change` again.
+    e.target.value = "";
     if (!file) return;
     setFileName(file.name);
     setParsed([]);
@@ -72,7 +74,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
         await Promise.allSettled(
           enriched.slice(i, i + BATCH).map(async (row, offset) => {
             try {
-              const { data } = await (mediaType === "tv"
+              const { data } = await ((row.type ?? mediaType) === "tv"
                 ? fetchTVPoster(row.mediaId)
                 : fetchMoviePoster(row.mediaId));
               enriched[i + offset] = { ...row, posterPath: data.poster_path, voteAverage: data.vote_average };
@@ -89,7 +91,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
           enriched.slice(i, i + BATCH).map((row) =>
             userApi.post(`/lists/${selectedListId}/items/`, {
               mediaId: row.mediaId,
-              mediaType: mediaType,
+              mediaType: row.type ?? mediaType,
               title: row.title,
               posterPath: row.posterPath ?? null,
               voteAverage: row.voteAverage ?? 0,
@@ -100,10 +102,16 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
       }
       const added = allResults.filter((r) => r.status === "fulfilled" && r.value.status === 201).length;
       const skipped = allResults.filter((r) => r.status === "fulfilled" && r.value.status !== 201).length;
+      const failed = allResults.filter((r) => r.status === "rejected").length;
 
-      showSuccess(`Import complete: ${added} added, ${skipped} already in list.`);
       await reloadLists();
-      handleClose();
+      const summary = `${added} added, ${skipped} already in list`;
+      if (failed > 0) {
+        showError(`Import finished: ${summary}, ${failed} failed.`);
+      } else {
+        showSuccess(`Import complete: ${summary}.`);
+        handleClose();
+      }
     } catch (err) {
       showError(getApiError(err, "Import failed. Please try again."));
     } finally {
@@ -127,7 +135,8 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
     <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
-          Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. Extra columns are ignored.
+          Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. An optional <code>type</code> column
+          (<code>movie</code>/<code>tv</code>) sets each row&apos;s type; the default type applies to rows without one.
         </Text>
       </div>
 
@@ -145,7 +154,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
 
       <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
-          <Text style={{ marginRight: 12 }}>Type:</Text>
+          <Text style={{ marginRight: 12 }}>Default type:</Text>
           <Radio.Group value={mediaType} onChange={(e) => setMediaType(e.target.value)}>
             <Radio.Button value="movie">Movies</Radio.Button>
             <Radio.Button value="tv">TV Shows</Radio.Button>
@@ -185,9 +194,10 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
           <Table
             size="small"
             pagination={false}
-            dataSource={preview.map((r) => ({ ...r, key: r.mediaId }))}
+            dataSource={preview.map((r, i) => ({ ...r, type: r.type ?? mediaType, key: `${i}-${r.mediaId}` }))}
             columns={[
               { title: "TMDB ID", dataIndex: "mediaId", width: 100 },
+              { title: "Type", dataIndex: "type", width: 70 },
               { title: "Title", dataIndex: "title", ellipsis: true },
             ]}
             style={{ marginBottom: 16 }}

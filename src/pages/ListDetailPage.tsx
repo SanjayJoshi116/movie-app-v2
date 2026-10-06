@@ -13,6 +13,7 @@ import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import LibraryItemCard from "../components/LibraryItemCard";
+import { LoadError } from "../components/LoadError";
 import FilterBar from "../components/FilterBar";
 import MediaGrid from "../components/MediaGrid";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
@@ -32,7 +33,7 @@ function ListDetailPage() {
   const listId = Number(id);
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
-  const { lists, isLoading, deleteList, updateList, removeFromList, clearList } = useListsContext();
+  const { lists, isLoading, error: loadError, reloadLists, deleteList, updateList, removeFromList, clearList } = useListsContext();
   const list = lists.find((l) => l.id === listId) ?? null;
 
   const [editOpen, setEditOpen] = useState(false);
@@ -81,7 +82,9 @@ function ListDetailPage() {
     });
   };
 
-  if (isLoading) {
+  // Only block the page while there's nothing to show yet: a background reload
+  // (e.g. after importing into this list) must not unmount the open modal.
+  if (!list && isLoading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
         <Spin size="large" />
@@ -95,7 +98,11 @@ function ListDetailPage() {
         <Button icon={<LeftOutlined />} onClick={() => navigate("/lists")} style={{ marginBottom: 16 }}>
           Back
         </Button>
-        <Empty description="List not found." style={{ padding: "60px 0" }} />
+        {loadError ? (
+          <LoadError title="Couldn't load your lists" onRetry={() => { reloadLists().catch(() => {}); }} />
+        ) : (
+          <Empty description="List not found." style={{ padding: "60px 0" }} />
+        )}
       </div>
     );
   }
@@ -130,7 +137,14 @@ function ListDetailPage() {
             <Popconfirm
               title="Clear all items from this list?"
               description="The list will remain but all items will be removed."
-              onConfirm={async () => { await clearList(list.id); showSuccess("List cleared"); }}
+              onConfirm={async () => {
+                try {
+                  await clearList(list.id);
+                  showSuccess("List cleared");
+                } catch (err) {
+                  showError(getApiError(err, "Failed to clear list."));
+                }
+              }}
               okText="Clear All"
               okType="danger"
               cancelText="Cancel"
@@ -142,7 +156,15 @@ function ListDetailPage() {
             <Popconfirm
               title={`Delete "${list.name}"?`}
               description="This will permanently remove the list and all its items."
-              onConfirm={async () => { await deleteList(list.id); showSuccess("List deleted"); navigate("/lists"); }}
+              onConfirm={async () => {
+                try {
+                  await deleteList(list.id);
+                  showSuccess("List deleted");
+                  navigate("/lists");
+                } catch (err) {
+                  showError(getApiError(err, "Failed to delete list."));
+                }
+              }}
               okText="Delete"
               okType="danger"
               cancelText="Cancel"
@@ -215,7 +237,13 @@ function ListDetailPage() {
                 actionButtons={
                   <Popconfirm
                     title="Remove from list?"
-                    onConfirm={() => removeFromList(list.id, item.id, item.type)}
+                    onConfirm={async () => {
+                      try {
+                        await removeFromList(list.id, item.id, item.type);
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to remove from list."));
+                      }
+                    }}
                     okText="Remove"
                     cancelText="Cancel"
                   >

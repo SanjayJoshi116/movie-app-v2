@@ -28,12 +28,12 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 
 ## Highlights
 
-- **38 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
+- **40 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
 - **JWT auth** with silent refresh + rotation/blacklisting (coordinated across browser tabs), server-side logout, all other sessions revoked on password change/reset, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
-- **328 automated tests** — 52 Jest, 92 Django pytest, 27 Playwright (TS), 157 pytest-playwright — plus `ruff` lint; all but the TS Playwright suite run in CI on every push (`## Testing`)
+- **429 automated tests** — 93 Jest, 151 Django pytest, 27 Playwright (TS), 158 pytest-playwright — plus `ruff` lint; all but the TS Playwright suite run in CI on every push (`## Testing`)
 
 ---
 
@@ -105,9 +105,10 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
 - **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export
-- **Ratings & Reviews** — Rate anything 1–10 and write personal notes
+- **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
-- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column; watched list refreshes immediately after import
+- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); watched list refreshes immediately after import
+- **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, and every list (names, descriptions, empty lists) plus a `manifest.json`; importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section. Older v1 backups still import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
 - **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
@@ -119,7 +120,8 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
-- **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions
+- **Honest Load & Error States** — Every page shows loading, an error with in-place Retry, the empty state, or content — a failed request is never shown as "nothing here". Detail pages degrade per section and show "not found" for unknown ids
+- **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions, shown only after the server confirms; a double-click sends one request and shows one toast
 - **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
 - **Info Tooltips** — `(i)` tooltips next to non-obvious labels/stats (Stats, Calendar, Lists, Watched, Recommendations, Movie/TV Detail)
 - **Password Strength Meter** — Live strength bar under the New Password field when changing your password
@@ -177,7 +179,9 @@ backend/
 │   │                            #   RatingEntry, UserList, UserListItem, EpisodeProgress,
 │   │                            #   FollowedPerson, UserRecommendationCache (pre-computed rec cache per user),
 │   │                            #   TMDBProfile (TMDB OAuth session), Profile (avatar ImageField)
-│   ├── serializers.py           # DRF serializers (camelCase field aliases)
+│   ├── serializers.py           # DRF serializers (camelCase field aliases, FiniteFloatField, MediaIdentityMixin,
+│   │                            #   restated length/range bounds, small input serializers for ad-hoc endpoints)
+│   ├── bulk_import.py           # bulk_import(): shared create-only, all-or-nothing bulk endpoint helper
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists;
 │   │                            #   next/previous are plain page numbers, not absolute URLs
@@ -188,9 +192,9 @@ backend/
 │   ├── health_views.py          # /api/health/ liveness check (never throttled)
 │   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout
 │   ├── logging.py               # RedactingFormatter: strips the TMDB API key from log output
-│   ├── watchlist_views.py       # watchlist CRUD (paginated list)
+│   ├── watchlist_views.py       # watchlist CRUD (paginated list) + bulk import
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
-│   ├── ratings_views.py         # ratings CRUD (paginated list) + TMDB mirror
+│   ├── ratings_views.py         # ratings CRUD (paginated list) + bulk import + TMDB mirror
 │   ├── lists_views.py           # user lists + list items CRUD (incl. PATCH rename)
 │   ├── tmdb_views.py            # TMDB OAuth (request token, session, disconnect)
 │   ├── stats_views.py           # stats aggregation + genre cache
@@ -234,6 +238,7 @@ src/
 │   ├── SearchBox.tsx            # Input.Search with recent-search history dropdown
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
+│   ├── LoadError.tsx            # Shared failed-load / not-found state (antd Result) with optional in-place Retry
 │   ├── PosterPlaceholder.tsx    # Real DOM "No Image" fallback (not an SVG image) so the text
 │   │                            #   inherits Poppins; used at every no-poster call site
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
@@ -268,6 +273,7 @@ src/
 │   ├── RatingsContext.tsx        # Wraps useRatings()
 │   ├── AuthContext.tsx           # login, register, logout — persists user in localStorage
 │   ├── ListsContext.tsx          # User lists state
+│   ├── FollowedPeopleContext.tsx # App-wide followed-people state; fetches lazily on first consumer
 │   ├── useAppContext.ts          # Back-compat shim merging the 4 split contexts into the original shape
 │   └── useListsContext.ts
 ├── hooks/
@@ -276,11 +282,12 @@ src/
 │   ├── useRatings.ts            # Async CRUD → /api/ratings/
 │   ├── useLists.ts              # Async CRUD → /api/lists/ (items carry _itemId for DELETE)
 │   ├── useEpisodeProgress.ts    # Fetch/update/delete episode progress → /api/episode-progress/
-│   ├── useFollowedPeople.ts     # Follow/unfollow actors & directors → /api/followed-people/
+│   ├── useFollowedPeople.ts     # Reader for FollowedPeopleProvider (follow/unfollow → /api/followed-people/)
+│   ├── useNotifications.ts      # NotificationsProvider (single new-release poller) + reader hook
 │   ├── useInfiniteScroll.ts     # IntersectionObserver for infinite scroll + scroll restoration
 │   ├── usePaginatedFetch.ts     # Shared fetch-page-1/loadMore/restore-on-back-nav logic for
-│   │                            #   Home/Anime/People pages
-│   ├── useToast.ts              # App.useApp() toast wrapper
+│   │                            #   Home/Anime/People/Search; error + retry(), drops stale-query responses
+│   ├── useToast.ts              # Memoized App.useApp() toast wrapper; identical messages collapse
 │   ├── useLocalStorage.ts       # Generic localStorage hook
 │   ├── useRecentSearches.ts     # Last 5 searches
 │   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
@@ -310,6 +317,10 @@ src/
 │   └── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
 ├── utils/
 │   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
+│   ├── backup.ts                # Backup ZIP v2 build/parse (manifest, ratings, lists); v1-compatible import
+│   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection)
+│   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations
+│   ├── settled.ts               # settledData()/isNotFound() helpers for Promise.allSettled pages
 │   ├── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
 │   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
 │   │                            #   (falls back to a plain array response transparently)
@@ -520,33 +531,42 @@ The Docker Compose setup above is a complete production stack (nginx + React bui
 
 ## Testing
 
-### Unit tests — Jest (52 tests, 7 suites)
+### Unit tests — Jest (93 tests, 14 suites)
 
-Covers core hook and context logic plus the authenticated API client's session handling. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
+Covers core hook and context logic (including load/error states, in-flight dedupe and stale-page discard), the authenticated API client's session handling, bulk-import chunking, and the backup/CSV round-trip. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
 
 ```
 src/hooks/__tests__/
 ├── useLibraryFilters.test.ts
 ├── useLocalStorage.test.ts
 ├── useWatchlist.test.ts
-└── useRatings.test.ts
+├── useWatched.test.ts
+├── useRatings.test.ts
+├── useLists.test.ts
+└── usePaginatedFetch.test.tsx
 
 src/context/__tests__/
 ├── AppContext.test.tsx
 └── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
 
 src/api/__tests__/
-└── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
+├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
                                   #   logout during refresh, retry-on-500 for safe methods only
+└── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
+
+src/utils/__tests__/
+├── backup.test.ts                # Backup v2 build/parse, v1 compatibility
+├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
+└── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
 ```
 
 ```bash
 npm test
 ```
 
-### Unit tests — pytest (Django, 92 tests)
+### Unit tests — pytest (Django, 151 tests)
 
-Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing, notifications, and pagination + `bulk_watched`. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing, notifications, input validation (400-never-500), bulk import, and pagination. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
@@ -563,6 +583,8 @@ backend/userdata/tests/
 ├── test_notifications.py           # New-release notifications
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
+├── test_bulk_import.py             # Bulk watchlist/watched/ratings: create-only, timestamps, all-or-nothing
+├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity
 └── test_ratings.py                 # Pagination shape
 ```
 
@@ -588,7 +610,7 @@ e2e/
 npx playwright test
 ```
 
-### E2E tests — pytest-playwright (157 tests)
+### E2E tests — pytest-playwright (158 tests)
 
 Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
 
@@ -602,7 +624,7 @@ e2e/python/
 ├── test_profile.py    # Profile edit, password change, TMDB connect (11)
 ├── test_ratings.py    # Rate + review flow (11)
 ├── test_search.py     # Live search across movies/TV/people (7)
-├── test_stats.py      # Stats dashboard charts (18)
+├── test_stats.py      # Stats dashboard charts, error + Retry (19)
 ├── test_watched.py    # Watched list CRUD, CSV import/export (16)
 └── test_watchlist.py  # Watchlist CRUD, sort, export (19)
 ```
@@ -640,12 +662,14 @@ The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.
 | GET/POST        | `/api/watchlist/`                           | List or add watchlist entries                      |
 | DELETE/PATCH    | `/api/watchlist/<id>/`                      | Remove or update a watchlist entry                 |
 | DELETE          | `/api/watchlist/clear/`                     | Remove all watchlist entries                       |
+| POST            | `/api/watchlist/bulk/`                      | Bulk-import watchlist entries (backup restore)     |
 | GET/POST        | `/api/watched/`                             | List or add watched entries                        |
 | DELETE          | `/api/watched/<id>/`                        | Remove a watched entry                             |
 | DELETE          | `/api/watched/clear/`                       | Remove all watched entries                         |
-| POST            | `/api/watched/bulk/`                        | Bulk-import watched entries (CSV upload)           |
+| POST            | `/api/watched/bulk/`                        | Bulk-import watched entries (CSV / backup restore) |
 | GET/POST        | `/api/ratings/`                             | List or add/update ratings                         |
 | DELETE/PATCH    | `/api/ratings/<id>/`                        | Remove or update a rating                          |
+| POST            | `/api/ratings/bulk/`                        | Bulk-import ratings (backup restore)               |
 | GET/POST        | `/api/lists/`                               | Create and list user lists                         |
 | DELETE/PATCH    | `/api/lists/<id>/`                          | Delete or rename a list                            |
 | POST            | `/api/lists/<id>/items/`                    | Add an item to a list                              |

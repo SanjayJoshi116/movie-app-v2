@@ -17,13 +17,31 @@ import { useToast } from "../hooks/useToast";
 import { MediaCardGrid } from "../components/MediaCardGrid";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { formatDateDMY } from "../utils/formatDate";
+import { getApiError } from "../utils/apiError";
+import { settledData, isNotFound } from "../utils/settled";
+import { LoadError } from "../components/LoadError";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
+  TMDBPersonCombinedCredit,
   TMDBPersonImages,
 } from "../types";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+
+/** One entry per title: a person credited twice on the same title gets their roles joined. */
+function mergeCredits(cast: TMDBPersonCombinedCredit[]): TMDBPersonCombinedCredit[] {
+  const byId = new Map<number, TMDBPersonCombinedCredit>();
+  for (const c of cast) {
+    const prev = byId.get(c.id);
+    if (!prev) {
+      byId.set(c.id, c);
+    } else if (c.character && !(prev.character ?? "").split(" / ").includes(c.character)) {
+      byId.set(c.id, { ...prev, character: prev.character ? `${prev.character} / ${c.character}` : c.character });
+    }
+  }
+  return Array.from(byId.values());
+}
 
 function PersonPage() {
   const { id } = useParams<{ id: string }>();
@@ -36,40 +54,54 @@ function PersonPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeCreditsTab = searchParams.get("tab") ?? "movies";
   const { isFollowing, follow, unfollow } = useFollowedPeople();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
   const [tvCredits, setTvCredits] = useState<TMDBPersonCredits | null>(null);
   const [images, setImages] = useState<TMDBPersonImages | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<"not-found" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     window.scrollTo(0, 0);
+    // Never show the previous person while the next one loads.
+    setPerson(null);
+    setMovieCredits(null);
+    setTvCredits(null);
+    setImages(null);
+    setError(null);
     setLoading(true);
+    let cancelled = false;
 
     const load = async () => {
-      try {
-        const [personRes, movieRes, tvRes, imagesRes] = await Promise.all([
-          fetchPerson(id),
-          fetchPersonMovieCredits(id),
-          fetchPersonTVCredits(id),
-          fetchPersonImages(id),
-        ]);
+      // Only the person record is essential; credits/photos tabs just hide on failure.
+      const [personRes, movieRes, tvRes, imagesRes] = await Promise.allSettled([
+        fetchPerson(id),
+        fetchPersonMovieCredits(id),
+        fetchPersonTVCredits(id),
+        fetchPersonImages(id),
+      ]);
+      if (cancelled) return;
 
-        setPerson(personRes.data);
-        setMovieCredits(movieRes.data);
-        setTvCredits(tvRes.data);
-        setImages(imagesRes.data);
-      } catch (err) {
-        console.error("Error fetching person details:", err);
-      } finally {
-        setLoading(false);
+      if (personRes.status === "rejected") {
+        console.error("Error fetching person details:", personRes.reason);
+        setError(isNotFound(personRes.reason) ? "not-found" : "failed");
+      } else {
+        const movies = settledData(movieRes);
+        const tv = settledData(tvRes);
+        setPerson(personRes.value.data);
+        setMovieCredits(movies ? { ...movies, cast: mergeCredits(movies.cast) } : null);
+        setTvCredits(tv ? { ...tv, cast: mergeCredits(tv.cast) } : null);
+        setImages(settledData(imagesRes) ?? null);
       }
+      setLoading(false);
     };
 
     load();
-  }, [id]);
+    return () => { cancelled = true; };
+  }, [id, reloadKey]);
 
   if (loading)
     return (
@@ -77,7 +109,9 @@ function PersonPage() {
         <Spin size="large" />
       </div>
     );
-  if (!person) return null;
+  if (error === "not-found") return <LoadError notFound title="Person not found" />;
+  if (error || !person)
+    return <LoadError title="Failed to load this person" onRetry={() => setReloadKey((k) => k + 1)} />;
 
   type TabItem = { key: string; label: string; children: ReactNode };
 
@@ -182,12 +216,16 @@ function PersonPage() {
                 icon={isFollowing(person.id) ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 type={isFollowing(person.id) ? "default" : "primary"}
                 onClick={async () => {
-                  if (isFollowing(person.id)) {
-                    await unfollow(person.id);
-                    showSuccess(`Unfollowed ${person.name}`);
-                  } else {
-                    await follow(person.id, person.name, person.profile_path ?? null);
-                    showSuccess(`Following ${person.name}`);
+                  try {
+                    if (isFollowing(person.id)) {
+                      await unfollow(person.id);
+                      showSuccess(`Unfollowed ${person.name}`);
+                    } else {
+                      await follow(person.id, person.name, person.profile_path ?? null);
+                      showSuccess(`Following ${person.name}`);
+                    }
+                  } catch (err) {
+                    showError(getApiError(err, "Failed to update follow status."));
                   }
                 }}
               >

@@ -35,7 +35,7 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const ProfileModal = ({ open, onClose }: Props) => {
   const { user, updateProfile, setUserData, logout } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { watchlist, watchedList } = useAppContext();
+  const { watchlist, watchedList, allRatings } = useAppContext();
   const { lists } = useListsContext();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
@@ -53,6 +53,11 @@ const ProfileModal = ({ open, onClose }: Props) => {
   useEffect(() => {
     if (open) {
       getTMDBAuthStatus().then((res) => setTmdbConnected(res.data.connected)).catch(() => {});
+    } else {
+      // This component stays mounted (only the modal body is destroyed), so
+      // password state would otherwise reappear on the next open.
+      setDeletePassword("");
+      setNewPassword("");
     }
   }, [open]);
 
@@ -95,6 +100,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
       logout();
     } catch (err) {
       showError(getApiError(err, "Failed to delete account. Try again."));
+      setDeletePassword("");
     } finally {
       setDeleteLoading(false);
     }
@@ -313,7 +319,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
         <Button block icon={<UploadOutlined />} onClick={() => setCsvOpen(true)}>
           Import Watched from CSV
         </Button>
-        <Button block icon={<DownloadOutlined />} onClick={() => downloadAllAsZip(watchlist, watchedList, lists)}>
+        <Button block icon={<DownloadOutlined />} onClick={() => downloadAllAsZip(watchlist, watchedList, Object.values(allRatings), lists)}>
           Export All Data (ZIP)
         </Button>
         <Button block icon={<UploadOutlined />} onClick={() => setImportAllOpen(true)}>

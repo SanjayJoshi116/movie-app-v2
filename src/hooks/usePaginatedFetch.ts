@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useToast } from "./useToast";
+import { getApiError } from "../utils/apiError";
 
 export interface PageResult<T> {
   results: T[];
@@ -40,11 +42,19 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const { showError } = useToast();
 
   const didRestoreScrollRef = useRef(false);
   const isRestoringRef = useRef(restore.isReturning);
   const restoredStateRef = useRef(restoredState);
   const consumedFetchPageRef = useRef<typeof fetchPage | null>(null);
+  const consumedRetryRef = useRef(0);
+  // Bumped on every real (non-replay) page-1 load. A page response that
+  // started under an older generation belongs to a previous query/category
+  // and is dropped instead of appended.
+  const generationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +66,14 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
     // state is already correct from the first pass, refetching would silently
     // clobber a successful restore (e.g. Search's cached items/scroll) with a
     // fresh page-1 fetch.
-    if (consumedFetchPageRef.current === fetchPage) {
+    if (consumedFetchPageRef.current === fetchPage && consumedRetryRef.current === retryToken) {
       return;
     }
+    generationRef.current += 1;
 
     const load = async () => {
       setLoading(true);
+      setError(null);
       try {
         if (isRestoringRef.current && restoredStateRef.current) {
           const { items: cachedItems, hasMore: cachedHasMore } = restoredStateRef.current;
@@ -78,6 +90,10 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
           setCurrentPage(restore.savedLoadedPages);
           setHasMore(restore.savedLoadedPages < totalPages);
         } else {
+          // New query/category: drop the previous one's results so they never
+          // show under the new heading, during loading or after a failure.
+          setItems([]);
+          setHasMore(true);
           const { results, totalPages } = await fetchPage(1);
           if (cancelled) return;
           setItems(results);
@@ -85,18 +101,19 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
           setHasMore(1 < totalPages);
         }
       } catch (err) {
-        console.error("Error fetching paginated data:", err);
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
         isRestoringRef.current = false;
         consumedFetchPageRef.current = fetchPage;
+        consumedRetryRef.current = retryToken;
       }
     };
 
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPage]);
+  }, [fetchPage, retryToken]);
 
   useLayoutEffect(() => {
     if (restore.isReturning && restore.savedScrollY > 0 && !didRestoreScrollRef.current && items.length > 0) {
@@ -107,11 +124,13 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   }, [items]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loading || loadingMore || !hasMore) return;
+    const generation = generationRef.current;
     setLoadingMore(true);
     try {
       const nextPage = currentPage + 1;
       const { results, totalPages } = await fetchPage(nextPage);
+      if (generationRef.current !== generation) return;
       setItems((prev) => {
         const existingIds = new Set(prev.map((item) => item.id));
         const deduped = results.filter((item) => !existingIds.has(item.id));
@@ -120,11 +139,14 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       setCurrentPage(nextPage);
       setHasMore(nextPage < totalPages);
     } catch (err) {
-      console.error("Error loading more:", err);
+      // Keep the pages already shown; the next scroll can try again.
+      if (generationRef.current === generation) showError(getApiError(err, "Couldn't load more results."));
     } finally {
       setLoadingMore(false);
     }
-  }, [fetchPage, currentPage, hasMore, loadingMore]);
+  }, [fetchPage, currentPage, hasMore, loading, loadingMore, showError]);
 
-  return { items, setItems, currentPage, hasMore, loading, loadingMore, loadMore };
+  const retry = useCallback(() => setRetryToken((t) => t + 1), []);
+
+  return { items, setItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry };
 }

@@ -5,6 +5,7 @@ import { UserOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/i
 import MarqueeTitle from "./MarqueeTitle";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
 import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { PosterPlaceholder } from "./PosterPlaceholder";
@@ -23,7 +24,7 @@ interface Props {
 
 const PersonCard = ({ person, onClick }: Props) => {
   const { isFollowing, follow, unfollow } = useFollowedPeople();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const following = isFollowing(person.id);
 
   return (
@@ -70,12 +71,16 @@ const PersonCard = ({ person, onClick }: Props) => {
                 icon={following ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 onClick={async (e) => {
                   e.stopPropagation();
-                  if (following) {
-                    await unfollow(person.id);
-                    showSuccess(`Unfollowed ${person.name}`);
-                  } else {
-                    await follow(person.id, person.name, person.profile_path ?? null);
-                    showSuccess(`Following ${person.name}`);
+                  try {
+                    if (following) {
+                      await unfollow(person.id);
+                      showSuccess(`Unfollowed ${person.name}`);
+                    } else {
+                      await follow(person.id, person.name, person.profile_path ?? null);
+                      showSuccess(`Following ${person.name}`);
+                    }
+                  } catch (err) {
+                    showError(getApiError(err, "Failed to update follow status."));
                   }
                 }}
                 aria-label={following ? `Unfollow ${person.name}` : `Follow ${person.name}`}

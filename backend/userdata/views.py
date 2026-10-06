@@ -9,9 +9,9 @@ from .auth_views import (
     delete_account,
     avatar,
 )
-from .watchlist_views import watchlist_list, watchlist_detail, watchlist_clear
+from .watchlist_views import watchlist_list, watchlist_detail, watchlist_clear, bulk_watchlist
 from .watched_views import watched_list, watched_detail, watched_clear, bulk_watched
-from .ratings_views import ratings_list, ratings_detail
+from .ratings_views import ratings_list, ratings_detail, bulk_ratings
 from .lists_views import lists_list, lists_detail, list_items_create, list_items_detail, list_items_clear
 from .tmdb_views import tmdb_request_token, tmdb_create_session, tmdb_auth_status, tmdb_disconnect
 from .stats_views import stats
@@ -24,7 +24,9 @@ from .social_views import (
 
 __all__ = [
     "avatar",
+    "bulk_ratings",
     "bulk_watched",
+    "bulk_watchlist",
     "delete_account",
     "episode_progress",
     "followed_people_detail",

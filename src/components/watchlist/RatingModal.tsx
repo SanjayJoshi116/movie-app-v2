@@ -1,23 +1,40 @@
 import { useState } from "react";
-import { Modal, Form, Input, Typography, Space } from "antd";
+import { Modal, Form, Input, Typography, Space, Button, Popconfirm } from "antd";
 import { StarRating } from "../ui/StarRating";
 import type { RatingEntry } from "../../types";
 
 interface Props {
   title: string;
   existing: RatingEntry | null;
-  onSave: (rating: number, review: string) => void | Promise<void>;
+  /** Should reject on failure (after showing its own error) so the dialog stays open with the user's input. */
+  onSave: (rating: number, review: string) => Promise<void>;
+  /** Offered only when `existing` is set. Same rejection contract as `onSave`. */
+  onRemove?: () => Promise<void>;
   onClose: () => void;
 }
 
-export function RatingModal({ title, existing, onSave, onClose }: Props) {
+export function RatingModal({ title, existing, onSave, onRemove, onClose }: Props) {
   const [rating, setRating] = useState(existing?.userRating ?? 0);
   const [review, setReview] = useState(existing?.review ?? "");
 
+  const [busy, setBusy] = useState<"save" | "remove" | null>(null);
+
+  // Close only once the write succeeds; on failure the caller has already shown
+  // the error, and the stars/review stay as typed so the user can retry.
+  const run = async (kind: "save" | "remove", action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(kind);
+    try {
+      await action();
+      onClose();
+    } catch {
+      setBusy(null);
+    }
+  };
+
   const handleOk = () => {
     if (rating === 0) return;
-    onSave(rating, review);
-    onClose();
+    run("save", () => onSave(rating, review));
   };
 
   return (
@@ -28,7 +45,27 @@ export function RatingModal({ title, existing, onSave, onClose }: Props) {
       onCancel={onClose}
       okText="Save"
       cancelText="Cancel"
-      okButtonProps={{ disabled: rating === 0 }}
+      confirmLoading={busy === "save"}
+      okButtonProps={{ disabled: rating === 0 || busy === "remove" }}
+      footer={(_, { OkBtn, CancelBtn }) => (
+        <>
+          {existing && onRemove && (
+            <Popconfirm
+              title="Remove your rating?"
+              onConfirm={() => run("remove", onRemove)}
+              okText="Remove"
+              okType="danger"
+              cancelText="Cancel"
+            >
+              <Button danger loading={busy === "remove"} disabled={busy === "save"} style={{ float: "left" }}>
+                Remove rating
+              </Button>
+            </Popconfirm>
+          )}
+          <CancelBtn />
+          <OkBtn />
+        </>
+      )}
       destroyOnHidden
     >
       <Space direction="vertical" size={16} style={{ width: "100%" }}>

@@ -126,4 +126,88 @@ describe("useWatchlist", () => {
     await waitFor(() => expect(result.current.watchlist).toHaveLength(1));
     expect(result.current.watchlist[0]!.title).toBe("Fetched");
   });
+
+  it("reports loading on the first render instead of an empty, loaded list", () => {
+    mockGet.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("records an error when the initial load fails", async () => {
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.watchlist).toHaveLength(0);
+  });
+
+  it("keeps loaded items and records the error when a reload fails", async () => {
+    mockGet.mockResolvedValueOnce({
+      data: [{ id: 42, mediaId: 7, mediaType: "movie", title: "Kept", posterPath: null, voteAverage: 8, addedAt: "2024-06-01T00:00:00Z" }],
+    });
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.watchlist).toHaveLength(1));
+
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    await act(async () => { await expect(result.current.reload()).rejects.toThrow("network"); });
+
+    expect(result.current.watchlist[0]!.title).toBe("Kept");
+    expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  it("clears the error after a successful retry", async () => {
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    await act(async () => { await result.current.reload(); });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("double toggle on the same item sends one request", async () => {
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const entry = makeEntry({ id: 5 });
+    await act(async () => {
+      await Promise.all([result.current.toggle(entry), result.current.toggle(entry)]);
+    });
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(result.current.isIn(5, "movie")).toBe(true);
+  });
+
+  it("toggles on different items are independent", async () => {
+    mockPost
+      .mockResolvedValueOnce({ data: { id: 10, addedAt: "2024-01-01T00:00:00Z" } })
+      .mockResolvedValueOnce({ data: { id: 11, addedAt: "2024-01-01T00:00:00Z" } });
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.toggle(makeEntry({ id: 1 })),
+        result.current.toggle(makeEntry({ id: 2 })),
+      ]);
+    });
+
+    expect(mockPost).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed add shares its rejection with the repeated click", async () => {
+    mockPost.mockRejectedValueOnce(new Error("500"));
+    const { result } = renderHook(() => useWatchlist(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let outcomes: PromiseSettledResult<void>[] = [];
+    await act(async () => {
+      outcomes = await Promise.allSettled([result.current.add(makeEntry()), result.current.add(makeEntry())]);
+    });
+
+    expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected"]);
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(result.current.watchlist).toHaveLength(0);
+  });
 });

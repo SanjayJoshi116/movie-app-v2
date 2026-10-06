@@ -6,6 +6,7 @@ import { EyeOutlined, EyeFilled, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
@@ -91,7 +92,7 @@ function usePaginatedSearch<T extends { id: number }>(
     [query, adult]
   );
 
-  const { items, currentPage, hasMore, loading, loadingMore, loadMore } = usePaginatedFetch<T>({
+  const { items, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<T>({
     fetchPage,
     restore,
     restoredState,
@@ -120,7 +121,7 @@ function usePaginatedSearch<T extends { id: number }>(
     }
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, loadingMore, hasMore, loadMore };
+  return { items, loading, loadingMore, hasMore, loadMore, error, retry };
 }
 
 // ── Sub-tabs ─────────────────────────────────────────────────────────────────
@@ -130,7 +131,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
       return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
@@ -142,6 +143,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No movies found for "${query}"`} style={{ padding: "40px 0" }} />;
 
   return (
@@ -249,7 +251,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
       return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
@@ -261,6 +263,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No TV shows found for "${query}"`} style={{ padding: "40px 0" }} />;
 
   return (
@@ -365,7 +368,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
 
 function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
   const navigate = useNavigate();
-  const { items, loading, loadingMore, hasMore, loadMore } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchPeople(q, p, a);
       return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
@@ -377,6 +380,7 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No people found for "${query}"`} style={{ padding: "40px 0" }} />;
 
   return (

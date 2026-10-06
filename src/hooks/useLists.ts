@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi from "../api/userApi";
 import { fetchAllPages } from "../utils/fetchAllPages";
+import { createInflight } from "../utils/inflight";
 import type { UserList, UserListDTO, UserListItemDTO, WatchlistInput } from "../types";
 
 function mapListData(data: UserListDTO[]): UserList[] {
@@ -25,7 +26,9 @@ function mapListData(data: UserListDTO[]): UserList[] {
 export function useLists() {
   const { isAuthenticated } = useAuth();
   const [lists, setLists] = useState<UserList[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(isAuthenticated);
+  const [error, setError] = useState<unknown>(null);
+  const inflight = useRef(createInflight());
 
   const fetchLists = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -33,31 +36,35 @@ export function useLists() {
     try {
       const data = await fetchAllPages<UserListDTO>(userApi, "/lists/");
       setLists(mapListData(data));
+      setError(null);
+    } catch (err) {
+      // Keep whatever was already loaded; the page decides how to surface it.
+      setError(err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated) { setLists([]); return; }
-    fetchLists();
+    if (!isAuthenticated) { setLists([]); setError(null); setIsLoading(false); return; }
+    fetchLists().catch(() => { /* recorded in `error` */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  const createList = useCallback(async (name: string, description: string) => {
-    if (!isAuthenticated) return;
+  const createList = useCallback(async (name: string, description: string): Promise<UserList | undefined> => {
+    if (!isAuthenticated) return undefined;
     const { data } = await userApi.post<UserListDTO>("/lists/", { name, description });
-    setLists((prev) => [
-      ...prev,
-      { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] },
-    ]);
+    const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
+    setLists((prev) => [...prev, created]);
+    return created;
   }, [isAuthenticated]);
 
-  const deleteList = useCallback(async (id: number) => {
+  const deleteList = useCallback((id: number) => inflight.current.run(`list-${id}`, async () => {
     if (!isAuthenticated) return;
     await userApi.delete(`/lists/${id}/`);
     setLists((prev) => prev.filter((l) => l.id !== id));
-  }, [isAuthenticated]);
+  }), [isAuthenticated]);
 
   const updateList = useCallback(async (id: number, patch: { name?: string; description?: string }) => {
     if (!isAuthenticated) return;
@@ -65,7 +72,8 @@ export function useLists() {
     setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
   }, [isAuthenticated]);
 
-  const addToList = useCallback(async (listId: number, entry: WatchlistInput) => {
+  const addToList = useCallback((listId: number, entry: WatchlistInput) =>
+    inflight.current.run(`${listId}-${entry.type}-${entry.id}`, async () => {
     if (!isAuthenticated) return;
     const list = lists.find((l) => l.id === listId);
     if (list?.items.some((i) => i.id === entry.id && i.type === entry.type)) return;
@@ -98,9 +106,10 @@ export function useLists() {
         };
       })
     );
-  }, [isAuthenticated, lists]);
+  }), [isAuthenticated, lists]);
 
-  const removeFromList = useCallback(async (listId: number, itemId: number, type: string) => {
+  const removeFromList = useCallback((listId: number, itemId: number, type: string) =>
+    inflight.current.run(`${listId}-${type}-${itemId}`, async () => {
     if (!isAuthenticated) return;
     const list = lists.find((l) => l.id === listId);
     const item = list?.items.find((i) => i.id === itemId && i.type === type) as { _itemId?: number } | undefined;
@@ -113,20 +122,20 @@ export function useLists() {
           : { ...l, items: l.items.filter((i) => !(i.id === itemId && i.type === type)) }
       )
     );
-  }, [isAuthenticated, lists]);
+  }), [isAuthenticated, lists]);
 
-  const clearList = useCallback(async (listId: number) => {
+  const clearList = useCallback((listId: number) => inflight.current.run(`list-${listId}`, async () => {
     if (!isAuthenticated) return;
     await userApi.delete(`/lists/${listId}/items/clear/`);
     setLists((prev) =>
       prev.map((l) => (l.id !== listId ? l : { ...l, items: [] }))
     );
-  }, [isAuthenticated]);
+  }), [isAuthenticated]);
 
   const isInList = useCallback((listId: number, id: number, type: string): boolean => {
     const list = lists.find((l) => l.id === listId);
     return list ? list.items.some((i) => i.id === id && i.type === type) : false;
   }, [lists]);
 
-  return { lists, isLoading, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists: fetchLists };
+  return { lists, isLoading, error, createList, deleteList, updateList, addToList, removeFromList, clearList, isInList, reloadLists: fetchLists };
 }

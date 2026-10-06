@@ -6,12 +6,15 @@ import {
 } from "antd";
 import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { formatDateDMY } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
+import SkeletonCard from "../components/SkeletonCard";
+import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
 import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
@@ -29,6 +32,7 @@ function WatchedPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
+  const { isLoading, error: loadError, reload } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [clearing, setClearing] = useState(false);
 
@@ -160,7 +164,11 @@ function WatchedPage() {
         />
       )}
 
-      {watchedList.length === 0 ? (
+      {watchedList.length === 0 && isLoading ? (
+        <SkeletonCard count={12} />
+      ) : watchedList.length === 0 && loadError ? (
+        <LoadError title="Couldn't load your watched history" onRetry={() => { reload().catch(() => {}); }} />
+      ) : watchedList.length === 0 ? (
         <Empty
           image={<EyeOutlined style={{ fontSize: 48, color: "#52c41a" }} />}
           description="Nothing marked as watched yet. Browse movies and TV shows and click the eye icon."
@@ -198,7 +206,14 @@ function WatchedPage() {
                 actionButtons={
                   <Popconfirm
                     title="Mark as unwatched?"
-                    onConfirm={() => { removeFromWatched(item.id, item.type); showSuccess("Marked as unwatched"); }}
+                    onConfirm={async () => {
+                      try {
+                        await removeFromWatched(item.id, item.type);
+                        showSuccess("Marked as unwatched");
+                      } catch (err) {
+                        showError(getApiError(err, "Failed to mark as unwatched."));
+                      }
+                    }}
                     okText="Mark Unwatched"
                     cancelText="Cancel"
                   >

@@ -1,4 +1,3 @@
-from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -7,16 +6,16 @@ from rest_framework.response import Response
 
 from .models import WatchedEntry
 from .pagination import DefaultPagination
-from .serializers import WatchedEntrySerializer
-
-MAX_BULK_ENTRIES = 500
+from .bulk_import import MAX_BULK_ENTRIES, bulk_import, timestamp_or_now  # noqa: F401 (MAX re-exported for tests)
+from .serializers import BulkWatchedEntrySerializer, WatchedEntrySerializer
+from .signals import schedule_refresh
 
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def watched_list(request):
     if request.method == "GET":
-        entries = WatchedEntry.objects.filter(user=request.user).order_by("-watched_at")
+        entries = WatchedEntry.objects.filter(user=request.user).order_by("-watched_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(entries, request)
         return paginator.get_paginated_response(WatchedEntrySerializer(page, many=True).data)
@@ -59,47 +58,29 @@ def watched_clear(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def bulk_watched(request):
-    entries = request.data.get("entries", [])
-    if not isinstance(entries, list):
-        return Response({"detail": "entries must be a list."}, status=status.HTTP_400_BAD_REQUEST)
-    if len(entries) > MAX_BULK_ENTRIES:
-        return Response(
-            {"detail": f"entries must not exceed {MAX_BULK_ENTRIES} items."},
-            status=status.HTTP_400_BAD_REQUEST,
+    def build(user, media_type, item):
+        vote_average = item.get("voteAverage")
+        return WatchedEntry(
+            user=user,
+            media_id=item["mediaId"],
+            media_type=media_type,
+            title=item["title"],
+            poster_path=item.get("posterPath"),
+            vote_average=0 if vote_average is None else vote_average,
+            watched_at=timestamp_or_now(item.get("watchedAt")),
+            runtime_minutes=item.get("runtimeMinutes"),
+            platform=item.get("platform"),
         )
 
-    media_type = request.data.get("mediaType", "movie")
-    if media_type not in ("movie", "tv"):
-        return Response({"detail": "mediaType must be 'movie' or 'tv'."}, status=status.HTTP_400_BAD_REQUEST)
+    def after_create(user, added):
+        # bulk_create sends no post_save, so the signal's refresh never fires.
+        if added:
+            schedule_refresh(user.id)
 
-    seen_media_ids = set()
-    unique_media_ids = []
-    objs = []
-    for item in entries:
-        media_id = item.get("mediaId")
-        if not media_id or media_id in seen_media_ids:
-            continue
-        seen_media_ids.add(media_id)
-        unique_media_ids.append(media_id)
-        objs.append(WatchedEntry(
-            user=request.user,
-            media_id=media_id,
-            media_type=media_type,
-            title=item.get("title", ""),
-            poster_path=item.get("posterPath"),
-            vote_average=item.get("voteAverage", 0),
-        ))
-
-    existing_ids = set(
-        WatchedEntry.objects.filter(
-            user=request.user, media_type=media_type, media_id__in=unique_media_ids
-        ).values_list("media_id", flat=True)
+    return bulk_import(
+        request,
+        model=WatchedEntry,
+        entry_serializer=BulkWatchedEntrySerializer,
+        build=build,
+        after_create=after_create,
     )
-
-    with transaction.atomic():
-        WatchedEntry.objects.bulk_create(objs, ignore_conflicts=True)
-
-    added = sum(1 for mid in unique_media_ids if mid not in existing_ids)
-    skipped = len(unique_media_ids) - added
-
-    return Response({"added": added, "skipped": skipped}, status=status.HTTP_200_OK)

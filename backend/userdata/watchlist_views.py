@@ -6,14 +6,15 @@ from rest_framework.response import Response
 
 from .models import WatchlistEntry
 from .pagination import DefaultPagination
-from .serializers import WatchlistEntrySerializer
+from .bulk_import import bulk_import, timestamp_or_now
+from .serializers import BulkWatchlistEntrySerializer, WatchlistEntrySerializer
 
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def watchlist_list(request):
     if request.method == "GET":
-        entries = WatchlistEntry.objects.filter(user=request.user).order_by("-added_at")
+        entries = WatchlistEntry.objects.filter(user=request.user).order_by("-added_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(entries, request)
         return paginator.get_paginated_response(WatchlistEntrySerializer(page, many=True).data)
@@ -54,3 +55,21 @@ def watchlist_detail(request, pk):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_watchlist(request):
+    def build(user, media_type, item):
+        vote_average = item.get("voteAverage")
+        return WatchlistEntry(
+            user=user,
+            media_id=item["mediaId"],
+            media_type=media_type,
+            title=item["title"],
+            poster_path=item.get("posterPath"),
+            vote_average=0 if vote_average is None else vote_average,
+            added_at=timestamp_or_now(item.get("addedAt")),
+        )
+
+    return bulk_import(request, model=WatchlistEntry, entry_serializer=BulkWatchlistEntrySerializer, build=build)
