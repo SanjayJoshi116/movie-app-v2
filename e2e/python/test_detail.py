@@ -4,6 +4,7 @@ Detail page tests: movie detail, TV detail, episode guide, toggles, error states
 from playwright.sync_api import Page, expect
 
 from conftest import (
+    paginated,
     fulfill_json, MOCK_LIST, mock_movie_detail_routes, mock_tv_detail_routes,
 )
 
@@ -29,7 +30,7 @@ class TestMovieDetailPage:
             "posterPath": None, "voteAverage": 7.5, "addedAt": "2024-01-01T00:00:00Z", "watched": False,
         }
         authed_page.route("**/api/watchlist/**", lambda r: (
-            fulfill_json(r, [])
+            fulfill_json(r, paginated([]))
             if r.request.method == "GET"
             else fulfill_json(r, added_item, status=201)
         ))
@@ -48,7 +49,7 @@ class TestMovieDetailPage:
             "posterPath": None, "voteAverage": 7.5, "watchedAt": "2024-01-01T00:00:00Z",
         }
         authed_page.route("**/api/watched/**", lambda r: (
-            fulfill_json(r, [])
+            fulfill_json(r, paginated([]))
             if r.request.method == "GET"
             else fulfill_json(r, watched_item, status=201)
         ))
@@ -87,7 +88,7 @@ class TestMovieDetailPage:
 
     def test_movie_detail_add_to_list_button_visible_with_lists(self, authed_page: Page):
         mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, [MOCK_LIST]))
+        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated([MOCK_LIST])))
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Look for "Add to List" button or similar
@@ -153,7 +154,7 @@ class TestTVDetailPage:
 
     def test_tv_detail_watchlist_toggle_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)
-        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
         authed_page.goto("/tv/1396")
         expect(authed_page.get_by_text("Breaking Bad")).to_be_visible(timeout=10_000)
         # Watchlist toggle should be present

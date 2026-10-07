@@ -2,6 +2,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -89,31 +90,63 @@ def followed_people_detail(request, person_id: int):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-def _fetch_followed_people_credits(user, limit=10):
-    """Fetch raw TMDB combined_credits 'cast' arrays for a user's most-recently
-    -followed people. Returns [(FollowedPerson, cast_list)]; cast_list is []
-    for a person whose TMDB fetch failed, so callers never need to special-case
-    a failure separately from "no credits"."""
-    followed = list(FollowedPerson.objects.filter(user=user).order_by("-followed_at")[:limit])
+PERSON_CREDITS_TTL = 6 * 60 * 60
+# Only what notifications / followed-people recommendations read — keeps the
+# DB-cache rows small (a full combined_credits payload can be hundreds of KB).
+_CREDIT_FIELDS = (
+    "id", "media_type", "title", "name", "poster_path", "release_date", "first_air_date", "vote_average",
+)
+
+
+def _credits_key(person_id):
+    return f"tmdb:person_credits:{person_id}"
+
+
+def _fetch_person_credits(person_id):
+    """TMDB cast credits for one person, trimmed. Raises on failure. No DB or
+    cache access, so it's safe in a worker thread (the production cache is
+    DB-backed; worker threads would each open and leak a connection)."""
+    data = tmdb_client._get(f"/person/{person_id}/combined_credits")
+    return [{k: c[k] for k in _CREDIT_FIELDS if k in c} for c in data.get("cast", []) if isinstance(c, dict)]
+
+
+def _fetch_followed_people_credits(user, limit=None):
+    """Fetch TMDB cast credits for a user's followed people (all of them, or the
+    `limit` most recently followed). Returns [(FollowedPerson, cast_list)];
+    cast_list is [] for a person whose TMDB fetch failed, so callers never need
+    to special-case a failure separately from "no credits".
+
+    Credits are cached per person (shared by every follower) for
+    PERSON_CREDITS_TTL. Failures are never cached, so the next call retries."""
+    followed = FollowedPerson.objects.filter(user=user).order_by("-followed_at", "-id")
+    followed = list(followed[:limit] if limit is not None else followed)
     if not followed:
         return []
 
-    def fetch(fp):
-        try:
-            data = tmdb_client._get(f"/person/{fp.person_id}/combined_credits")
-            return fp, data.get("cast", [])
-        except (requests.RequestException, ValueError):
-            logger.exception("Failed to fetch combined credits for person %s", fp.person_id)
-            return fp, []
+    cached = cache.get_many([_credits_key(fp.person_id) for fp in followed])
+    to_fetch = list({fp.person_id for fp in followed if _credits_key(fp.person_id) not in cached})
 
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        return list(ex.map(fetch, followed))
+    def fetch(person_id):
+        try:
+            return person_id, _fetch_person_credits(person_id)
+        except (requests.RequestException, ValueError):
+            logger.exception("Failed to fetch combined credits for person %s", person_id)
+            return person_id, None
+
+    if to_fetch:
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            fetched = {pid: cast for pid, cast in ex.map(fetch, to_fetch) if cast is not None}
+        cache.set_many({_credits_key(pid): cast for pid, cast in fetched.items()}, PERSON_CREDITS_TTL)
+        cached.update({_credits_key(pid): cast for pid, cast in fetched.items()})
+
+    return [(fp, cached.get(_credits_key(fp.person_id), [])) for fp in followed]
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def followed_people_recommendations(request):
-    results = _fetch_followed_people_credits(request.user)
+    # One section per person in the UI, so only the most recent follows.
+    results = _fetch_followed_people_credits(request.user, limit=10)
     if not results:
         return Response([])
 
@@ -145,6 +178,7 @@ def followed_people_recommendations(request):
         items.sort(key=lambda x: -x["voteAverage"])
         items = items[:12]
         if items:
-            sections.append({"key": f"follow-{fp.name}", "label": f"New from {fp.name}", "items": items})
+            # Keyed by TMDB id: two followed people can share a name.
+            sections.append({"key": f"follow-{fp.person_id}", "label": f"New from {fp.name}", "items": items})
 
     return Response(sections)

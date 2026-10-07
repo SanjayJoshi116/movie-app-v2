@@ -6,7 +6,7 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
-from conftest import fulfill_json, MOCK_TOKENS, MOCK_USER, seed_auth, mock_base_django_routes
+from conftest import paginated, fulfill_json, MOCK_TOKENS, MOCK_USER, seed_auth, mock_base_django_routes
 
 
 # ---------------------------------------------------------------------------
@@ -54,10 +54,10 @@ class TestLoginPage:
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/ratings/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated([])))
 
         page.goto("/login")
         page.get_by_label("Username").fill("testuser")
@@ -167,10 +167,10 @@ class TestRegisterPage:
             "refresh": MOCK_TOKENS["refresh"],
             "user": MOCK_USER,
         }))
-        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
-        page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
+        page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/ratings/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated([])))
+        page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated([])))
 
         page.goto("/register")
         page.get_by_label("Username").fill("newuser")

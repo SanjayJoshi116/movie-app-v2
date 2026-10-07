@@ -11,14 +11,9 @@ import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import { IMG_URL } from "../constants/ui";
+import { IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
-
-function getRatingColor(vote: number): string {
-  if (vote >= 8) return "#52c41a";
-  if (vote >= 5) return "#faad14";
-  return "#ff4d4f";
-}
 
 interface Props {
   tvShow: TMDBTVSummary;
@@ -65,7 +60,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Tag color={getRatingColor(tvShow.vote_average)} style={{ margin: 0 }}>
+              <Tag color={ratingColor(tvShow.vote_average)} style={{ margin: 0 }}>
                 ★ {tvShow.vote_average.toFixed(1)}
               </Tag>
               <div style={{ display: "flex", gap: 4 }}>
@@ -74,7 +69,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isWatched(tvShow.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(tvShow.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isWatched(tvShow.id, "tv") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(tvShow.id, "tv")) {
@@ -96,7 +91,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isInWatchlist(tvShow.id, "tv") ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(tvShow.id, "tv");

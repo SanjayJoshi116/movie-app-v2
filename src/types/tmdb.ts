@@ -168,6 +168,11 @@ export interface TMDBMovieDetail extends Omit<TMDBMovieSummary, "genre_ids"> {
   recommendations: TMDBMovieSummary[];
 }
 
+/** Raw `/movie/{id}` response: `append_to_response` returns recommendations paginated, before the app flattens them. */
+export type TMDBMovieDetailResponse = Omit<TMDBMovieDetail, "recommendations"> & {
+  recommendations?: TMDBPaginatedResponse<TMDBMovieSummary>;
+};
+
 // ─── TV Show ──────────────────────────────────────────────────────────────────
 
 export interface TMDBTVSummary {
@@ -232,6 +237,7 @@ export interface TMDBTVDetail extends Omit<TMDBTVSummary, "genre_ids"> {
   production_companies: TMDBProductionCompany[];
   spoken_languages: TMDBSpokenLanguage[];
   homepage: string | null;
+  created_by?: { id: number; name: string }[];
   // Joined by the app during fetch
   credits: TMDBCredits;
   aggregateCredits: TMDBAggregateCreditsFull;

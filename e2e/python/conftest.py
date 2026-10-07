@@ -1,7 +1,7 @@
 """
 Shared fixtures and mock data for the CINE DB Playwright test suite.
 
-All tests use page.route() to mock network calls — no real Django/Express server
+All tests use page.route() to mock network calls — no real Django server
 is required; only the React dev server on http://localhost:3000 must be running.
 """
 import json
@@ -221,6 +221,15 @@ def fulfill_json(route: Route, data, status: int = 200) -> None:
     )
 
 
+def paginated(items) -> dict:
+    """The real list-endpoint response shape (DRF pagination), not a bare list.
+
+    fetchAllPages() also accepts a bare array, so `[]` mocks used to pass on a
+    shape production never sends.
+    """
+    return {"count": len(items), "next": None, "previous": None, "results": list(items)}
+
+
 def seed_auth(page: Page) -> None:
     """Inject JWT tokens and user into localStorage before page load."""
     page.add_init_script(
@@ -240,14 +249,12 @@ def mock_base_django_routes(page: Page) -> None:
     a loop. `lists/` isn't paginated so it never had this problem, but the wildcard
     is harmless there too.
     """
-    page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/ratings/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/watched/**", lambda r: fulfill_json(r, []))
-    page.route("**/api/lists/**", lambda r: fulfill_json(r, []))
+    for path in ("watchlist", "ratings", "watched", "lists", "followed-people"):
+        page.route(f"**/api/{path}/**", lambda r: fulfill_json(r, paginated([])))
     # NotificationBell polls this on every authenticated page (Sidebar/BottomNav
-    # render it globally) — unmocked, it falls through to a real 401 and the
-    # refresh-interceptor redirects to /login, breaking every authed_page test.
+    # render it globally); the bell marks items seen when it closes.
     page.route("**/api/notifications/new-releases/**", lambda r: fulfill_json(r, {"items": [], "unreadCount": 0}))
+    page.route("**/api/notifications/mark-seen/**", lambda r: r.fulfill(status=204, body=""))
 
 
 def mock_tmdb_movies(page: Page, response=None) -> None:
@@ -280,7 +287,7 @@ def mock_movie_detail_routes(page: Page, movie_id: int = 100, detail=None) -> No
     page.route(f"**/api/tmdb/movie/{movie_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
     page.route(f"**/api/tmdb/movie/{movie_id}/release_dates**", lambda r: fulfill_json(r, {"results": []}))
     page.route("**/api/tmdb/person/**", lambda r: fulfill_json(r, {"id": 1, "name": "Actor", "profile_path": None}))
-    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, paginated([])))
 
 
 def mock_tv_detail_routes(page: Page, show_id: int = 1396, detail=None) -> None:
@@ -298,19 +305,45 @@ def mock_tv_detail_routes(page: Page, show_id: int = 1396, detail=None) -> None:
     page.route(f"**/api/tmdb/tv/{show_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
     page.route(f"**/api/episode-progress/{show_id}/**", lambda r: fulfill_json(r, None))
     page.route(f"**/api/episode-progress/{show_id}", lambda r: fulfill_json(r, None))
-    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, []))
+    page.route("**/api/followed-people/**", lambda r: fulfill_json(r, paginated([])))
 
 
 # ---------------------------------------------------------------------------
 # Core fixture: authed_page
 # ---------------------------------------------------------------------------
 
+def install_unmocked_catch_all(page: Page) -> list:
+    """Register a catch-all for `/api/**` and return the list it records into.
+
+    Must be registered before any other route: Playwright checks routes
+    last-registered-first, so every specific mock overrides it. An app API
+    call nothing else handles gets a 501 and is recorded, so the test fails
+    naming it. Unmocked TMDB proxy calls (decorative hero/provider fetches)
+    get an empty page instead.
+    """
+    unmocked = []
+
+    def handle(route: Route) -> None:
+        url = route.request.url
+        if "/api/tmdb/" in url:
+            fulfill_json(route, EMPTY_RESPONSE)
+            return
+        unmocked.append(f"{route.request.method} {url}")
+        fulfill_json(route, {"detail": f"unmocked: {url}"}, status=501)
+
+    page.route("**/api/**", handle)
+    return unmocked
+
+
 @pytest.fixture
-def authed_page(page: Page) -> Page:
+def authed_page(page: Page):
     """
     A Page with auth tokens seeded in localStorage and baseline Django API mocks.
     Every test that needs an authenticated user should use this fixture instead of `page`.
+    Fails the test at teardown if the app made an API call no mock handled.
     """
+    unmocked = install_unmocked_catch_all(page)
     seed_auth(page)
     mock_base_django_routes(page)
-    return page
+    yield page
+    assert not unmocked, "Unmocked app API calls (add a page.route for each):\n  " + "\n  ".join(unmocked)

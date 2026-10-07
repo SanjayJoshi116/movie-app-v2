@@ -1,4 +1,3 @@
-import io
 import struct
 import warnings
 import zlib
@@ -63,7 +62,8 @@ class RatingStepTests(AuthedTestCase):
     def test_whole_and_half_stars_saved(self):
         for media_id, rating in ((1, 7), (2, 7.5), (3, 0.5), (4, 10)):
             with self.subTest(rating=rating):
-                res = self.client.post("/api/ratings/", {**media(mediaId=media_id), "userRating": rating}, format="json")
+                body = {**media(mediaId=media_id), "userRating": rating}
+                res = self.client.post("/api/ratings/", body, format="json")
                 self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
 

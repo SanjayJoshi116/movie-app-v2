@@ -1,17 +1,14 @@
 import logging
 import time as _time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
-from threading import Thread
 
-import requests
-from django.db import Error as DBError
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from .metadata_backfill import entry_needs_metadata, request_backfill
 from .models import WatchedEntry, RatingEntry, UserList, UserListItem, WatchlistEntry
 from . import tmdb_client
 
@@ -83,27 +80,10 @@ def stats(request):
     platform_counter = Counter(w.platform for w in watched_list if w.platform)
     platform_breakdown = [{"platform": p, "count": c} for p, c in platform_counter.most_common(10)]
 
-    missing = [w for w in watched_list if w.original_language is None or w.release_year is None]
-
-    if missing:
-        def _fetch_and_update(entry):
-            try:
-                data = tmdb_client._get(f"/{entry.media_type}/{entry.media_id}")
-                lang = data.get("original_language") or "??"
-                date_field = "release_date" if entry.media_type == "movie" else "first_air_date"
-                date_str = data.get(date_field) or ""
-                year = int(date_str[:4]) if len(date_str) >= 4 else -1
-                WatchedEntry.objects.filter(pk=entry.pk).update(
-                    original_language=lang,
-                    release_year=year,
-                )
-            except (requests.RequestException, ValueError, TypeError, DBError):
-                logger.exception("Failed to backfill language/year for WatchedEntry %s", entry.pk)
-
-        def _run_backfill():
-            with ThreadPoolExecutor(max_workers=20) as ex:
-                list(ex.map(_fetch_and_update, missing))
-        Thread(target=_run_backfill, daemon=True).start()
+    # Genres, language and year are filled in the background (single-flight
+    # per user); this response uses what's stored now, later ones pick it up.
+    if any(entry_needs_metadata(w) for w in watched_list):
+        request_backfill(request.user.id)
 
     lang_counter = Counter(
         e.original_language for e in watched_list

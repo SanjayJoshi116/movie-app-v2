@@ -32,6 +32,8 @@ import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { avatarColor } from "../utils/colors";
+import { RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 
 interface Props {
   isBrowsePage: boolean;
@@ -45,13 +47,6 @@ function getInitials(user: { first_name?: string; last_name?: string; username: 
   if (f && l) return (f[0]! + l[0]!).toUpperCase();
   if (f) return f.slice(0, 2).toUpperCase();
   return user.username.slice(0, 2).toUpperCase();
-}
-
-const AVATAR_COLORS = ["#e67e22", "#8e44ad", "#2980b9", "#27ae60", "#c0392b", "#16a085"];
-function avatarColor(username: string): string {
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? "#e67e22";
 }
 
 const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) => {
@@ -71,7 +66,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
     {
       key: "/watchlist",
       icon: (
-        <Badge count={watchlist.length} size="small" color="#f5c518">
+        <Badge count={watchlist.length} size="small" color={RATING_GOLD}>
           <BookOutlined />
         </Badge>
       ),
@@ -80,7 +75,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
     {
       key: "/watched",
       icon: (
-        <Badge count={watchedList.length} size="small" color="#52c41a" overflowCount={Infinity}>
+        <Badge count={watchedList.length} size="small" color={WATCHED_GREEN} overflowCount={Infinity}>
           <EyeOutlined />
         </Badge>
       ),
@@ -116,14 +111,14 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
           <Typography.Title
             level={3}
             className="sidebar-logo-full"
-            style={{ margin: 0, color: "#f5c518", letterSpacing: 3, fontWeight: 700 }}
+            style={{ margin: 0, color: RATING_GOLD, letterSpacing: 3, fontWeight: 700 }}
           >
             CINE DB
           </Typography.Title>
           <Typography.Title
             level={3}
             className="sidebar-logo-compact"
-            style={{ margin: 0, color: "#f5c518", fontWeight: 700, textAlign: "center" }}
+            style={{ margin: 0, color: RATING_GOLD, fontWeight: 700, textAlign: "center" }}
           >
             C
           </Typography.Title>
@@ -173,7 +168,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
               type="text"
               icon={theme === "dark" ? <SunOutlined /> : <MoonOutlined />}
               onClick={toggleTheme}
-              style={{ color: "#f5c518", padding: "0 4px" }}
+              style={{ color: RATING_GOLD, padding: "0 4px" }}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             />
           </Tooltip>

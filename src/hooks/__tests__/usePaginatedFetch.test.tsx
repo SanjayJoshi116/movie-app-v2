@@ -85,3 +85,55 @@ describe("usePaginatedFetch", () => {
     expect(result.current.currentPage).toBe(3);
   });
 });
+
+// StrictMode (dev only) runs the mount effect, its cleanup and the effect
+// again. The replay must not start a second load.
+describe("usePaginatedFetch under StrictMode", () => {
+  const strictWrapper = ({ children }: { children: React.ReactNode }) => (
+    <React.StrictMode><App>{children}</App></React.StrictMode>
+  );
+
+  it("requests page 1 once on a fresh load", async () => {
+    const fetchPage = jest.fn().mockResolvedValue(page([1, 2]));
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }), { wrapper: strictWrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("requests each restored page once", async () => {
+    const fetchPage = jest.fn((p: number) => Promise.resolve(page([p * 10, p * 10 + 1])));
+    const restore = { isReturning: true, savedLoadedPages: 3, savedScrollY: 0 };
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper: strictWrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+    expect(fetchPage.mock.calls.map((c) => c[0])).toEqual([1, 2, 3]);
+    expect(result.current.currentPage).toBe(3);
+  });
+
+  it("sets no state after unmounting during the pending load", async () => {
+    const pending = deferred<PageResult<Item>>();
+    const fetchPage = jest.fn().mockReturnValue(pending.promise);
+    const errors = jest.spyOn(console, "error").mockImplementation(() => {});
+    const { result, unmount } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }), { wrapper: strictWrapper });
+    expect(result.current.loading).toBe(true);
+    unmount();
+    await act(async () => { pending.resolve(page([1])); });
+    expect(result.current.items).toEqual([]);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("starts a new load when fetchPage changes", async () => {
+    const fetchA = jest.fn().mockResolvedValue(page([1]));
+    const fetchB = jest.fn().mockResolvedValue(page([2]));
+    const { result, rerender } = renderHook(
+      ({ fetchPage }) => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }),
+      { wrapper: strictWrapper, initialProps: { fetchPage: fetchA } },
+    );
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 1 }]));
+    rerender({ fetchPage: fetchB });
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 2 }]));
+    expect(fetchA).toHaveBeenCalledTimes(1);
+    expect(fetchB).toHaveBeenCalledTimes(1);
+  });
+});

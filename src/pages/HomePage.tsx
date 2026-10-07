@@ -20,6 +20,8 @@ import {
   searchTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
+import { genresFor, hasActiveFilters } from "../utils/browseFilters";
+import { stashReturnState } from "../utils/browseReturnState";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants, POSTER_THUMB_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -70,17 +72,16 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const mediaType = isMovie ? "movie" : "tv";
+  const validGenres = genresFor(mediaType, selectedGenres);
+  const genreString = validGenres.join(",");
+  const hasFilters = hasActiveFilters(externalFilters, externalSortBy, validGenres);
+
   const fetchPage = useCallback(
     async (page: number): Promise<{ results: (TMDBMovieSummary | TMDBTVSummary)[]; totalPages: number }> => {
-      const genreString = selectedGenres.join(",");
-      const baseParams: Record<string, string | number> = {
-        page,
-        ...(genreString && { with_genres: genreString }),
-      };
-
-      const hasFilters =
-        externalFilters !== null &&
-        Object.values(externalFilters).some((v) => v !== "");
+      // Category endpoints ignore with_genres, so genres only go to discover
+      // (hasFilters is true whenever a genre is selected).
+      const baseParams: Record<string, string | number> = { page };
 
       let response;
 
@@ -88,9 +89,9 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
         response = isMovie
           ? await searchMovies(searchTerm, page, includeAdult)
           : await searchTV(searchTerm, page, includeAdult);
-      } else if (hasFilters && externalFilters) {
-        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy, isMovie ? "movie" : "tv");
-        const params = { ...baseParams, ...filterParams };
+      } else if (hasFilters) {
+        const filterParams = filtersToTMDBParams(externalFilters ?? undefined, externalSortBy, mediaType);
+        const params = { ...baseParams, ...filterParams, ...(genreString && { with_genres: genreString }) };
         response = isMovie ? await discoverMovies(params) : await discoverTV(params);
       } else if (isMovie) {
         switch (activeCategory) {
@@ -130,7 +131,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
         totalPages: response.data.total_pages,
       };
     },
-    [isMovie, searchTerm, selectedGenres, activeCategory, externalFilters, externalSortBy, includeAdult]
+    [isMovie, mediaType, searchTerm, genreString, hasFilters, activeCategory, externalFilters, externalSortBy, includeAdult]
   );
 
   const { items: allItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
@@ -140,15 +141,18 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading);
 
+  // Lets browser Back (not just the in-app Back button) restore this page.
+  const stashBrowseState = () =>
+    stashReturnState({ scrollY: window.scrollY, loadedPages: currentPage, activeCategory, isReturn: true });
+
   const handleKnowMore = (id: number) => {
+    stashBrowseState();
     navigate(isMovie ? `/movie/${id}` : `/tv/${id}`, {
       state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
     });
   };
 
-  const hasFilters = externalFilters !== null && Object.values(externalFilters).some((v) => v !== "");
   const categories = isMovie ? MOVIE_CATEGORIES : TV_CATEGORIES;
-  const mediaType = isMovie ? "movie" : "tv";
   const visibleItems = searchTerm
     ? allItems
     : allItems.filter((item) => !isWatched(item.id, mediaType));
@@ -165,7 +169,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      <HeroBanner mediaType={tab === "tv" ? "tv" : "movie"} excludeGenreId={tab === "tv" ? 16 : undefined} />
+      <HeroBanner mediaType={tab === "tv" ? "tv" : "movie"} excludeGenreId={tab === "tv" ? 16 : undefined} onBeforeNavigate={stashBrowseState} />
 
       {recentWatched.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -176,7 +180,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
             {recentWatched.map((item) => (
               <div
                 key={`${item.type}-${item.id}`}
-                onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`)}
+                onClick={() => { stashBrowseState(); navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`); }}
                 title={item.title}
                 style={{ flexShrink: 0, width: 72, cursor: "pointer" }}
               >

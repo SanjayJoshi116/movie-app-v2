@@ -78,8 +78,8 @@ const TVShowDetails = ({ tvShow }: Props) => {
     (genres ?? []).map((g) => g.id),
   );
   const castList = aggregate_credits?.cast ?? [];
-  const creators = ((tvShow as any).created_by ?? [])
-    .map((c: any) => c.name)
+  const creators = (tvShow.created_by ?? [])
+    .map((c) => c.name)
     .join(", ");
 
   const getMaxEpisodes = (season: number): number => {

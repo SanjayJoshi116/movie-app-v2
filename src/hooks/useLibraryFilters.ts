@@ -49,7 +49,7 @@ export function useLibraryFilters<T>({
       result = result.filter(extraFilter);
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim().toLowerCase();
       result = result.filter((i) => resolveTitle(i).toLowerCase().includes(q));
     }
     const sortFn = sortFns[sortKey] ?? sortFns[defaultSort];

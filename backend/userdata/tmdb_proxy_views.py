@@ -57,7 +57,10 @@ class TmdbProxyThrottle(UserRateThrottle):
 @permission_classes([AllowAny])
 @throttle_classes([TmdbProxyThrottle])
 def tmdb_proxy(request, tmdb_path):
-    params = {**request.GET.dict(), "api_key": settings.TMDB_API_KEY}
+    # .dict() kept only the last value of a repeated param; forward them all, in
+    # order, and never let a client-supplied api_key through.
+    params = [(k, v) for k, values in request.GET.lists() if k != "api_key" for v in values]
+    params.append(("api_key", settings.TMDB_API_KEY))
     try:
         r = _session.get(f"{TMDB_BASE}/{tmdb_path}", params=params, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT))
         return Response(r.json(), status=r.status_code)

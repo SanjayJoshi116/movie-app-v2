@@ -1,0 +1,40 @@
+# Generated: every package (direct and transitive) the backend and its tests
+# install, pinned. Used as a constraints file:
+#   pip install -r requirements.txt -c constraints.txt
+#   pip install -r requirements-test.txt -c constraints.txt
+# Don't edit by hand. To regenerate after changing a pin in requirements.txt or
+# requirements-test.txt (Python 3.12):
+#   python -m venv .venv-c && .venv-c/bin/pip install -r requirements-test.txt
+#   .venv-c/bin/pip freeze > constraints.txt   (then restore this header)
+# colorama and tzdata are only pulled in on Windows; a constraint only applies
+# when something requires the package, so Linux/Docker installs ignore them.
+asgiref==3.12.1
+certifi==2026.7.22
+charset-normalizer==3.5.2
+cloudpickle==3.1.2
+colorama==0.4.6
+Django==5.2.17
+django-cors-headers==4.9.0
+djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
+gunicorn==23.0.0
+idna==3.20
+iniconfig==2.3.0
+joblib==1.6.0
+numpy==2.2.6
+packaging==26.3
+pillow==12.1.1
+pluggy==1.6.0
+psycopg2-binary==2.9.9
+Pygments==2.21.0
+PyJWT==2.15.1
+pytest==9.1.1
+pytest-django==4.12.0
+python-dotenv==1.2.2
+requests==2.33.0
+scikit-learn==1.8.0
+scipy==1.18.1
+sqlparse==0.6.0
+threadpoolctl==3.7.0
+tzdata==2026.5
+urllib3==2.8.0

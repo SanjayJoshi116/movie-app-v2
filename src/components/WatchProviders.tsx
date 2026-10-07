@@ -1,6 +1,7 @@
 import { Typography, Space } from "antd";
 import type { TMDBProvider, TMDBProviderRegion } from "../types";
 import { PROVIDER_SEARCH_URLS } from "../constants/providers";
+import { LOGO_URL } from "../constants/ui";
 
 interface WatchProvidersProps {
   providers: Record<string, TMDBProviderRegion>;
@@ -27,7 +28,7 @@ export function WatchProviders({ providers, title }: WatchProvidersProps) {
             title={`Watch on ${p.provider_name}`}
           >
             <img
-              src={`https://image.tmdb.org/t/p/w92${p.logo_path}`}
+              src={`${LOGO_URL}${p.logo_path}`}
               alt={p.provider_name}
               style={{ width: 40, height: 40, borderRadius: 6, objectFit: "cover", display: "block" }}
             />

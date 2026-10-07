@@ -12,9 +12,11 @@ interface Props {
   mediaType: "movie" | "tv";
   excludeGenreId?: number;
   requireGenreId?: number;
+  /** Runs just before navigating to the detail page (browse pages stash their restore state here). */
+  onBeforeNavigate?: () => void;
 }
 
-const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId }: Props) => {
+const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigate }: Props) => {
   const [item, setItem] = useState<TMDBMovieSummary | TMDBTVSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -92,7 +94,7 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId }: Props) => {
           <Button
             type="primary"
             size="large"
-            onClick={() => navigate(detailPath)}
+            onClick={() => { onBeforeNavigate?.(); navigate(detailPath); }}
           >
             View Details
           </Button>

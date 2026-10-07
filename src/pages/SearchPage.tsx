@@ -14,7 +14,8 @@ import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import { saveSessionCache } from "../api/userApi";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
-import { pageVariants, IMG_URL } from "../constants/ui";
+import { pageVariants, IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
@@ -29,13 +30,19 @@ interface PendingWatch {
   voteAverage: number;
 }
 
-function getRatingColor(v: number) {
-  if (v >= 8) return "#52c41a";
-  if (v >= 5) return "#faad14";
-  return "#ff4d4f";
-}
-
 // ── Shared paginated hook ────────────────────────────────────────────────────
+
+/**
+ * Scroll to `y`, retrying for a few frames while the page is still too short
+ * to reach it (a freshly shown tab pane can lay out after the first attempt,
+ * and the browser would otherwise clamp the position for good).
+ */
+function scrollToWhenReady(y: number, frames = 30) {
+  window.scrollTo(0, y);
+  if (frames > 0 && Math.abs(window.scrollY - y) > 1) {
+    requestAnimationFrame(() => scrollToWhenReady(y, frames - 1));
+  }
+}
 
 interface SearchCache<T> {
   query: string;
@@ -61,6 +68,7 @@ function usePaginatedSearch<T extends { id: number }>(
   query: string,
   adult: boolean,
   cacheKey: string,
+  active: boolean,
 ) {
   // Frozen at mount, same as the pre-merge implementation — a query change
   // after mount always goes through a normal fetch, only the very first
@@ -102,12 +110,32 @@ function usePaginatedSearch<T extends { id: number }>(
   const stateRef = useRef({ query, adult, items, page: currentPage, hasMore });
   useEffect(() => { stateRef.current = { query, adult, items, page: currentPage, hasMore }; });
 
+  // Each tab tracks its own scroll position, only while it's the active tab.
+  // Every visited tab stays mounted, so saving window.scrollY at unmount gave
+  // every tab the active tab's position. Layout effect so the listener is
+  // detached in the same commit as a tab switch, before the browser fires the
+  // scroll event for the content-height change.
+  const scrollYRef = useRef(cache?.scrollY ?? 0);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const onScroll = () => { scrollYRef.current = window.scrollY; };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [active]);
+
+  // Switching back to an already-mounted tab restores where it was left.
+  const wasActiveRef = useRef(active);
+  useLayoutEffect(() => {
+    if (active && !wasActiveRef.current) scrollToWhenReady(scrollYRef.current);
+    wasActiveRef.current = active;
+  }, [active]);
+
   // Save to sessionStorage on unmount
   useEffect(() => {
     return () => {
       const { query: q, adult: a, items: i, page: p, hasMore: h } = stateRef.current;
       if (q && i.length > 0) {
-        saveSessionCache(cacheKey, JSON.stringify({ query: q, adult: a, items: i, page: p, hasMore: h, scrollY: window.scrollY }));
+        saveSessionCache(cacheKey, JSON.stringify({ query: q, adult: a, items: i, page: p, hasMore: h, scrollY: scrollYRef.current }));
       }
     };
   }, [cacheKey]);
@@ -117,7 +145,7 @@ function usePaginatedSearch<T extends { id: number }>(
   useLayoutEffect(() => {
     if (cache && !scrollRestored.current && items.length > 0) {
       scrollRestored.current = true;
-      window.scrollTo(0, cache.scrollY);
+      scrollToWhenReady(cache.scrollY);
     }
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -126,7 +154,13 @@ function usePaginatedSearch<T extends { id: number }>(
 
 // ── Sub-tabs ─────────────────────────────────────────────────────────────────
 
-function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
+interface TabProps {
+  query: string;
+  adult: boolean;
+  active: boolean;
+}
+
+function MoviesTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
@@ -139,6 +173,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
     query,
     adult,
     "cinedb_search_movies",
+    active,
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -180,7 +215,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                   title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{m.title}</span>}
                   description={
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                      <Tag color={getRatingColor(m.vote_average)} style={{ margin: 0 }}>
+                      <Tag color={ratingColor(m.vote_average)} style={{ margin: 0 }}>
                         ★ {m.vote_average.toFixed(1)}
                       </Tag>
                       <div style={{ display: "flex", gap: 4 }}>
@@ -189,7 +224,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
                             size="small"
                             type="text"
                             icon={isWatched(m.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(m.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                            style={{ color: isWatched(m.id, "movie") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(m.id, "movie")) {
@@ -246,7 +281,7 @@ function MoviesTab({ query, adult }: { query: string; adult: boolean }) {
   );
 }
 
-function TVTab({ query, adult }: { query: string; adult: boolean }) {
+function TVTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
@@ -259,6 +294,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
     query,
     adult,
     "cinedb_search_tv",
+    active,
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -300,7 +336,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                   title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{t.name}</span>}
                   description={
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                      <Tag color={getRatingColor(t.vote_average)} style={{ margin: 0 }}>
+                      <Tag color={ratingColor(t.vote_average)} style={{ margin: 0 }}>
                         ★ {t.vote_average.toFixed(1)}
                       </Tag>
                       <div style={{ display: "flex", gap: 4 }}>
@@ -309,7 +345,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
                             size="small"
                             type="text"
                             icon={isWatched(t.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(t.id, "tv") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                            style={{ color: isWatched(t.id, "tv") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(t.id, "tv")) {
@@ -366,7 +402,7 @@ function TVTab({ query, adult }: { query: string; adult: boolean }) {
   );
 }
 
-function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
+function PeopleTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
   const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
@@ -376,6 +412,7 @@ function PeopleTab({ query, adult }: { query: string; adult: boolean }) {
     query,
     adult,
     "cinedb_search_people",
+    active,
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
 
@@ -433,9 +470,9 @@ function SearchPage() {
           activeKey={activeTab}
           onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
           items={[
-            { key: "movies", label: "Movies", children: <MoviesTab query={searchTerm} adult={includeAdult} /> },
-            { key: "tv", label: "TV Shows", children: <TVTab query={searchTerm} adult={includeAdult} /> },
-            { key: "people", label: "People", children: <PeopleTab query={searchTerm} adult={includeAdult} /> },
+            { key: "movies", label: "Movies", children: <MoviesTab query={searchTerm} adult={includeAdult} active={activeTab === "movies"} /> },
+            { key: "tv", label: "TV Shows", children: <TVTab query={searchTerm} adult={includeAdult} active={activeTab === "tv"} /> },
+            { key: "people", label: "People", children: <PeopleTab query={searchTerm} adult={includeAdult} active={activeTab === "people"} /> },
           ]}
         />
       )}

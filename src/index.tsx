@@ -9,7 +9,6 @@ import { NotificationsProvider } from "./hooks/useNotifications";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import App from "./App";
-import reportWebVitals from "./reportWebVitals";
 
 // Prevent browser from auto-restoring scroll; our pages handle it explicitly
 window.history.scrollRestoration = "manual";
@@ -37,5 +36,3 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
-
-reportWebVitals();

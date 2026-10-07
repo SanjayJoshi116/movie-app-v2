@@ -1,7 +1,4 @@
-import { test, expect } from "@playwright/test";
-
-const MOCK_USER = { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "" };
-const MOCK_TOKENS = { access: "fake-access", refresh: "fake-refresh" };
+import { test, expect, mockAuthedBase } from "./fixtures";
 
 const MOCK_MOVIES = Array.from({ length: 6 }, (_, i) => ({
   id: 100 + i,
@@ -21,19 +18,7 @@ const MOCK_MOVIES = Array.from({ length: 6 }, (_, i) => ({
 }));
 
 test.beforeEach(async ({ page }) => {
-  // Seed auth state in localStorage
-  await page.addInitScript((data) => {
-    localStorage.setItem("cinedb_access", data.access);
-    localStorage.setItem("cinedb_refresh", data.refresh);
-    localStorage.setItem("cinedb_user", JSON.stringify(data.user));
-  }, { ...MOCK_TOKENS, user: MOCK_USER });
-
-  // Mock all Django API calls
-  await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/ratings/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/watched/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/lists/**", (route) => route.fulfill({ json: [] }));
-  await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+  await mockAuthedBase(page);
 
   // Mock TMDB movie endpoints
   const movieResponse = { results: MOCK_MOVIES, total_pages: 3, total_results: 60, page: 1 };
@@ -117,10 +102,16 @@ test.describe("TV page", () => {
 });
 
 test.describe("Search", () => {
-  test("searching navigates to /search", async ({ page }) => {
+  test("searching navigates to /search", async ({ page }, testInfo) => {
     await page.goto("/movies");
-    await page.getByPlaceholder(/search/i).first().fill("inception");
-    await page.getByPlaceholder(/search/i).first().press("Enter");
+    // Below 768px the sidebar (and its search box) is hidden by CSS; the phone
+    // layout opens search from the bottom nav instead.
+    if (testInfo.project.name === "mobile-chrome") {
+      await page.locator(".app-bottom-nav").getByRole("button", { name: "Search" }).click();
+    }
+    const box = page.getByPlaceholder(/search/i).filter({ visible: true });
+    await box.fill("inception");
+    await box.press("Enter");
     await expect(page).toHaveURL("/search");
     await expect(page.getByText(/Results for/i)).toBeVisible();
   });

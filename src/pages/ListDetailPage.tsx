@@ -44,7 +44,7 @@ function ListDetailPage() {
     search, setSearch, sortKey, setSortKey, typeFilter, setTypeFilter,
     filtered: filteredItems, isDefault, resetFilters,
   } = useLibraryFilters<WatchlistEntry>({
-    keyPrefix: "listdetail",
+    keyPrefix: `listdetail_${listId}`,
     items: list?.items ?? [],
     sortFns: SORT_FNS,
     defaultSort: "added-desc",

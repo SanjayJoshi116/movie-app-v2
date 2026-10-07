@@ -1,6 +1,6 @@
 {
   "name": "movie-app",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
@@ -28,6 +28,8 @@
     "predev": "kill-port 3000 8000",
     "dev": "concurrently \"react-scripts start\" \"G:/Anaconda/envs/django/python.exe backend/start.py\"",
     "build": "react-scripts build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings=0",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

@@ -67,3 +67,17 @@ The TMDB passthrough endpoint SHALL return a response within a bounded worst-cas
 #### Scenario: TMDB stops responding
 - **WHEN** TMDB accepts connections but never sends a response to a proxied request
 - **THEN** the endpoint returns `502` with a generic error before the application server's worker timeout elapses, and the worker stays available for other requests
+
+### Requirement: TMDB proxy forwards query parameters faithfully
+The TMDB proxy SHALL forward every query parameter value the client sends,
+including repeated parameters, in the same order. It SHALL always use the
+server's own TMDB API key, and SHALL NOT forward an `api_key` supplied by the
+client.
+
+#### Scenario: Repeated parameter
+- **WHEN** a client requests the proxy with `?with_genres=28&with_genres=12`
+- **THEN** the upstream TMDB request carries both `with_genres` values
+
+#### Scenario: Client-supplied key
+- **WHEN** a client includes `api_key=abc` in a proxy request
+- **THEN** the upstream request carries only the server's API key

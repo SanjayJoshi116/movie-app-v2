@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, mockAppApi } from "./fixtures";
 
 // Mocks for backend — tests run without a real Django server
 
@@ -73,12 +73,8 @@ test.describe("Login page", () => {
         },
       })
     );
-    // Mock the API calls that fire on authenticated load
-    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/ratings/**", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/watched/**", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/lists/**", (route) => route.fulfill({ json: [] }));
-    await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
+    // The API calls that fire on authenticated load
+    await mockAppApi(page);
 
     await page.goto("/login");
     await page.getByLabel("Username").fill("testuser");
@@ -105,16 +101,17 @@ test.describe("Register page", () => {
     await expect(page.getByText("Create Account")).toBeVisible();
     await expect(page.getByLabel("Username")).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
-    await expect(page.getByLabel("Password")).toBeVisible();
+    // exact: the register form also has "Confirm Password"
+    await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Register" })).toBeVisible();
   });
 
   test("shows validation error for short password", async ({ page }) => {
     await page.goto("/register");
     await page.getByLabel("Username").fill("newuser");
-    await page.getByLabel("Password").fill("abc");
+    await page.getByLabel("Password", { exact: true }).fill("abc");
     await page.getByRole("button", { name: "Register" }).click();
-    await expect(page.getByText("At least 6 characters")).toBeVisible();
+    await expect(page.getByText("At least 8 characters")).toBeVisible();
   });
 });
 

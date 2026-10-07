@@ -106,4 +106,14 @@ describe("useWatched", () => {
     expect(mockDelete).toHaveBeenCalledTimes(1);
     expect(result.current.isWatched(6, "movie")).toBe(false);
   });
+
+  it("puts a newly watched title first (newest-first, like the API)", async () => {
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => { await result.current.add(makeEntry({ id: 7, title: "Older" })); });
+    await act(async () => { await result.current.add(makeEntry({ id: 8, title: "Newer" })); });
+
+    expect(result.current.watchedList.map((i) => i.id)).toEqual([8, 7]);
+  });
 });

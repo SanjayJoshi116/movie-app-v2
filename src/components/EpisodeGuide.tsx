@@ -6,10 +6,8 @@ import { StarFilled, CalendarOutlined, ClockCircleOutlined } from "@ant-design/i
 import { fetchTVSeason } from "../api/tmdb";
 import type { TMDBTVSeason, TMDBSeasonDetail } from "../types";
 import { FONT_SIZE } from "../constants/typography";
-import { RATING_GOLD } from "../constants/ui";
+import { RATING_GOLD, STILL_URL } from "../constants/ui";
 import { formatDateDMY } from "../utils/formatDate";
-
-const STILL_URL = "https://image.tmdb.org/t/p/w300";
 
 interface Props {
   tvId: number;

@@ -3,11 +3,13 @@ Profile modal tests: open, show user data, save changes, validation, theme toggl
 """
 from playwright.sync_api import Page, expect
 
-from conftest import fulfill_json, MOCK_USER, mock_tmdb_movies
+from conftest import paginated, fulfill_json, MOCK_USER, mock_tmdb_movies
 
 
 def open_profile_modal(page: Page) -> None:
     """Click the avatar to open the profile modal."""
+    # The modal checks whether a TMDB account is connected as it opens.
+    page.route("**/api/tmdb-auth/status/**", lambda r: fulfill_json(r, {"connected": False}))
     # The avatar is a clickable element wrapping the user initials in the sidebar
     page.locator(".ant-avatar").first.click()
     expect(page.locator(".ant-modal")).to_be_visible(timeout=5_000)
@@ -144,7 +146,7 @@ class TestThemeToggle:
 
     def test_theme_toggle_persists_after_navigation(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
-        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, []))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         toggle = authed_page.locator("[aria-label*='Switch to']").first

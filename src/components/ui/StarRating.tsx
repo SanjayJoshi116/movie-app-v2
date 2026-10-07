@@ -1,4 +1,5 @@
 import { Rate } from "antd";
+import { RATING_GOLD } from "../../constants/ui";
 
 interface Props {
   value: number;
@@ -12,7 +13,7 @@ export function StarRating({ value, onChange, max = 10 }: Props) {
       count={max}
       value={value}
       onChange={onChange}
-      style={{ fontSize: 22, color: "#f5c518" }}
+      style={{ fontSize: 22, color: RATING_GOLD }}
     />
   );
 }

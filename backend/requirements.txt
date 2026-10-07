@@ -1,11 +1,16 @@
-django>=4.2,<5.0
-djangorestframework>=3.15
-djangorestframework-simplejwt>=5.5.0  # 5.5.0+ records rotated refresh tokens as outstanding (needed for revoke-all)
-psycopg2-binary>=2.9
-django-cors-headers>=4.3
-Pillow>=10.0
-python-dotenv>=1.0
-requests>=2.31
-scikit-learn>=1.3
-numpy>=1.24
-gunicorn>=21.2
+# Direct dependencies, pinned to the versions the test suite runs on.
+# Transitive packages are pinned in constraints.txt; install with
+#   pip install -r requirements.txt -c constraints.txt
+# To change a version: edit the pin here, regenerate constraints.txt (see its
+# header), run the backend tests.
+Django==5.2.17  # 5.2 LTS; userdata/tests/test_dependency_versions.py checks the installed major.minor
+djangorestframework==3.16.1
+djangorestframework-simplejwt==5.5.1  # 5.5.0+ records rotated refresh tokens as outstanding (needed for revoke-all)
+psycopg2-binary==2.9.9
+django-cors-headers==4.9.0
+Pillow==12.1.1
+python-dotenv==1.2.2
+requests==2.33.0
+scikit-learn==1.8.0
+numpy==2.2.6
+gunicorn==23.0.0

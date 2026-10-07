@@ -13,7 +13,7 @@ import {
 } from "antd";
 import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
-import { genres } from "../../constants/genres";
+import { movieGenres, tvGenres } from "../../constants/genres";
 import { FONT_SIZE } from "../../constants/typography";
 import { RATING_GOLD } from "../../constants/ui";
 
@@ -60,14 +60,17 @@ interface Props {
   open: boolean;
   onClose: () => void;
   isMovie: boolean;
+  /** Seeds the draft, so the panel matches the grid after a detail-page round trip. */
+  appliedFilters: FilterValues | null;
+  appliedSortBy: SortOption;
   onApply: (filters: FilterValues, sortBy: SortOption) => void;
   onReset: () => void;
 }
 
-export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props) {
+export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, onApply, onReset }: Props) {
   const { selectedGenres, toggleGenre, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
-  const [filters, setFilters] = useState<FilterValues>(DEFAULT_FILTERS);
-  const [sortBy, setSortBy] = useState<SortOption>("popularity.desc");
+  const [filters, setFilters] = useState<FilterValues>(() => ({ ...DEFAULT_FILTERS, ...appliedFilters }));
+  const [sortBy, setSortBy] = useState<SortOption>(appliedSortBy);
 
   const set = (key: keyof FilterValues, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
@@ -90,7 +93,7 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
       placement="right"
       open={open}
       onClose={onClose}
-      width={320}
+      width="min(320px, 100vw)"
       footer={
         <Space style={{ justifyContent: "flex-end", width: "100%" }}>
           <Button onClick={handleReset}>Reset</Button>
@@ -187,7 +190,7 @@ export function FilterPanel({ open, onClose, isMovie, onApply, onReset }: Props)
           aria-label="Genre filters"
           style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 16 }}
         >
-          {genres.map((genre) => {
+          {(isMovie ? movieGenres : tvGenres).map((genre) => {
             const selected = selectedGenres.includes(genre.id);
             return (
               <CheckableTag

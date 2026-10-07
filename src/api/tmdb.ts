@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from "axios";
 import type {
   TMDBPaginatedResponse,
   TMDBMovieSummary,
-  TMDBMovieDetail,
+  TMDBMovieDetailResponse,
   TMDBTVSummary,
   TMDBTVDetail,
   TMDBSeasonDetail,
@@ -58,7 +58,7 @@ export const searchMovies = (
 
 export const fetchMovieDetails = (
   id: number | string,
-): Promise<AxiosResponse<TMDBMovieDetail>> =>
+): Promise<AxiosResponse<TMDBMovieDetailResponse>> =>
   api.get(`/movie/${id}`, {
     params: { append_to_response: "credits,images,videos,recommendations" },
   });
@@ -252,17 +252,22 @@ export function filtersToTMDBParams(
 ): Record<string, string | number> {
   const isTV = mediaType === "tv";
   const dateField = isTV ? "first_air_date" : "primary_release_date";
-  const effectiveSortBy = isTV && sortBy.startsWith("primary_release_date")
-    ? sortBy.replace("primary_release_date", "first_air_date")
-    : sortBy;
+  // TV discover has no primary_release_date/original_title sort fields.
+  let effectiveSortBy: string = sortBy;
+  if (isTV && sortBy.startsWith("primary_release_date")) {
+    effectiveSortBy = sortBy.replace("primary_release_date", "first_air_date");
+  } else if (isTV && sortBy === "original_title.asc") {
+    effectiveSortBy = "original_name.asc";
+  }
   const params: Record<string, string | number> = { sort_by: effectiveSortBy };
   if (filters.yearFrom) params[`${dateField}.gte`] = `${filters.yearFrom}-01-01`;
   if (filters.yearTo) params[`${dateField}.lte`] = `${filters.yearTo}-12-31`;
   if (filters.minRating) params["vote_average.gte"] = filters.minRating;
   if (filters.maxRating) params["vote_average.lte"] = filters.maxRating;
   if (filters.language) params["with_original_language"] = filters.language;
-  if (filters.minRuntime) params["with_runtime.gte"] = filters.minRuntime;
-  if (filters.maxRuntime) params["with_runtime.lte"] = filters.maxRuntime;
+  // The panel only shows runtime for movies; never let a stale value reach TV.
+  if (!isTV && filters.minRuntime) params["with_runtime.gte"] = filters.minRuntime;
+  if (!isTV && filters.maxRuntime) params["with_runtime.lte"] = filters.maxRuntime;
   if (filters.includeAdult) params["include_adult"] = "true";
   return params;
 }

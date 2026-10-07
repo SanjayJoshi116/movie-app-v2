@@ -1,4 +1,4 @@
-pytest>=7.4
-pytest-playwright>=0.4
-pytest-timeout>=2.2
-playwright>=1.40
+pytest==9.1.1
+pytest-playwright==0.8.0
+pytest-timeout==2.4.0
+playwright==1.60.0  # keep in step with @playwright/test in package.json

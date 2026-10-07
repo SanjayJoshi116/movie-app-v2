@@ -309,10 +309,16 @@ class EpisodeProgressInputSerializer(serializers.Serializer):
 
 
 class UserListSerializer(serializers.ModelSerializer):
-    items = UserListItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
 
     class Meta:
         model = UserList
         fields = ("id", "name", "description", "items", "createdAt")
         read_only_fields = ("id", "createdAt")
+
+    def get_items(self, obj):
+        # Newest first, id as the tiebreak. Sorted in Python so it reuses the
+        # list view's prefetch (an order_by here would issue a fresh query).
+        items = sorted(obj.items.all(), key=lambda i: (i.added_at, i.id), reverse=True)
+        return UserListItemSerializer(items, many=True).data

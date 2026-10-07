@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta, UTC
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 from ..models import RatingEntry, TMDBProfile, WatchedEntry, WatchlistEntry
 
 PAST = "2024-03-01T20:00:00Z"
-PAST_DT = datetime(2024, 3, 1, 20, 0, tzinfo=dt_timezone.utc)
+PAST_DT = datetime(2024, 3, 1, 20, 0, tzinfo=UTC)
 
 
 def future_iso():
@@ -76,17 +76,21 @@ class BulkWatchedTests(BulkTestCase):
         self.assertEqual((entry.title, entry.platform), ("Old", "Hulu"))
 
     def test_refresh_scheduled_once_when_something_added(self):
-        with mock.patch("userdata.recommendations.request_refresh") as refresh:
-            with self.captureOnCommitCallbacks(execute=True):
-                res = self.post([{"mediaId": 1}, {"mediaId": 2}, {"mediaId": 3}])
+        with (
+            mock.patch("userdata.recommendations.request_refresh") as refresh,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            res = self.post([{"mediaId": 1}, {"mediaId": 2}, {"mediaId": 3}])
         self.assertEqual(res.data["added"], 3)
         refresh.assert_called_once_with(self.user.id, rerun_if_running=True)
 
     def test_no_refresh_when_everything_skipped(self):
         WatchedEntry.objects.create(user=self.user, media_id=1, media_type="movie", title="A")
-        with mock.patch("userdata.recommendations.request_refresh") as refresh:
-            with self.captureOnCommitCallbacks(execute=True):
-                res = self.post([{"mediaId": 1}])
+        with (
+            mock.patch("userdata.recommendations.request_refresh") as refresh,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            res = self.post([{"mediaId": 1}])
         self.assertEqual(res.data["added"], 0)
         refresh.assert_not_called()
 
@@ -173,10 +177,16 @@ class PaginationWithTiedTimestampsTests(BulkTestCase):
         ts = timezone.now() - timedelta(days=1)
         n = 250
         WatchedEntry.objects.bulk_create(
-            [WatchedEntry(user=self.user, media_id=i, media_type="movie", title="t", watched_at=ts) for i in range(1, n + 1)]
+            [
+                WatchedEntry(user=self.user, media_id=i, media_type="movie", title="t", watched_at=ts)
+                for i in range(1, n + 1)
+            ]
         )
         WatchlistEntry.objects.bulk_create(
-            [WatchlistEntry(user=self.user, media_id=i, media_type="movie", title="t", added_at=ts) for i in range(1, n + 1)]
+            [
+                WatchlistEntry(user=self.user, media_id=i, media_type="movie", title="t", added_at=ts)
+                for i in range(1, n + 1)
+            ]
         )
         RatingEntry.objects.bulk_create(
             [RatingEntry(user=self.user, media_id=i, media_type="movie", title="t", user_rating=5, rated_at=ts)

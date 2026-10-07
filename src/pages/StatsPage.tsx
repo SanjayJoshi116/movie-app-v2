@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Typography, Spin, Empty, Tabs } from "antd";
+import { Row, Col, Card, Typography, Spin, Empty, Tabs, theme } from "antd";
 import {
   EyeOutlined,
   VideoCameraOutlined,
@@ -89,18 +89,19 @@ const ratingColor = (r: string) => {
 };
 
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string; color?: string }[]; label?: string }) {
+  const { token } = theme.useToken();
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: "rgba(10, 10, 20, 0.95)",
-      border: "1px solid rgba(255,255,255,0.1)",
+      background: token.colorBgElevated,
+      border: `1px solid ${token.colorBorderSecondary}`,
       borderRadius: 8,
       padding: "8px 12px",
       fontSize: FONT_SIZE.caption,
     }}>
-      {label && <div style={{ color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>{label}</div>}
+      {label && <div style={{ color: token.colorTextSecondary, marginBottom: 4 }}>{label}</div>}
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || "#fff", fontWeight: 500 }}>
+        <div key={i} style={{ color: p.color || token.colorText, fontWeight: 500 }}>
           {p.value} {p.name === "count" ? "items" : p.name}
         </div>
       ))}
@@ -117,6 +118,7 @@ function StatCard({ title, value, suffix, icon, color, animate = true, tooltip }
   animate?: boolean;
   tooltip?: string;
 }) {
+  const { token } = theme.useToken();
   const numVal = typeof value === "number" ? value : 0;
   const animated = useCountUp(animate ? numVal : 0);
   const display = typeof value === "string" ? value : animate ? animated : value;
@@ -127,13 +129,13 @@ function StatCard({ title, value, suffix, icon, color, animate = true, tooltip }
       style={{ borderTop: `3px solid ${color}`, height: "100%" }}
       styles={{ body: { padding: "16px 20px", position: "relative", overflow: "hidden" } }}
     >
-      <div style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.6px" }}>
+      <div style={{ fontSize: FONT_SIZE.caption, color: token.colorTextSecondary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.6px" }}>
         {title}
         {tooltip && <InfoTooltip title={tooltip} />}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ fontSize: FONT_SIZE.display, fontWeight: 700, color }}>{display}</span>
-        {suffix && <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.35)" }}>{suffix}</span>}
+        {suffix && <span style={{ fontSize: FONT_SIZE.caption, color: token.colorTextTertiary }}>{suffix}</span>}
       </div>
       <div style={{ position: "absolute", bottom: 10, right: 14, opacity: 0.1, fontSize: 42, color, lineHeight: 1 }}>
         {icon}
@@ -171,8 +173,8 @@ function buildHeatmapWeeks(dailyActivity: { date: string; count: number }[]): Da
   return weeks;
 }
 
-function heatColor(count: number): string {
-  if (count === 0) return "rgba(255,255,255,0.06)";
+function heatColor(count: number, emptyColor: string): string {
+  if (count === 0) return emptyColor;
   if (count === 1) return "#1a5c2a";
   if (count <= 3) return "#226e35";
   if (count <= 5) return "#2ea44f";
@@ -180,6 +182,7 @@ function heatColor(count: number): string {
 }
 
 function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; count: number }[] }) {
+  const { token } = theme.useToken();
   const [hover, setHover] = useState<{ text: string; x: number; y: number } | null>(null);
   const weeks = buildHeatmapWeeks(dailyActivity);
   const CELL = 12;
@@ -197,7 +200,7 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
       <div style={{ display: "inline-block", minWidth: weeks.length * (CELL + GAP) }}>
         <div style={{ display: "flex", marginBottom: 4 }}>
           {monthLabels.map((label, i) => (
-            <div key={i} style={{ width: CELL + GAP, fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)", flexShrink: 0 }}>
+            <div key={i} style={{ width: CELL + GAP, fontSize: FONT_SIZE.caption, color: token.colorTextTertiary, flexShrink: 0 }}>
               {label ?? ""}
             </div>
           ))}
@@ -212,7 +215,7 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
                     width: CELL,
                     height: CELL,
                     borderRadius: 2,
-                    backgroundColor: day.future ? "transparent" : heatColor(day.count),
+                    backgroundColor: day.future ? "transparent" : heatColor(day.count, token.colorFillTertiary),
                     cursor: "default",
                   }}
                   onMouseEnter={(e) => {
@@ -236,11 +239,11 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, justifyContent: "flex-end" }}>
-          <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)" }}>Less</span>
+          <span style={{ fontSize: FONT_SIZE.caption, color: token.colorTextTertiary }}>Less</span>
           {[0, 1, 2, 4, 6].map((v) => (
-            <div key={v} style={{ width: CELL, height: CELL, borderRadius: 2, backgroundColor: heatColor(v) }} />
+            <div key={v} style={{ width: CELL, height: CELL, borderRadius: 2, backgroundColor: heatColor(v, token.colorFillTertiary) }} />
           ))}
-          <span style={{ fontSize: FONT_SIZE.caption, color: "rgba(255,255,255,0.4)" }}>More</span>
+          <span style={{ fontSize: FONT_SIZE.caption, color: token.colorTextTertiary }}>More</span>
         </div>
       </div>
       {hover && createPortal(
@@ -248,12 +251,12 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
           position: "fixed",
           left: hover.x + 14,
           top: hover.y - 30,
-          background: "rgba(10,10,20,0.95)",
-          border: "1px solid rgba(255,255,255,0.15)",
+          background: token.colorBgElevated,
+          border: `1px solid ${token.colorBorderSecondary}`,
           borderRadius: 6,
           padding: "3px 8px",
           fontSize: FONT_SIZE.caption,
-          color: "#fff",
+          color: token.colorText,
           pointerEvents: "none",
           zIndex: 9999,
           whiteSpace: "nowrap",
@@ -272,6 +275,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
   badge: string;
   mediaType: string;
 }) {
+  const { token } = theme.useToken();
   return (
     <div style={{ width: 110, flexShrink: 0 }}>
       <div style={{ position: "relative", borderRadius: 6, overflow: "hidden" }}>
@@ -294,7 +298,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
           {mediaType === "movie" ? "FILM" : "TV"}
         </div>
       </div>
-      <div style={{ fontSize: FONT_SIZE.caption, marginTop: 6, color: "rgba(255,255,255,0.7)", lineHeight: 1.3, overflow: "hidden", maxHeight: "2.6em" }}>
+      <div style={{ fontSize: FONT_SIZE.caption, marginTop: 6, color: token.colorTextSecondary, lineHeight: 1.3, overflow: "hidden", maxHeight: "2.6em" }}>
         {title}
       </div>
       <div style={{ fontSize: FONT_SIZE.caption, color: GOLD, fontWeight: 600, marginTop: 2 }}>{badge}</div>

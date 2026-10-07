@@ -49,7 +49,7 @@ function NotificationBell({ buttonClassName }: Props) {
       popupRender={() => (
         <div
           className="glass-overlay-card"
-          style={{ width: 320, maxHeight: 420, overflowY: "auto", padding: 8, borderRadius: 8 }}
+          style={{ width: "min(320px, calc(100vw - 32px))", maxHeight: 420, overflowY: "auto", padding: 8, borderRadius: 8 }}
         >
           <Typography.Text strong style={{ display: "block", padding: "4px 8px 8px" }}>
             New releases from people you follow

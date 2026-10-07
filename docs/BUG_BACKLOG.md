@@ -17,10 +17,11 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 1 | `harden-input-validation` | ✅ 2026-10-05 | Backend: bad input → 400, never 500 |
 | 2 | `fix-backup-roundtrip` | ✅ 2026-10-05 | Export/import loses or corrupts data |
 | 3 | `surface-failures` | ✅ 2026-10-06 | Frontend: errors shown as empty/success; unsafe writes |
-| 4 | `fix-browse-filters` | ⏳ | Browse/list filter, restore and pagination UX bugs |
+| 4 | `fix-browse-filters` | ✅ 2026-10-06 | Browse/list filter, restore and pagination UX bugs |
 | 5 | `user-local-dates` | ⏳ needs design decision | UTC vs local dates |
-| 6 | `fix-data-correctness` | ⏳ | Backend: quietly wrong numbers/orders |
-| 7 | `ci-coverage` + polish | ⏳ | CI gaps, test mocks, drift, light-mode, a11y |
+| 6 | `fix-data-correctness` | ✅ 2026-10-06 | Backend: quietly wrong numbers/orders |
+| 7 | `ci-coverage` + polish | 📝 split into 5 | CI gaps, test mocks, drift, light-mode, a11y, Docker |
+| 8 | found during `frontend-polish` | ⏳ not yet proposed | Notification popup off-screen, no Filters button on phones, unused `web-vitals`, React-logo icons |
 
 Suggested order: **0 → commit → 1 → 2 → 3 → 4 → 6 → 7**. Do 5 once its design question is settled.
 
@@ -96,7 +97,9 @@ Possibly split into read-path and write-path changes.
   - `NotificationBell`: unread items are never shown bold, because `markSeen` runs in the same batch. The bell is mounted twice, giving 2 pollers whose badges disagree (`NotificationBell.tsx:30-33`, `useNotifications.ts:42-44`).
   - `ProfileModal`'s Danger Zone password survives close/reopen (`:47,344-361`).
 
-## 4. `fix-browse-filters` (frontend)
+## 4. `fix-browse-filters` (frontend) (✅ archived 2026-10-06)
+
+See `openspec/changes/archive/2026-10-06-fix-browse-filters/`. All items below are fixed. Verification also found a dev-only double restore fetch; it already happens on `main` and is tracked under item 7.
 
 - **Genres:**
   - Movie genre IDs are sent to TV discover, so Action/Sci-Fi/etc. return zero TV results (`constants/genres.ts`, `HomePage.tsx:95-124`, `AnimePage.tsx:92-96`).
@@ -120,7 +123,9 @@ Possibly split into read-path and write-path changes.
 - `stats_views.py:60,131` buckets `watched_at.date()` in UTC, so the heatmap and monthly charts are off by one day.
 - Notifications compare same-day releases with a strict `>`, so a release on the day of the last check is never unread (`notifications_views.py:32,60`).
 
-## 6. `fix-data-correctness` (backend)
+## 6. `fix-data-correctness` (backend) (✅ archived 2026-10-06)
+
+See `openspec/changes/archive/2026-10-06-fix-data-correctness/`. All items below are fixed.
 
 - ~~Pagination orders by a non-unique timestamp with no tiebreaker.~~ Fixed in `fix-backup-roundtrip` (`-id` tiebreaker on all five list endpoints).
 - Notifications only check the 10 most recently followed people (`notifications_views.py:29` → `social_views.py:88,93`).
@@ -134,7 +139,18 @@ Possibly split into read-path and write-path changes.
 - Duplicate recommendation section keys: `because-{id}` has no media type, `actor-{name}`, `follow-{name}`; KMeans can produce duplicate labels.
 - `tmdb_proxy` collapses repeated query params via `request.GET.dict()` (`tmdb_proxy_views.py:35`).
 
-## 7. `ci-coverage` + polish
+## 7. `ci-coverage` + polish (📝 proposed as 5 changes)
+
+Split by theme. Each change lives in `openspec/changes/<name>/`. Suggested apply order: **7a → 7b → 7c → 7d → 7e**. 7b and 7e both edit the Dockerfiles, and 7c and 7d both touch the detail pages and `App.tsx`.
+
+| # | Change | Status | Covers |
+|---|---|---|---|
+| 7a | `ci-coverage` | ✅ 2026-10-06 | CI steps (TS Playwright, tsc, eslint, `makemigrations --check`, Node 22), e2e mocks, stale TS tests, missing tests, dev-only double fetch |
+| 7b | `fix-dependency-drift` | ✅ 2026-10-07 | Python pins + constraints file, Django 5.2 LTS, Docker base images, stale Express docs |
+| 7c | `frontend-polish` | ✅ 2026-10-07 | Stats light mode, shared colors/helpers, TMDB URLs, fixed widths, CRA leftovers, `any`s, in-place For You Retry |
+| 7d | `a11y-routing` | 📝 | Keyboard-reachable cards (`CardLink`), aria-labels, 404 page, signed-in users kept off auth pages |
+| 7e | `harden-docker` | 📝 | `.dockerignore` media, non-root, image-only migrations, CSP/HSTS in nginx, `STATIC_ROOT` |
+
 
 - **CI:**
   - The TS Playwright suite never runs in CI, and `playwright.config.ts` hardcodes `G:/Anaconda` and `kill-port`.
@@ -143,6 +159,7 @@ Possibly split into read-path and write-path changes.
 - **Test mocks:**
   - e2e mocks return a bare `[]` where the real API returns paginated `{results}`.
   - TS specs' notifications route lacks a trailing `**`, mark-seen is unmocked, and 3 specs have no catch-all route.
+- **Dev-only double restore fetch** (found 2026-10-06 while verifying `fix-browse-filters`; also on `main`): returning to a browse page (in-app or browser Back) under `npm run dev` fetches each restored page twice, and HeroBanner's trending twice. That's the StrictMode double mount; production builds are unaffected and the result is correct. Check whether `usePaginatedFetch`'s replay guard should also cover the restore path.
 - **Missing tests:** profile, lists, recommendations, episode-progress, followed-people. (`usePaginatedFetch` unit tests and a stats error/retry e2e test landed with `surface-failures`.)
 - **Stale TS e2e tests** (fail locally against current UI; found while verifying `surface-failures`):
   - `e2e/auth.spec.ts:103,112`: `getByLabel("Password")` now also matches "Confirm Password" (strict-mode violation), and the short-password message text has changed.
@@ -177,6 +194,15 @@ Possibly split into read-path and write-path changes.
   - `TVShowDetails` icon buttons lack `aria-label`
   - the `*` route redirects instead of showing a 404
   - logged-in users can open `/login`
+
+## 8. Found during `frontend-polish` (⏳ not yet proposed)
+
+Found 2026-10-07 while doing the live check for `frontend-polish`. All four were already broken before that change; none of them is in an open proposal.
+
+- **Notification popup renders partly off-screen** (`NotificationBell.tsx:44-48`): at every breakpoint the popup's left edge sits off the viewport (about -230px at 1366px desktop, -290px at 800px tablet, -85px at 375px phone). It measured the same with the original fixed `width: 320`, so the width change in 7c didn't cause it. Cause: the `Dropdown` sets no `placement`, and `getPopupContainer` mounts the popup inside the sidebar footer or bottom nav, where antd's overflow adjustment doesn't keep it on-screen. The sidebar (left edge) and the bottom nav (bell near the center of a 375px bar) likely need different placements. Keep the popup inside the sidebar (CLAUDE.md: no `document.body` popups for sidebar triggers) and re-measure at all 3 tiers.
+- **Phones have no Filters button**: the only trigger for `FilterPanel` is in `Sidebar.tsx:152`, and the sidebar is hidden below 768px. `BottomNav.tsx` has no equivalent, so on a phone the browse filters can't be opened at all. The drawer itself fits at 375px since 7c. This fits 7d `a11y-routing`'s theme, but its proposal doesn't cover it yet.
+- **`web-vitals` is unused** (`package.json:22`): 7c deleted `src/reportWebVitals.ts`, its only importer, and left the package for 7b. But 7b was archived without removing it. Uninstall it and update the lockfile.
+- **App icons are still the React logo**: `public/favicon.ico`, `logo192.png` and `logo512.png` (referenced from `manifest.json` and `index.html`). 7c fixed the name and description only. **Blocked on the user:** supply CINE DB artwork, or approve a simple generated wordmark.
 
 ## Deferred / out of scope (noted, not planned)
 

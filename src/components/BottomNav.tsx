@@ -27,6 +27,8 @@ import NotificationBell from "./NotificationBell";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
+import { avatarColor } from "../utils/colors";
+import { RATING_GOLD } from "../constants/ui";
 
 function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
   const f = user.first_name?.trim() ?? "";
@@ -34,13 +36,6 @@ function getInitials(user: { first_name?: string; last_name?: string; username: 
   if (f && l) return (f[0]! + l[0]!).toUpperCase();
   if (f) return f.slice(0, 2).toUpperCase();
   return user.username.slice(0, 2).toUpperCase();
-}
-
-const AVATAR_COLORS = ["#e67e22", "#8e44ad", "#2980b9", "#27ae60", "#c0392b", "#16a085"];
-function avatarColor(username: string): string {
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? "#e67e22";
 }
 
 const BottomNav = () => {
@@ -98,13 +93,13 @@ const BottomNav = () => {
                 aria-label={item.label}
                 aria-current={isActive ? "page" : undefined}
                 className="bottom-nav-btn"
-                style={{ color: isActive ? "#f5c518" : undefined }}
+                style={{ color: isActive ? RATING_GOLD : undefined }}
               />
             </Tooltip>
           );
 
           return item.badge != null && item.badge > 0 ? (
-            <Badge key={item.path} count={item.badge} size="small" color="#f5c518" offset={[4, 0]} overflowCount={Infinity}>
+            <Badge key={item.path} count={item.badge} size="small" color={RATING_GOLD} offset={[4, 0]} overflowCount={Infinity}>
               {btn}
             </Badge>
           ) : (
@@ -138,7 +133,7 @@ const BottomNav = () => {
             aria-label="More navigation options"
             aria-expanded={moreOpen}
             className="bottom-nav-btn"
-            style={{ color: isMoreActive ? "#f5c518" : undefined }}
+            style={{ color: isMoreActive ? RATING_GOLD : undefined }}
           />
         </Tooltip>
       </nav>
@@ -179,7 +174,7 @@ const BottomNav = () => {
                   background: "none",
                   border: "none",
                   cursor: "pointer",
-                  color: isActive ? "#f5c518" : "inherit",
+                  color: isActive ? RATING_GOLD : "inherit",
                   fontWeight: isActive ? 600 : undefined,
                   borderRadius: 8,
                   position: "relative",
@@ -192,7 +187,7 @@ const BottomNav = () => {
                     position: "absolute",
                     top: 10,
                     right: "calc(50% - 22px)",
-                    background: "#f5c518",
+                    background: RATING_GOLD,
                     color: "#000",
                     borderRadius: 10,
                     padding: "0 5px",

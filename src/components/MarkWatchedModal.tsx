@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal, Form, InputNumber, Select, Input, Spin } from "antd";
 import { fetchMovieDetails, fetchTVDetails, fetchMovieProviders, fetchTVWatchProviders } from "../api/tmdb";
 import type { MediaType } from "../types";
@@ -10,7 +10,19 @@ interface Props {
   mediaId: number;
   mediaType: MediaType;
   onCancel: () => void;
-  onConfirm: (details: { runtimeMinutes?: number; platform?: string }) => void;
+  onConfirm: (details: WatchDetails) => void;
+}
+
+export interface WatchDetails {
+  runtimeMinutes?: number;
+  platform?: string;
+  originalLanguage?: string;
+  releaseYear?: number;
+}
+
+function yearOf(date: string | undefined): number | undefined {
+  const y = Number(date?.slice(0, 4));
+  return Number.isInteger(y) && y >= 1800 && y <= 3000 ? y : undefined;
 }
 
 export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm }: Props) {
@@ -18,6 +30,9 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
   const [platform, setPlatform] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
+  // Language/year ride along from the details request we already make for the
+  // runtime, so Stats doesn't have to backfill them from TMDB later.
+  const metaRef = useRef<Pick<WatchDetails, "originalLanguage" | "releaseYear">>({});
 
   useEffect(() => {
     if (!open) return;
@@ -26,10 +41,17 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
     setPlatform(undefined);
     setOptions([]);
     form.resetFields();
+    metaRef.current = {};
 
     const fetchRuntime = mediaType === "movie"
-      ? fetchMovieDetails(mediaId).then((res) => res.data.runtime)
-      : fetchTVDetails(mediaId).then((res) => res.data.episode_run_time?.[0]);
+      ? fetchMovieDetails(mediaId).then((res) => {
+          metaRef.current = { originalLanguage: res.data.original_language || undefined, releaseYear: yearOf(res.data.release_date) };
+          return res.data.runtime;
+        })
+      : fetchTVDetails(mediaId).then((res) => {
+          metaRef.current = { originalLanguage: res.data.original_language || undefined, releaseYear: yearOf(res.data.first_air_date) };
+          return res.data.episode_run_time?.[0];
+        });
     const providersReq = mediaType === "movie" ? fetchMovieProviders(mediaId) : fetchTVWatchProviders(mediaId);
 
     Promise.all([fetchRuntime, providersReq])
@@ -57,6 +79,7 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
       onConfirm({
         runtimeMinutes: values.runtimeMinutes ?? undefined,
         platform: resolvedPlatform || undefined,
+        ...metaRef.current,
       });
     });
   };

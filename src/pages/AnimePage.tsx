@@ -17,6 +17,8 @@ import {
   searchTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
+import { genresFor, hasActiveFilters, todayLocalISO } from "../utils/browseFilters";
+import { stashReturnState } from "../utils/browseReturnState";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
 
@@ -33,13 +35,22 @@ const ANIME_MOVIE_CATEGORIES = [
   { key: "anime-movies-top-rated", label: "Top Rated" },
 ];
 
-const SORT_MAP: Record<string, string> = {
-  "anime-tv-popular":       "popularity.desc",
-  "anime-tv-top-rated":     "vote_average.desc",
-  "anime-tv-airing":        "first_air_date.desc",
-  "anime-movies-popular":   "popularity.desc",
-  "anime-movies-top-rated": "vote_average.desc",
-};
+// Discover params per category. "Airing Today" filters by today's episode air
+// date (TMDB's /tv/airing_today ignores with_keywords, so it can't be used);
+// sorting by first_air_date.desc used to surface not-yet-aired shows instead.
+function categoryParams(category: string): Record<string, string | number> {
+  switch (category) {
+    case "anime-tv-top-rated":
+    case "anime-movies-top-rated":
+      return { sort_by: "vote_average.desc", "vote_count.gte": 50 };
+    case "anime-tv-airing": {
+      const today = todayLocalISO();
+      return { sort_by: "popularity.desc", "air_date.gte": today, "air_date.lte": today };
+    }
+    default:
+      return { sort_by: "popularity.desc" };
+  }
+}
 
 interface Props {
   externalFilters: FilterValues | null;
@@ -87,19 +98,18 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     onMediaTypeChange(animeTab);
   }, [animeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const scopeMediaType = animeTab === "tv" ? "tv" : "movie";
+  const validGenres = genresFor(scopeMediaType, selectedGenres);
+  const genreString = validGenres.join(",");
+  const hasFilters = hasActiveFilters(externalFilters, externalSortBy, validGenres);
+
   const fetchPage = useCallback(
     async (page: number): Promise<{ results: (TMDBMovieSummary | TMDBTVSummary)[]; totalPages: number }> => {
       const isTV = animeTab === "tv";
-      const genreString = selectedGenres.join(",");
       const baseParams: Record<string, string | number> = {
         page,
         with_keywords: ANIME_KEYWORD,
-        ...(genreString && { with_genres: genreString }),
       };
-
-      const hasFilters =
-        externalFilters !== null &&
-        Object.values(externalFilters).some((v) => v !== "");
 
       let response;
 
@@ -107,19 +117,12 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         response = isTV
           ? await searchTV(searchTerm, page, includeAdult)
           : await searchMovies(searchTerm, page, includeAdult);
-      } else if (hasFilters && externalFilters) {
-        const filterParams = filtersToTMDBParams(externalFilters, externalSortBy, animeTab === "tv" ? "tv" : "movie");
-        const params = { ...baseParams, ...filterParams };
+      } else if (hasFilters) {
+        const filterParams = filtersToTMDBParams(externalFilters ?? undefined, externalSortBy, scopeMediaType);
+        const params = { ...baseParams, ...filterParams, ...(genreString && { with_genres: genreString }) };
         response = isTV ? await discoverTV(params) : await discoverMovies(params);
       } else {
-        const extraParams: Record<string, string | number> = activeCategory.includes("top-rated")
-          ? { "vote_count.gte": 50 }
-          : {};
-        const params = {
-          ...baseParams,
-          sort_by: SORT_MAP[activeCategory] ?? "popularity.desc",
-          ...extraParams,
-        };
+        const params = { ...baseParams, ...categoryParams(activeCategory) };
         response = isTV ? await discoverTV(params) : await discoverMovies(params);
       }
 
@@ -128,7 +131,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         totalPages: response.data.total_pages,
       };
     },
-    [animeTab, activeCategory, searchTerm, selectedGenres, externalFilters, externalSortBy, includeAdult]
+    [animeTab, scopeMediaType, activeCategory, searchTerm, genreString, hasFilters, externalFilters, externalSortBy, includeAdult]
   );
 
   const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } =
@@ -149,13 +152,17 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading);
 
+  // Lets browser Back (not just the in-app Back button) restore this page.
+  const stashBrowseState = () =>
+    stashReturnState({ scrollY: window.scrollY, loadedPages: currentPage, activeCategory, isReturn: true });
+
   const handleKnowMore = (id: number) => {
+    stashBrowseState();
     navigate(animeTab === "movies" ? `/movie/${id}` : `/tv/${id}`, {
       state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
     });
   };
 
-  const hasFilters = externalFilters !== null && Object.values(externalFilters).some((v) => v !== "");
   const categories = animeTab === "tv" ? ANIME_TV_CATEGORIES : ANIME_MOVIE_CATEGORIES;
   const animeMediaType = animeTab === "tv" ? "tv" : "movie";
   const visibleItems = searchTerm
@@ -170,7 +177,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      <HeroBanner mediaType={animeTab === "tv" ? "tv" : "movie"} requireGenreId={16} />
+      <HeroBanner mediaType={animeTab === "tv" ? "tv" : "movie"} requireGenreId={16} onBeforeNavigate={stashBrowseState} />
 
       <Radio.Group
         value={animeTab}

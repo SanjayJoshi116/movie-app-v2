@@ -17,22 +17,18 @@ import {
   type PersonalizedRecSection,
   type PersonalizedRecItem,
 } from "../api/userApi";
-import { pageVariants, IMG_URL } from "../constants/ui";
+import { pageVariants, IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { ratingColor } from "../utils/colors";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
+import { LoadError } from "../components/LoadError";
 import FilterBar from "../components/FilterBar";
 import type { LibraryTypeFilter } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 
 const SS_SEARCH = "foryou_search";
 const SS_TYPE_FILTER = "foryou_type_filter";
-
-function getRatingColor(vote: number): string {
-  if (vote >= 8) return "#52c41a";
-  if (vote >= 5) return "#faad14";
-  return "#ff4d4f";
-}
 
 const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
@@ -70,7 +66,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
           title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{item.title}</span>}
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0 }}>
+              <Tag color={ratingColor(item.voteAverage)} style={{ margin: 0 }}>
                 <StarFilled style={{ marginRight: 2 }} />
                 {item.voteAverage.toFixed(1)}
               </Tag>
@@ -80,7 +76,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     size="small"
                     type="text"
                     icon={isWatched(item.id, item.type) ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(item.id, item.type) ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isWatched(item.id, item.type) ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(item.id, item.type)) {
@@ -102,7 +98,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     size="small"
                     type="text"
                     icon={isInWatchlist(item.id, item.type) ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(item.id, item.type) ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isInWatchlist(item.id, item.type) ? "#1677ff" : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(item.id, item.type);
@@ -177,6 +173,8 @@ interface RecCache {
   followedSections: PersonalizedRecSection[];
   scrollY: number;
   ts: number;
+  /** False if any group was still loading/computing when saved (missing on old caches). */
+  complete?: boolean;
 }
 
 function hasAnyItems(c: RecCache): boolean {
@@ -224,8 +222,11 @@ function RecommendationsPage() {
   const [forYouComputing, setForYouComputing] = useState(false);
   const [personalizedComputing, setPersonalizedComputing] = useState(false);
   const [fetchError, setFetchError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const computing = forYouComputing || personalizedComputing;
-  const hasFetched = useRef(Boolean(cache));
+  // An incomplete snapshot (left mid-computation) is shown but not trusted:
+  // the fetch/poll effect still runs and replaces it once the backend is ready.
+  const hasFetched = useRef(Boolean(cache?.complete));
 
   // Restore scroll once on mount if cache hit — rAF fires after browser's own scroll restoration
   useEffect(() => {
@@ -235,17 +236,19 @@ function RecommendationsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep ref to latest data so unmount cleanup captures current values
-  const latestData = useRef({ sections, personalizedSections, followedSections });
-  useEffect(() => { latestData.current = { sections, personalizedSections, followedSections }; });
+  const complete = !loading && !forYouComputing && !personalizedComputing && !fetchError;
+  const latestData = useRef({ sections, personalizedSections, followedSections, complete });
+  useEffect(() => { latestData.current = { sections, personalizedSections, followedSections, complete }; });
 
   // Save to sessionStorage on unmount
   useEffect(() => {
     return () => {
-      const { sections: s, personalizedSections: ps, followedSections: fs } = latestData.current;
+      const { sections: s, personalizedSections: ps, followedSections: fs, complete: c } = latestData.current;
       saveSessionCache(REC_CACHE_KEY, JSON.stringify({
         sections: s, personalizedSections: ps, followedSections: fs,
         scrollY: window.scrollY,
         ts: Date.now(),
+        complete: c,
       }));
     };
   }, []);
@@ -301,7 +304,14 @@ function RecommendationsPage() {
       hasFetched.current = false; // allow retry on StrictMode re-mount
       timeouts.forEach(clearTimeout);
     };
-  }, [isDataLoading, watchedList.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDataLoading, watchedList.length, retryToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const retry = () => {
+    hasFetched.current = false;
+    setFetchError(false);
+    setLoading(true);
+    setRetryToken((t) => t + 1);
+  };
 
   const totalItems =
     sections.reduce((acc, s) => acc + s.items.length, 0) +
@@ -352,7 +362,7 @@ function RecommendationsPage() {
         <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
       ) : watchedList.length === 0 ? (
         <Empty
-          image={<BulbOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
+          image={<BulbOutlined style={{ fontSize: 48, color: RATING_GOLD }} />}
           description={
             <span>
               No watched titles yet.{" "}
@@ -398,18 +408,7 @@ function RecommendationsPage() {
             </div>
           )}
           {!loading && totalItems === 0 && !computing && fetchError && (
-            <Empty
-              image={<BulbOutlined style={{ fontSize: 48, color: "#ff4d4f" }} />}
-              description={
-                <span>
-                  Failed to load recommendations.{" "}
-                  <Button type="link" onClick={() => window.location.reload()} style={{ padding: 0 }}>
-                    Try again
-                  </Button>
-                </span>
-              }
-              style={{ padding: "60px 0" }}
-            />
+            <LoadError title="Couldn't load recommendations" onRetry={retry} />
           )}
           {!loading && totalItems === 0 && !computing && !fetchError && (
             <Empty

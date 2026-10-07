@@ -55,6 +55,9 @@ export function AddToListModal({ open, onClose, mediaId, mediaType, title, poste
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 12, marginTop: 8 }}>
         <Input
+          id="add-to-list-new-name"
+          name="add-to-list-new-name"
+          autoComplete="off"
           placeholder="New list name…"
           value={newListName}
           onChange={(e) => setNewListName(e.target.value)}
@@ -68,6 +71,9 @@ export function AddToListModal({ open, onClose, mediaId, mediaType, title, poste
 
       {lists.length > 0 && (
         <Input
+          id="add-to-list-search"
+          name="add-to-list-search"
+          autoComplete="off"
           prefix={<SearchOutlined />}
           placeholder="Search lists…"
           value={search}

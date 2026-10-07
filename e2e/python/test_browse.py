@@ -1,6 +1,8 @@
 """
 Browse tests: movies page, TV page, anime page, sidebar navigation, theme toggle.
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from conftest import (
@@ -71,6 +73,71 @@ class TestTVPage:
         expect(authed_page.get_by_role("button", name="Top Rated")).to_be_visible()
         expect(authed_page.get_by_role("button", name="On The Air")).to_be_visible()
         expect(authed_page.get_by_role("button", name="Airing Today")).to_be_visible()
+
+
+PRIMARY_BTN = re.compile(r"ant-btn-primary")
+
+
+class TestBrowseFilters:
+    def _open_filters(self, page: Page):
+        page.get_by_role("button", name="Toggle filters").click()
+        expect(page.get_by_role("group", name="Genre filters")).to_be_visible(timeout=5_000)
+
+    def test_tv_filter_panel_shows_tv_genres(self, authed_page: Page):
+        mock_tmdb_tv(authed_page)
+        authed_page.goto("/tv")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        self._open_filters(authed_page)
+        genres = authed_page.get_by_role("group", name="Genre filters")
+        expect(genres.get_by_text("Action & Adventure", exact=True)).to_be_visible()
+        expect(genres.get_by_text("Sci-Fi & Fantasy", exact=True)).to_be_visible()
+        expect(genres.get_by_text("Thriller", exact=True)).to_have_count(0)
+
+    def test_tv_genre_goes_to_tv_discover_with_tv_id(self, authed_page: Page):
+        mock_tmdb_tv(authed_page)
+        authed_page.goto("/tv")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        self._open_filters(authed_page)
+        with authed_page.expect_request(
+            lambda req: "/api/tmdb/discover/tv" in req.url and "with_genres=10759" in req.url
+        ):
+            authed_page.get_by_role("group", name="Genre filters").get_by_text("Action & Adventure", exact=True).click()
+
+    def test_category_buttons_work_after_empty_apply(self, authed_page: Page):
+        mock_tmdb_movies(authed_page)
+        authed_page.goto("/movies")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        self._open_filters(authed_page)
+        authed_page.get_by_role("button", name="Apply Filters").click()
+        with authed_page.expect_request(lambda req: "/api/tmdb/movie/top_rated" in req.url):
+            authed_page.get_by_role("button", name="Top Rated").click()
+
+    def test_movie_runtime_filter_does_not_reach_tv(self, authed_page: Page):
+        mock_tmdb_movies(authed_page)
+        mock_tmdb_tv(authed_page)
+        authed_page.goto("/movies")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        self._open_filters(authed_page)
+        authed_page.get_by_placeholder("e.g. 60").fill("90")
+        authed_page.get_by_role("button", name="Apply Filters").click()
+        with authed_page.expect_request(
+            lambda req: "/api/tmdb/discover/tv" in req.url or "/api/tmdb/tv/" in req.url
+        ) as tv_req:
+            authed_page.get_by_role("menuitem", name="TV Shows").click()
+        assert "with_runtime" not in tv_req.value.url, tv_req.value.url
+
+    def test_browser_back_restores_category(self, authed_page: Page):
+        mock_tmdb_movies(authed_page)
+        mock_movie_detail_routes(authed_page, 100, MOCK_MOVIE_DETAIL)
+        authed_page.goto("/movies")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        authed_page.get_by_role("button", name="Top Rated").click()
+        expect(authed_page.get_by_role("button", name="Top Rated")).to_have_class(PRIMARY_BTN)
+        authed_page.locator("button").filter(has_text="Details").first.click()
+        expect(authed_page).to_have_url("/movie/100", timeout=8_000)
+        authed_page.go_back()
+        expect(authed_page).to_have_url("/movies")
+        expect(authed_page.get_by_role("button", name="Top Rated")).to_have_class(PRIMARY_BTN, timeout=8_000)
 
 
 class TestAnimePage:

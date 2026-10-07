@@ -1,35 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, mockAuthedBase } from "./fixtures";
 
-const MOCK_USER = { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "" };
-const MOCK_TOKENS = { access: "fake-access", refresh: "fake-refresh" };
-
-async function seedAuth(page: import("@playwright/test").Page) {
-  await page.addInitScript((data) => {
-    localStorage.setItem("cinedb_access", data.access);
-    localStorage.setItem("cinedb_refresh", data.refresh);
-    localStorage.setItem("cinedb_user", JSON.stringify(data.user));
-  }, { ...MOCK_TOKENS, user: MOCK_USER });
-
-  // Catch-all first so any endpoint this page happens to call (stats, recommendations,
-  // followed-people, etc.) never falls through to the real network and 401s — a 401 with
-  // this fake refresh token triggers userApi's redirect-to-/login flow, which destroys the
-  // page's JS context mid-test.
-  await page.route("**/api/**", (route) => route.fulfill({ json: [] }));
-
-  // Registered after the catch-all so it wins (Playwright checks routes
-  // last-registered-first) — the catch-all's bare `[]` doesn't match the
-  // {items, unreadCount} shape useNotifications.ts expects, which would
-  // throw on items.map() in NotificationBell's render.
-  await page.route("**/api/notifications/new-releases/", (route) => route.fulfill({ json: { items: [], unreadCount: 0 } }));
-
-  const movieResponse = { results: [], total_pages: 1, total_results: 0, page: 1 };
-  await page.route("**/api/tmdb/**", (route) => route.fulfill({ json: movieResponse }));
-}
+// Unmocked TMDB calls get an empty page from the fixtures' catch-all; any
+// unmocked app API call fails the test (see e2e/fixtures.ts).
 
 test.describe("Responsive layout", () => {
   test("phone width: sidebar hidden, bottom nav visible", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await seedAuth(page);
+    await mockAuthedBase(page);
     await page.goto("/movies");
 
     await expect(page.locator(".app-sidebar")).not.toBeVisible();
@@ -38,7 +15,7 @@ test.describe("Responsive layout", () => {
 
   test("tablet width: sidebar collapses to icon rail", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
-    await seedAuth(page);
+    await mockAuthedBase(page);
     await page.goto("/movies");
 
     const sidebar = page.locator(".app-sidebar");
@@ -54,7 +31,7 @@ test.describe("Responsive layout", () => {
 
   test("desktop width: full sidebar with labels", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await seedAuth(page);
+    await mockAuthedBase(page);
     await page.goto("/movies");
 
     const sidebar = page.locator(".app-sidebar");
@@ -84,7 +61,7 @@ test.describe("Responsive layout", () => {
 
   test("very narrow phone: bottom nav doesn't overflow or clip", async ({ page }) => {
     await page.setViewportSize({ width: 340, height: 700 });
-    await seedAuth(page);
+    await mockAuthedBase(page);
     await page.goto("/movies");
 
     await expect(page.locator(".app-bottom-nav")).toBeVisible();

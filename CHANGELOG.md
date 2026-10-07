@@ -3,6 +3,58 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.18.0] - 2026-10-07
+
+Bug-audit release, part 3. Implements five OpenSpec changes from `docs/BUG_BACKLOG.md` (`fix-browse-filters`, `fix-data-correctness`, `ci-coverage`, `fix-dependency-drift`, `frontend-polish`; archived under `openspec/changes/archive/`). Findings left over, plus 4 found while verifying this release, stay in the backlog (items 5, 7d, 7e, 8).
+
+### ⚠️ Notes for deploy
+- **Django 5.2 LTS.** `requirements.txt` used to say `django<5.0` while dev and tests ran 5.2. Every backend dependency is now pinned, with a generated `backend/constraints.txt` for transitive ones; install with `pip install -r backend/requirements.txt -c backend/constraints.txt`.
+- **Rebuild the Docker images.** The backend image is now `python:3.12-slim` and installs with the constraints file; the frontend build image moves from `node:18-alpine` (end of life) to `node:22-alpine`. The image build and compose healthcheck haven't been run on this release yet (no Docker on the dev machine); the same pinned set passed the full backend suite in a fresh Python 3.12 venv. Run `docker compose build --no-cache && docker compose up` and check `python -m django --version` reports 5.2 on first deploy.
+- No new migrations.
+- The TMDB proxy now always uses the server's API key; a client-supplied `api_key` query parameter is dropped.
+
+### Fixed — browse filters and navigation
+- Genre chips follow the media type: TV and Anime-TV show TV genres ("Action & Adventure", "Sci-Fi & Fantasy"), movie pages show movie genres. Picks reset when the media type changes, so a movie-only genre id is never sent to TV discover.
+- Picking a genre always applies: it switches the grid to discover, since category endpoints ignore `with_genres`.
+- "Filters active" counts only real filters; `includeAdult: false` and the default sort no longer do, so category buttons keep working after Apply/Reset.
+- Applied filters belong to one media type and reset when moving between Movies, TV and the Anime tabs (a hidden runtime filter no longer carries over to TV). Movie-only sorts map to their TV equivalent or are dropped.
+- Anime "Airing Today" shows only anime with an episode airing today.
+- Browser Back / swipe-back from a detail page restores the browse page's category, Anime tab, loaded pages and scroll, like the in-app Back button.
+- Search tabs each keep their own scroll position.
+- A For You snapshot taken mid-computation no longer stops polling for 5 minutes.
+- The login redirect keeps the original query string and hash.
+- List detail pages keep search/sort/type filter per list; Watched pagination steps back when the current page empties; library search trims the query; Home's Recently Watched shows the newest title first.
+
+### Fixed — data correctness (backend)
+- New-release notifications cover every followed person, not just the 10 most recent. Each person's TMDB credits are cached for 6 hours; a failed fetch is never cached.
+- A failed TMDB call never overwrites cached title data with empty genres/cast; the existing row is kept, or nothing is stored so the next run retries.
+- Watched titles get genres, language and release year filled in regardless of library size (Stats' Top Genres and Rating by Genre used to stay empty below 3 watched titles). One bounded background backfill per user (new `metadata_backfill.py`) replaces a fresh 20-worker pool per `/stats` request; unknown titles aren't retried, failed ones back off for an hour.
+- Mark-as-watched stores original language and release year (the endpoint accepted and dropped them; the dialog now sends them).
+- Editing a rating syncs to a connected TMDB account; re-rating updates `rated_at`.
+- Recommendation section keys are unique (media type in "because you watched" keys, person ids for actor/followed sections, same-label clusters merged).
+- List items come back newest-first with an id tiebreaker; the TMDB proxy keeps repeated query parameters.
+
+### Fixed — frontend polish
+- Stats in light mode: labels, heatmap month/legend labels, empty heatmap cells, chart and heatmap tooltips and poster captions use theme tokens. Light mode used to draw them near-white on cream (the heatmap was invisible). Dark mode is unchanged apart from a slightly bluer tooltip background.
+- For You: a failed load shows the shared error with a Retry that refetches in place, instead of reloading the browser tab.
+- Installed-app name and page description say "CINE DB" (they said "React App" / "Web site created using create-react-app"); `theme-color` matches the dark background.
+- `FilterPanel` drawer and `NotificationBell` popup no longer use a bare fixed width; Add to List inputs have `id`/`name`/`autoComplete="off"`.
+- Dev only: `usePaginatedFetch` no longer fetches every first load and Back-restore twice under StrictMode.
+
+### Changed
+- One `ratingColor()` / `avatarColor()` in `src/utils/colors.ts` replaces 5 and 2 copies; remaining hardcoded green/gold hex values use `WATCHED_GREEN` / `RATING_GOLD`; new `RATING_WARN`, `RATING_BAD`, `STILL_URL`, `LOGO_URL` constants.
+- All 7 explicit `any`s in `src/` replaced by real types (`TMDBTVDetail.created_by`, `TMDBMovieDetailResponse` for the raw detail fetch; `RegisterPage` catches `unknown`).
+- Removed CRA leftovers: `src/logo.svg`, `src/reportWebVitals.ts` and the template comments in `public/index.html`.
+- Stale Express references removed from `docs/ARCHITECTURE.md` and the e2e conftest.
+
+### CI and tests
+- CI runs on Node 22 / Python 3.12 and now also checks `tsc` (app + e2e specs), `eslint --max-warnings=0` and `makemigrations --check`. The TypeScript Playwright suite runs in a new `e2e-ts` job (chromium + mobile-chrome); the dead `TMDB_API_KEY` is gone from the frontend build env.
+- Both e2e suites register a strict catch-all first: an unmocked app API call fails the test with its URL. List mocks use the real paginated shape.
+- Stale TS specs fixed (`auth.spec.ts` password label, `movies.spec.ts` mobile search box).
+- A backend test fails if the installed Django's major.minor doesn't match the pin.
+- Tests: Django pytest 197 (new: lists, followed people, episode progress, profile, recommendation endpoints, metadata backfill, data correctness, dependency versions). Jest 123 in 19 suites (new: browse filters, browser-Back restore, color helpers, `FollowedPeopleProvider`, `useEpisodeProgress`). pytest-playwright 166 (browser-Back restore, For You retry). Playwright TS 27 per project.
+- 11 new capability specs in `openspec/specs/` (`browse-filters`, `view-state-restore`, `library-filters`, `title-metadata`, `ratings`, `recommendation-sections`, `user-lists`, `ci-pipeline`, `e2e-fixtures`, `app-identity`, `theme-readability`); `login-page`, `notifications`, `api-hardening` and `load-states` gained requirements.
+
 ## [0.17.0] - 2026-10-06
 
 Bug-audit release, part 2. Implements three OpenSpec changes from `docs/BUG_BACKLOG.md` (`harden-input-validation`, `fix-backup-roundtrip`, `surface-failures`; archived under `openspec/changes/archive/`).

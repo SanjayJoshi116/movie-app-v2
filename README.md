@@ -33,7 +33,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
-- **429 automated tests** — 93 Jest, 151 Django pytest, 27 Playwright (TS), 158 pytest-playwright — plus `ruff` lint; all but the TS Playwright suite run in CI on every push (`## Testing`)
+- **513 automated tests** — 123 Jest, 197 Django pytest, 27 Playwright (TS, ×2 viewports), 166 pytest-playwright — plus `tsc`, `eslint`, `ruff` and a `makemigrations --check`; all of it runs in CI on every push (`## Testing`)
 
 ---
 
@@ -146,7 +146,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - [Axios](https://axios-http.com/)
 
 **Backend**
-- [Django 4](https://www.djangoproject.com/) + [Django REST Framework](https://www.django-rest-framework.org/)
+- [Django 5.2 LTS](https://www.djangoproject.com/) + [Django REST Framework](https://www.django-rest-framework.org/)
 - [djangorestframework-simplejwt](https://django-rest-framework-simplejwt.readthedocs.io/) — JWT auth
 - [scikit-learn](https://scikit-learn.org/) — K-means clustering for recommendations
 - [PostgreSQL](https://www.postgresql.org/) + [psycopg2](https://www.psycopg.org/)
@@ -353,8 +353,8 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.10+ (Anaconda recommended)
+- Node.js 22 LTS
+- Python 3.12 (Anaconda recommended)
 - PostgreSQL
 - A free [TMDB API key](https://developer.themoviedb.org/docs/getting-started)
 
@@ -369,8 +369,11 @@ npm install
 2. Install backend dependencies:
 
 ```bash
-pip install -r backend/requirements.txt
+pip install -r backend/requirements.txt -c backend/constraints.txt
 ```
+
+Backend versions are pinned: `requirements.txt` lists the direct dependencies, and the generated `constraints.txt` pins every transitive one. Docker and CI install with the same pair.
+To update one, edit its pin in `requirements.txt` (or `requirements-test.txt`), regenerate `constraints.txt` with the command in its header, then run `pytest backend/`.
 
 3. Set up environment variables — see [Environment Variables](#environment-variables) below.
 
@@ -531,23 +534,25 @@ The Docker Compose setup above is a complete production stack (nginx + React bui
 
 ## Testing
 
-### Unit tests — Jest (93 tests, 14 suites)
+### Unit tests — Jest (123 tests, 19 suites)
 
 Covers core hook and context logic (including load/error states, in-flight dedupe and stale-page discard), the authenticated API client's session handling, bulk-import chunking, and the backup/CSV round-trip. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
 
 ```
 src/hooks/__tests__/
+├── useEpisodeProgress.test.ts
 ├── useLibraryFilters.test.ts
 ├── useLocalStorage.test.ts
 ├── useWatchlist.test.ts
 ├── useWatched.test.ts
 ├── useRatings.test.ts
 ├── useLists.test.ts
-└── usePaginatedFetch.test.tsx
+└── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch)
 
 src/context/__tests__/
 ├── AppContext.test.tsx
-└── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
+├── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
+└── FollowedPeopleContext.test.tsx # Lazy fetch, state shared across consumers
 
 src/api/__tests__/
 ├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
@@ -556,6 +561,9 @@ src/api/__tests__/
 
 src/utils/__tests__/
 ├── backup.test.ts                # Backup v2 build/parse, v1 compatibility
+├── browseFilters.test.ts         # Genres per media type, active-filter detection, scopes
+├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
+├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
 └── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
 ```
@@ -564,9 +572,9 @@ src/utils/__tests__/
 npm test
 ```
 
-### Unit tests — pytest (Django, 151 tests)
+### Unit tests — pytest (Django, 197 tests)
 
-Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing, notifications, input validation (400-never-500), bulk import, and pagination. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
@@ -580,7 +588,15 @@ backend/userdata/tests/
 ├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors
-├── test_notifications.py           # New-release notifications
+├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
+├── test_notifications.py           # New-release notifications (every followed person, credits cache)
+├── test_metadata_backfill.py       # One backfill per user, 404 settled, failures back off
+├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
+├── test_lists.py                   # Lists + list items CRUD, ownership
+├── test_followed_people.py         # Follow/unfollow, ownership
+├── test_episode_progress.py        # Episode progress CRUD, ownership
+├── test_profile.py                 # Profile GET/PATCH
+├── test_dependency_versions.py     # Installed Django major.minor matches requirements.txt
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings: create-only, timestamps, all-or-nothing
@@ -589,13 +605,13 @@ backend/userdata/tests/
 ```
 
 ```bash
-pip install -r backend/requirements-test.txt   # needs pytest >= 8.4
+pip install -r backend/requirements-test.txt -c backend/constraints.txt
 pytest backend/
 ```
 
 ### E2E tests — Playwright (27 tests, 2 projects)
 
-Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
+Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required; specs import `test`/`expect` from `e2e/fixtures.ts`, whose strict catch-all fails a test that makes an unmocked API call. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
 
 ```
 e2e/
@@ -610,7 +626,7 @@ e2e/
 npx playwright test
 ```
 
-### E2E tests — pytest-playwright (158 tests)
+### E2E tests — pytest-playwright (166 tests)
 
 Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
 
@@ -618,11 +634,12 @@ Broader-coverage E2E suite in Python, one file per feature area. Same approach a
 e2e/python/
 ├── conftest.py        # Shared fixtures + mock data (users, tokens, movies, TV shows)
 ├── test_auth.py       # Login, register, password reset, redirect guards (29)
-├── test_browse.py     # Movie/TV browse, categories, filters (13)
+├── test_browse.py     # Movie/TV browse, categories, filters, browser-Back restore (18)
 ├── test_detail.py     # Movie/TV detail pages, cast, recommendations (17)
 ├── test_lists.py      # User lists CRUD + CSV export (16)
 ├── test_profile.py    # Profile edit, password change, TMDB connect (11)
 ├── test_ratings.py    # Rate + review flow (11)
+├── test_recommendations.py # For You failed load → in-place Retry (3)
 ├── test_search.py     # Live search across movies/TV/people (7)
 ├── test_stats.py      # Stats dashboard charts, error + Retry (19)
 ├── test_watched.py    # Watched list CRUD, CSV import/export (16)
@@ -638,9 +655,9 @@ pytest
 
 ### CI
 
-GitHub Actions runs the Jest suite, Django `pytest` suite, `ruff check`, and the pytest-playwright E2E suite (`e2e/python/`) automatically on every push and pull request to `main` — see `.github/workflows/ci.yml`. The TypeScript Playwright suite (`e2e/*.spec.ts`) is not yet wired into CI; run it locally with `npx playwright test`.
+GitHub Actions runs four jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0`, Jest, build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright) and **e2e-ts** (`npx playwright test`, both projects). Both e2e jobs run only the CRA dev server, since every API call is mocked.
 
-The `e2e-python` job is capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
+Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
 
 ---
 

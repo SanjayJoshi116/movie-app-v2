@@ -2,6 +2,7 @@ import logging
 
 import requests
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +15,17 @@ from .serializers import BulkRatingEntrySerializer, RatingEntrySerializer
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
+
+
+def _sync_rating_to_tmdb(user, entry):
+    """Mirror a rating to the user's connected TMDB account, if any. Best-effort:
+    a TMDB failure is logged and never fails the local write."""
+    try:
+        tmdb_profile = user.tmdb_profile
+        if tmdb_profile.session_id:
+            tmdb_client.post_rating(entry.media_type, entry.media_id, tmdb_profile.session_id, entry.user_rating)
+    except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
+        logger.exception("Failed to sync rating to TMDB for user %s", user.pk)
 
 
 @api_view(["GET", "POST"])
@@ -35,19 +47,11 @@ def ratings_list(request):
             "title": serializer.validated_data["title"],
             "user_rating": serializer.validated_data["user_rating"],
             "review": serializer.validated_data.get("review", ""),
+            # Creating and re-rating both count as "rated now".
+            "rated_at": timezone.now(),
         },
     )
-    try:
-        tmdb_profile = request.user.tmdb_profile
-        if tmdb_profile.session_id:
-            tmdb_client.post_rating(
-                entry.media_type,
-                entry.media_id,
-                tmdb_profile.session_id,
-                entry.user_rating,
-            )
-    except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
-        logger.exception("Failed to sync rating to TMDB for user %s", request.user.pk)
+    _sync_rating_to_tmdb(request.user, entry)
 
     return Response(
         RatingEntrySerializer(entry).data,
@@ -68,9 +72,18 @@ def ratings_detail(request, pk):
             logger.exception("Failed to delete rating on TMDB for user %s", request.user.pk)
         entry.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    old_rating, old_review = entry.user_rating, entry.review
     serializer = RatingEntrySerializer(entry, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+    new = serializer.validated_data
+    rating_changed = "user_rating" in new and new["user_rating"] != old_rating
+    review_changed = "review" in new and new["review"] != old_review
+    if rating_changed or review_changed:
+        serializer.save(rated_at=timezone.now())
+    else:
+        serializer.save()
+    if rating_changed:
+        _sync_rating_to_tmdb(request.user, entry)
     return Response(serializer.data)
 
 

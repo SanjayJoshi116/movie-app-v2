@@ -18,7 +18,7 @@ import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
-import { pageVariants } from "../constants/ui";
+import { pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import type { MediaType, WatchlistEntry } from "../types";
 
@@ -178,7 +178,7 @@ function WatchlistPage() {
         <LoadError title="Couldn't load your watchlist" onRetry={() => { reload().catch(() => {}); }} />
       ) : watchlist.length === 0 ? (
         <Empty
-          image={<BookOutlined style={{ fontSize: 48, color: "#f5c518" }} />}
+          image={<BookOutlined style={{ fontSize: 48, color: RATING_GOLD }} />}
           description="Your watchlist is empty. Browse movies and TV shows to add them."
           style={{ padding: "60px 0" }}
         >
@@ -222,7 +222,7 @@ function WatchlistPage() {
                         type="text"
                         size="small"
                         icon={watched ? <EyeFilled /> : <EyeOutlined />}
-                        style={{ color: watched ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                        style={{ color: watched ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (watched) {

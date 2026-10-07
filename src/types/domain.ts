@@ -37,6 +37,8 @@ export interface WatchedEntry {
   watchedAt: string;
   runtimeMinutes?: number | null;
   platform?: string | null;
+  originalLanguage?: string | null;
+  releaseYear?: number | null;
 }
 
 export type WatchedInput = Omit<WatchedEntry, "watchedAt">;

@@ -11,7 +11,9 @@ export default function LoginPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? "/movies";
+  // Keep the query string and hash too (e.g. /search?tab=people), not just the path.
+  const fromLoc = (location.state as { from?: { pathname: string; search?: string; hash?: string } } | null)?.from;
+  const from = fromLoc ? `${fromLoc.pathname}${fromLoc.search ?? ""}${fromLoc.hash ?? ""}` : "/movies";
 
   const onFinish = async (values: { username: string; password: string }) => {
     const username = values.username.trim();

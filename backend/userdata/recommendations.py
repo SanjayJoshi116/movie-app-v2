@@ -3,7 +3,7 @@ import logging
 import operator
 import random
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from functools import partial, reduce
 
@@ -21,6 +21,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 
 from . import tmdb_client
+from .metadata_backfill import backfill_entries
 from .models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
 
 logger = logging.getLogger(__name__)
@@ -78,8 +79,12 @@ def _ensure_cached(entry, prefetched=None):
     try:
         details = tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
     except (requests.RequestException, KeyError, TypeError, ValueError) as e:
+        # Never cache a failure: writing empty genres/cast here used to replace
+        # good data and hide the title for a whole CACHE_TTL_DAYS. Keep any
+        # existing (even stale) row; with none, store nothing so the next run
+        # retries.
         logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
-        details = {"genre_ids": [], "top_cast": []}
+        return cached
     try:
         cached, _ = TMDBMediaCache.objects.update_or_create(
             media_id=entry.media_id,
@@ -112,19 +117,6 @@ def _tmdb_item(r, media_type):
         "posterPath": r.get("poster_path"),
         "voteAverage": r.get("vote_average", 0),
     }
-
-
-def _fill_genre(entry):
-    """Fetch and cache genre IDs for a single WatchedEntry."""
-    try:
-        ids = tmdb_client.get_genre_ids(entry.media_id, entry.media_type)
-    except (requests.RequestException, KeyError, TypeError, ValueError):
-        ids = []
-    entry.genre_ids = ids
-    try:
-        entry.save(update_fields=["genre_ids"])
-    except DBError:
-        logger.exception("Failed to save genre_ids for WatchedEntry %s", entry.pk)
 
 
 def _compute_for_you(user) -> list:
@@ -280,7 +272,8 @@ def _compute_for_you(user) -> list:
         filtered = filter_new(items)[:12]
         if filtered:
             sections.append({
-                "key": f"because-{w.media_id}",
+                # Movie and TV ids overlap, so the type is part of the key.
+                "key": f"because-{w.media_type}-{w.media_id}",
                 "label": f"Because you watched {w.title}",
                 "items": filtered,
             })
@@ -317,22 +310,34 @@ def _compute_for_you(user) -> list:
                 if c.get("media_type") in ("movie", "tv") and (c.get("vote_average") or 0) >= 6
             ]
             items.sort(key=lambda x: -x["voteAverage"])
-            return info["name"], items
+            return actor_id, info["name"], items
         except (requests.RequestException, ValueError):
-            return info["name"], []
+            return actor_id, info["name"], []
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         actor_results = list(ex.map(fetch_actor_credits, top_actors))
-    for name, items in actor_results:
+    for actor_id, name, items in actor_results:
         filtered = filter_new(items)[:12]
         if filtered:
             sections.append({
-                "key": f"actor-{name}",
+                "key": f"actor-{actor_id}",
                 "label": f"Because you like {name}",
                 "items": filtered,
             })
 
     return sections
+
+
+def _add_or_merge_section(sections, section, limit=12):
+    """Append `section`, or merge its items into an existing one with the same
+    label. Two KMeans clusters can resolve to the same top genres, which used
+    to show the same "Your Taste: …" row twice."""
+    existing = next((s for s in sections if s["label"] == section["label"]), None)
+    if existing is None:
+        sections.append(section)
+        return
+    have = {(i["id"], i["type"]) for i in existing["items"]}
+    existing["items"] = (existing["items"] + [i for i in section["items"] if (i["id"], i["type"]) not in have])[:limit]
 
 
 def _compute_personalized(user) -> list:
@@ -346,20 +351,8 @@ def _compute_personalized(user) -> list:
         for r in RatingEntry.objects.filter(user=user)
     }
 
-    # --- Fill genre cache concurrently for entries missing it ---
-    missing = [e for e in watched if not e.genre_ids]
-    if missing:
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(_fill_genre, e): e for e in missing}
-            for f in as_completed(futures):
-                try:
-                    f.result()
-                except Exception:
-                    # Broad on purpose: _fill_genre already narrowly handles
-                    # its own known TMDB/DB failures internally, so anything
-                    # that reaches here is unexpected — insulate the batch
-                    # (one entry's bug shouldn't abort the whole computation).
-                    logger.exception("Failed to fill genre for a watched entry")
+    # --- Fill missing genres first (clustering needs them); updates entries in place ---
+    backfill_entries(watched)
 
     # --- Build genre vocabulary ---
     all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})
@@ -456,7 +449,7 @@ def _compute_personalized(user) -> list:
             for _, c in scored[:12]
         ]
 
-        sections.append({"key": f"cluster-{cluster_idx}", "label": label, "items": items})
+        _add_or_merge_section(sections, {"key": f"cluster-{cluster_idx}", "label": label, "items": items})
 
     return sections
 

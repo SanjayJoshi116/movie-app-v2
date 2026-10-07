@@ -8,7 +8,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: "list",
+  // CI also writes an HTML report, uploaded as an artifact when the job fails.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
@@ -17,10 +18,15 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile-chrome", use: { ...devices["Pixel 5"] } },
   ],
+  // Every spec mocks its API calls (see e2e/fixtures.ts), so only the CRA dev
+  // server is needed. Not `npm start`: that also runs kill-port and Django
+  // through a machine-specific Python path, which a CI runner doesn't have.
+  // Locally an already-running `npm run dev` is reused.
   webServer: {
-    command: "npm start",
+    command: "npx react-scripts start",
     url: "http://localhost:3000",
-    reuseExistingServer: true,
+    env: { BROWSER: "none" },
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

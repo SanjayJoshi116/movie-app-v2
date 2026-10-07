@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Select, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Tooltip,
 } from "antd";
 import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
@@ -61,6 +61,14 @@ function WatchedPage() {
     }, { replace: true });
   };
 
+  // Unmarking (or filtering away) the last items on the last page would leave
+  // a blank grid; move back to the last page that still has items. Only once
+  // loaded, so a ?page=3 deep link isn't clamped against the initial empty list.
+  const lastPage = Math.max(1, Math.ceil(filtered.length / pageSize));
+  useEffect(() => {
+    if (!isLoading && !loadError && page > lastPage) setPageState(lastPage, pageSize);
+  }, [isLoading, loadError, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const buildFromUrl = () => {
     const p = new URLSearchParams();
     if (page > 1) p.set("page", String(page));
@@ -93,7 +101,7 @@ function WatchedPage() {
       transition={{ duration: 0.2 }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-        <EyeFilled style={{ color: "#52c41a", fontSize: 24 }} />
+        <EyeFilled style={{ color: WATCHED_GREEN, fontSize: 24 }} />
         <Typography.Title level={2} style={{ margin: 0, flex: 1 }}>
           Watched ({watchedList.length})
         </Typography.Title>
@@ -170,7 +178,7 @@ function WatchedPage() {
         <LoadError title="Couldn't load your watched history" onRetry={() => { reload().catch(() => {}); }} />
       ) : watchedList.length === 0 ? (
         <Empty
-          image={<EyeOutlined style={{ fontSize: 48, color: "#52c41a" }} />}
+          image={<EyeOutlined style={{ fontSize: 48, color: WATCHED_GREEN }} />}
           description="Nothing marked as watched yet. Browse movies and TV shows and click the eye icon."
           style={{ padding: "60px 0" }}
         >

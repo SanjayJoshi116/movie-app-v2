@@ -53,14 +53,13 @@ function MovieDetailPage() {
       }
 
       const movieData = detailsRes.value.data;
-      const rawRecs = (movieData as any).recommendations;
       setMovie({
         ...movieData,
         credits: {
           ...movieData.credits,
           cast: movieData.credits?.cast ?? [],
         },
-        recommendations: rawRecs?.results ?? [],
+        recommendations: movieData.recommendations?.results ?? [],
         reviews: settledData(reviewsRes)?.results ?? [],
         similarMovies: settledData(similarRes)?.results ?? [],
         watchProviders: settledData(providersRes)?.results ?? {},

@@ -49,6 +49,16 @@ describe("useLibraryFilters", () => {
     expect(result.current.isDefault).toBe(false);
   });
 
+  it("ignores leading/trailing whitespace in the search", () => {
+    const { result } = renderHook(() =>
+      useLibraryFilters({ keyPrefix: "test", items: ITEMS, sortFns: SORT_FNS, defaultSort: "added-desc" })
+    );
+
+    act(() => result.current.setSearch("  batman "));
+
+    expect(result.current.filtered.map((i) => i.id).sort()).toEqual([1, 3]);
+  });
+
   it("filters by type", () => {
     // Type filtering needs a getType accessor; without one it's a deliberate no-op.
     const { result } = renderHook(() =>

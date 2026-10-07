@@ -11,14 +11,9 @@ import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import { IMG_URL } from "../constants/ui";
+import { IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
-
-function getRatingColor(vote: number): string {
-  if (vote >= 8) return "#52c41a";
-  if (vote >= 5) return "#faad14";
-  return "#ff4d4f";
-}
 
 interface Props {
   movie: TMDBMovieSummary;
@@ -66,7 +61,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Tag color={getRatingColor(vote_average)} style={{ margin: 0 }}>
+              <Tag color={ratingColor(vote_average)} style={{ margin: 0 }}>
                 ★ {vote_average.toFixed(1)}
               </Tag>
               <div style={{ display: "flex", gap: 4 }}>
@@ -75,7 +70,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isWatched(movie.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(movie.id, "movie") ? "#52c41a" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isWatched(movie.id, "movie") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(movie.id, "movie")) {
@@ -97,7 +92,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isInWatchlist(movie.id, "movie") ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(movie.id, "movie") ? "#1677ff" : theme === "dark" ? "#f5c518" : "#000000" }}
+                    style={{ color: isInWatchlist(movie.id, "movie") ? "#1677ff" : theme === "dark" ? RATING_GOLD : "#000000" }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(movie.id, "movie");

@@ -79,8 +79,8 @@ const MovieDetails = ({ movie }: Props) => {
   const recommendationsFiltered = filterByGenreOverlap(recommendations ?? [], (genres ?? []).map((g) => g.id));
   const cast = credits?.cast ?? [];
   const directors = (credits?.crew ?? [])
-    .filter((c: any) => c.job === "Director")
-    .map((c: any) => c.name)
+    .filter((c) => c.job === "Director")
+    .map((c) => c.name)
     .join(", ");
   const { isWatched, toggleWatched, theme } = useAppContext();
   const inWatchlist = isInWatchlist(id, "movie");

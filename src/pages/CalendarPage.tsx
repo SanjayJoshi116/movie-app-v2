@@ -10,6 +10,7 @@ import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { pageVariants, IMG_URL, RATING_GOLD } from "../constants/ui";
+import { ratingColor } from "../utils/colors";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -91,12 +92,6 @@ function exportIcal(groups: DateGroup[]) {
   a.download = "cinedb-releases.ics";
   a.click();
   URL.revokeObjectURL(url);
-}
-
-function getRatingColor(vote: number): string {
-  if (vote >= 8) return "#52c41a";
-  if (vote >= 5) return "#faad14";
-  return "#ff4d4f";
 }
 
 function CalendarPage() {
@@ -192,7 +187,7 @@ function CalendarPage() {
       if (filter === "tv" || filter === "both") {
         const shows = await fetchAllPages<TMDBTVSummary>(discoverTV, tvParams);
         for (const t of shows) {
-          const date = (t as any).first_air_date;
+          const date = t.first_air_date;
           if (date) {
             allItems.push({
               id: t.id,
@@ -355,7 +350,7 @@ function CalendarPage() {
                           {item.type === "movie" ? "Movie" : "TV"}
                         </Tag>
                         {item.voteAverage > 0 && (
-                          <Tag color={getRatingColor(item.voteAverage)} style={{ margin: 0, fontSize: FONT_SIZE.caption, padding: "0 6px" }}>
+                          <Tag color={ratingColor(item.voteAverage)} style={{ margin: 0, fontSize: FONT_SIZE.caption, padding: "0 6px" }}>
                             <StarFilled style={{ marginRight: 2 }} />
                             {item.voteAverage.toFixed(1)}
                           </Tag>

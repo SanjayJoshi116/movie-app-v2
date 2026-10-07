@@ -110,3 +110,18 @@ A show's episode progress SHALL reset when the show changes. A progress response
 #### Scenario: Navigating between shows
 - **WHEN** the user navigates from one TV show to another
 - **THEN** the first show's episode progress isn't shown on the second show's page, including while the second show's progress is loading
+
+### Requirement: Recommendations failure retries in place
+When the For You page fails to load recommendations and has nothing to show,
+it SHALL show an error with a Retry control. Retry SHALL refetch the
+recommendations in place and show the loading state while it does. It SHALL NOT
+reload the browser tab, so the rest of the app's in-memory state (search term,
+filters, other pages' caches) survives.
+
+#### Scenario: Retry after a failed load
+- **WHEN** the recommendations requests fail and the user presses Retry
+- **THEN** the page shows its loading state, requests recommendations again without a full page reload, and shows them if the new requests succeed
+
+#### Scenario: Retry fails again
+- **WHEN** the user presses Retry and the requests fail again
+- **THEN** the error with Retry is shown again

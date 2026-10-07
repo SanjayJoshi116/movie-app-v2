@@ -1,8 +1,9 @@
 import { theme as antdTheme } from "antd";
 import type { ThemeConfig } from "antd";
+import { RATING_GOLD } from "../constants/ui";
 
 const commonTokens = {
-  colorPrimary: "#f5c518",
+  colorPrimary: RATING_GOLD,
   fontFamily: "'Poppins', sans-serif",
   borderRadius: 8,
   borderRadiusLG: 12,

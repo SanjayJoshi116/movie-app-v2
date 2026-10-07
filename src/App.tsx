@@ -1,4 +1,4 @@
-import { useState, Suspense, lazy } from "react";
+import { useState, useEffect, Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { ConfigProvider, App as AntApp } from "antd";
@@ -10,6 +10,7 @@ import { useAppContext } from "./context/useAppContext";
 import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
+import { browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
 import "./App.css";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -30,17 +31,34 @@ const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const TMDBCallbackPage = lazy(() => import("./pages/TMDBCallbackPage"));
 
 function AppInner() {
   const location = useLocation();
-  const { theme } = useAppContext();
+  const { theme, clearGenres } = useAppContext();
   const { isAuthenticated, isLoading } = useAuth();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterValues | null>(null);
-  const [activeSortBy, setActiveSortBy] = useState<SortOption>("popularity.desc");
+  const [activeSortBy, setActiveSortBy] = useState<SortOption>(DEFAULT_SORT);
   const [animeMediaType, setAnimeMediaType] = useState<"tv" | "movies">("tv");
+
+  // Applied filters belong to one browse media type. Off browse pages the
+  // scope is null and nothing resets, so Movies → detail → Movies keeps them;
+  // entering a different scope drops them. The reset happens during render
+  // (not in an effect) so the newly mounted page never fetches with the
+  // previous scope's filters.
+  const filterScope = browseScope(location.pathname, animeMediaType);
+  const [appliedScope, setAppliedScope] = useState<BrowseScope | null>(filterScope);
+  if (filterScope !== null && filterScope !== appliedScope) {
+    setAppliedScope(filterScope);
+    setActiveFilters(null);
+    setActiveSortBy(DEFAULT_SORT);
+  }
+  // Genres live in UIContext (a parent provider), which can't be updated
+  // during this render; pages also run selected ids through genresFor().
+  useEffect(() => {
+    if (appliedScope !== null) clearGenres();
+  }, [appliedScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPublicPath =
     ["/login", "/register", "/forgot-password"].includes(location.pathname) ||
@@ -49,14 +67,8 @@ function AppInner() {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const isBrowsePage =
-    location.pathname === "/movies" ||
-    location.pathname === "/tv" ||
-    location.pathname === "/anime";
-
-  const isMovieForFilter =
-    location.pathname === "/movies" ||
-    (location.pathname === "/anime" && animeMediaType === "movies");
+  const isBrowsePage = filterScope !== null;
+  const isMovieForFilter = filterScope === "movie" || filterScope === "anime-movies";
 
   const handleApplyFilters = (filters: FilterValues, sortBy: SortOption) => {
     setActiveFilters(filters);
@@ -66,7 +78,7 @@ function AppInner() {
 
   const handleResetFilters = () => {
     setActiveFilters(null);
-    setActiveSortBy("popularity.desc");
+    setActiveSortBy(DEFAULT_SORT);
   };
 
   return (
@@ -84,9 +96,12 @@ function AppInner() {
         <main className="app-content">
           {isBrowsePage && (
             <FilterPanel
+              key={filterScope}
               open={showFilterPanel}
               onClose={() => setShowFilterPanel(false)}
               isMovie={isMovieForFilter}
+              appliedFilters={activeFilters}
+              appliedSortBy={activeSortBy}
               onApply={handleApplyFilters}
               onReset={handleResetFilters}
             />

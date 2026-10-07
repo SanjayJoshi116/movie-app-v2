@@ -49,26 +49,38 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   const didRestoreScrollRef = useRef(false);
   const isRestoringRef = useRef(restore.isReturning);
   const restoredStateRef = useRef(restoredState);
-  const consumedFetchPageRef = useRef<typeof fetchPage | null>(null);
-  const consumedRetryRef = useRef(0);
+  // The load the mount effect last started (or finished), armed as soon as
+  // it starts. See the StrictMode note in the effect.
+  const inflightRef = useRef<{
+    fetchPage: typeof fetchPage;
+    retryToken: number;
+    ctl: { cancelled: boolean };
+    done: boolean;
+  } | null>(null);
   // Bumped on every real (non-replay) page-1 load. A page response that
   // started under an older generation belongs to a previous query/category
   // and is dropped instead of appended.
   const generationRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-
-    // React 18 StrictMode (dev only) replays this effect once with the same
-    // fetchPage reference to test cleanup-safety. A *real* rerun only ever
-    // happens when fetchPage's identity actually changes (new query/filters),
-    // so an identical reference here means "StrictMode's dev-only replay" —
-    // state is already correct from the first pass, refetching would silently
-    // clobber a successful restore (e.g. Search's cached items/scroll) with a
-    // fresh page-1 fetch.
-    if (consumedFetchPageRef.current === fetchPage && consumedRetryRef.current === retryToken) {
-      return;
+    // React 18 StrictMode (dev only) runs this effect, its cleanup, and the
+    // effect again, synchronously, with the same fetchPage. A *real* rerun
+    // only ever happens when fetchPage's identity (new query/filters) or
+    // retryToken changes, so an identical pair here is that replay. Refetching
+    // would double every request and could clobber a restore (e.g. Search's
+    // cached items/scroll) with a fresh page 1. The guard is armed when the
+    // load *starts*: the replay arrives while the first load is still in
+    // flight, so it revives that load (its cleanup had just cancelled it)
+    // instead of starting a second one.
+    const prev = inflightRef.current;
+    if (prev && prev.fetchPage === fetchPage && prev.retryToken === retryToken) {
+      if (prev.done) return;
+      prev.ctl.cancelled = false;
+      return () => { prev.ctl.cancelled = true; };
     }
+    const ctl = { cancelled: false };
+    const entry = { fetchPage, retryToken, ctl, done: false };
+    inflightRef.current = entry;
     generationRef.current += 1;
 
     const load = async () => {
@@ -83,7 +95,7 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
         } else if (isRestoringRef.current && restore.savedLoadedPages > 1) {
           const pages = Array.from({ length: restore.savedLoadedPages }, (_, i) => i + 1);
           const pageResults = await Promise.all(pages.map((p) => fetchPage(p)));
-          if (cancelled) return;
+          if (ctl.cancelled) return;
           const combined = pageResults.flatMap((p) => p.results);
           const totalPages = pageResults[pageResults.length - 1]?.totalPages ?? 1;
           setItems(combined);
@@ -95,23 +107,22 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
           setItems([]);
           setHasMore(true);
           const { results, totalPages } = await fetchPage(1);
-          if (cancelled) return;
+          if (ctl.cancelled) return;
           setItems(results);
           setCurrentPage(1);
           setHasMore(1 < totalPages);
         }
       } catch (err) {
-        if (!cancelled) setError(err);
+        if (!ctl.cancelled) setError(err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!ctl.cancelled) setLoading(false);
         isRestoringRef.current = false;
-        consumedFetchPageRef.current = fetchPage;
-        consumedRetryRef.current = retryToken;
+        entry.done = true;
       }
     };
 
     load();
-    return () => { cancelled = true; };
+    return () => { ctl.cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchPage, retryToken]);
 

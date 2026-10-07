@@ -32,6 +32,8 @@ def watched_list(request):
             "vote_average": serializer.validated_data.get("vote_average", 0),
             "runtime_minutes": serializer.validated_data.get("runtime_minutes"),
             "platform": serializer.validated_data.get("platform"),
+            "original_language": serializer.validated_data.get("original_language"),
+            "release_year": serializer.validated_data.get("release_year"),
         },
     )
     return Response(

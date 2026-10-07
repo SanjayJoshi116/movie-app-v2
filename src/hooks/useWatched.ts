@@ -70,11 +70,15 @@ export function useWatched() {
       voteAverage: entry.voteAverage,
       runtimeMinutes: entry.runtimeMinutes,
       platform: entry.platform,
+      originalLanguage: entry.originalLanguage,
+      releaseYear: entry.releaseYear,
     });
     dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
     setWatchedList((prev) => {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
-      return [...prev, { ...entry, watchedAt: data.watchedAt }];
+      // Newest first, matching the API order (-watched_at) — Home's Recently
+      // Watched strip takes the first 8.
+      return [{ ...entry, watchedAt: data.watchedAt }, ...prev];
     });
   }, [isAuthenticated]);
 
