@@ -114,12 +114,14 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
 
 ### Auth
-- **Login / Register** — JWT-based auth; tokens stored in `localStorage`
+- **Login / Register** — JWT-based auth; tokens stored in `localStorage`. Signed-in users opening `/login`, `/register` or `/forgot-password` are sent straight on (no form flash); unknown URLs show a "Page not found" page instead of silently redirecting
 - **Password Reset** — Email-based: enter your account email, receive a reset link, set a new password via the link
+- **Password Change Signs Out Other Devices** — Tokens are bound to the current password. Changing it (or completing a reset) ends every other session at once, including its already-issued access token and any refresh that was in flight. The device that made the change stays signed in
 - **Profile Photo** — Upload/remove a JPEG/PNG/WebP avatar (5MB max) from the Edit Profile modal; replaces the initials avatar in the sidebar/bottom nav everywhere
 
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
+- **Keyboard & Screen-Reader Friendly** — Every poster card that opens a page is a real link: Tab to it, Enter to open, Ctrl/middle-click for a new tab, with a visible focus outline in both themes; icon-only buttons are labelled
 - **Honest Load & Error States** — Every page shows loading, an error with in-place Retry, the empty state, or content — a failed request is never shown as "nothing here". Detail pages degrade per section and show "not found" for unknown ids
 - **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions, shown only after the server confirms; a double-click sends one request and shows one toast
 - **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
@@ -127,10 +129,12 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Password Strength Meter** — Live strength bar under the New Password field when changing your password
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
+- **Local Dates Across Devices** — "Today" (Calendar, notifications, the Stats heatmap) follows the device's time zone. Each watch is logged with its time zone, so it stays on the same day on every device. The Watched page adds a zone label (e.g. `07-10-2026 · GMT+5:30`) when a watch was logged in a different time zone
 - **Animated UI** — Page transitions and card hover effects via Framer Motion
-- **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px); the sidebar stays pinned in place while scrolling
+- **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px); the sidebar stays pinned in place while scrolling. On phones, browse pages add a Filters button to the bottom nav. The notification popup stays fully on-screen at every size
 - **Manual Sidebar Collapse** — Desktop-only toggle button (fold/unfold icon in the sidebar footer) collapses the 220px sidebar to the same 64px icon rail tablet uses; preference persists in `localStorage` (`cinedb_sidebar_collapsed`)
 - **Flash Tooltip** — Clicking a Sidebar or BottomNav icon force-shows its tooltip label for ~1.4s, confirming the destination on layouts where no text label is visible (tablet icon rail, phone bottom nav)
+- **App Icon** — Installs and shows in the browser tab with its own gold "C" icon (generated from `public/icon.svg`)
 
 ---
 
@@ -239,6 +243,8 @@ src/
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
 │   ├── LoadError.tsx            # Shared failed-load / not-found state (antd Result) with optional in-place Retry
+│   ├── CardLink.tsx             # Real router <Link> for any card that opens a page (Tab/Enter, new tab,
+│   │                            #   focus outline); optional onNavigate for click-time router state
 │   ├── PosterPlaceholder.tsx    # Real DOM "No Image" fallback (not an SVG image) so the text
 │   │                            #   inherits Poppins; used at every no-poster call site
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
@@ -246,9 +252,10 @@ src/
 │   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar/credits), shared by Movie/TV detail
 │   │                            #   and Person pages; optional section title and per-item subtitle, limit=20 default
 │   ├── ReviewsSection.tsx       # 2-column review cards, shared by Movie/TV detail pages
-│   ├── LibraryItemCard.tsx      # Poster + Card.Meta + icon-action card, shared by Watchlist/Watched/Lists pages
+│   ├── LibraryItemCard.tsx      # Poster + Card.Meta + icon-action card, shared by Watchlist/Watched/List-detail pages
+│   │                            #   (poster is a CardLink to the `to` path; action buttons stay outside it)
 │   ├── PersonCard.tsx           # Browse card for People listing + search results + Following page
-│   │                            #   (department tag, Follow button); person prop is a minimal structural
+│   │                            #   (department tag, Follow button; poster is a CardLink); person prop is a minimal structural
 │   │                            #   type (id/name/profile_path/known_for_department?), not full TMDBPersonSummary
 │   ├── AddToListModal.tsx       # Shared "Add to List" modal (search lists, inline create), used by
 │   │                            #   Movie/TV detail pages instead of two separate bare-checkbox modals
@@ -314,13 +321,16 @@ src/
 │   ├── RegisterPage.tsx         # /register
 │   ├── ForgotPasswordPage.tsx   # /forgot-password — email-based reset link request
 │   ├── ResetPasswordPage.tsx    # /reset-password/:uid/:token — set new password from link
-│   └── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
+│   ├── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
+│   └── NotFoundPage.tsx         # Any unknown path — "Page not found" + link to Movies (URL kept)
 ├── utils/
 │   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
-│   ├── backup.ts                # Backup ZIP v2 build/parse (manifest, ratings, lists); v1-compatible import
+│   ├── backup.ts                # Backup ZIP v2 build/parse (manifest, ratings, lists, watched_tz column); v1-compatible import
 │   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection)
 │   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations
 │   ├── settled.ts               # settledData()/isNotFound() helpers for Promise.allSettled pages
+│   ├── postLoginPath.ts         # Where to go after sign-in (state.from path+query+hash, else /movies);
+│   │                            #   shared by LoginPage and App's signed-in auth-page redirect
 │   ├── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
 │   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
 │   │                            #   (falls back to a plain array response transparently)
@@ -495,6 +505,20 @@ docker compose up --build
 
 The app will be available at `http://localhost`.
 
+### Upgrading an existing deployment
+
+The backend container now runs as an unprivileged `app` user (uid 10001) and no longer bind-mounts `backend/userdata/migrations` from the host. Before the first `docker compose up --build` after upgrading:
+
+1. Run `git status backend/userdata/migrations`. Any untracked migration there (e.g. one generated inside an old container) is no longer seen by the backend: commit it so it's baked into the image, or drop it.
+2. After the rebuild, hand the existing `media_data` volume (created by the old root container) to the new user, once:
+
+   ```bash
+   docker compose run --rm --user root backend chown -R app:app /app/media
+   docker compose restart backend
+   ```
+
+   Without this, existing avatars still display but new uploads fail with a 500 (`PermissionError`). Fresh deployments don't need it.
+
 ### LAN Access (same network, different device)
 
 When running via **Docker Desktop** on Windows or Mac, Docker properly forwards ports to the host machine's network interface. Other devices on the same network can access the app using the host machine's LAN IP:
@@ -530,11 +554,13 @@ The Docker Compose setup above is a complete production stack (nginx + React bui
 
 > **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY` or an empty/wildcard `ALLOWED_HOSTS`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` sets `TRUSTED_PROXY_COUNT=1` for the bundled nginx; if you put another proxy/TLS terminator in front, raise it to match.
 
+> **HTTPS and security headers:** nginx sends a Content-Security-Policy on every response, and sends `Strict-Transport-Security` only when the request carries `X-Forwarded-Proto: https`. Make sure your TLS terminator sets that header (most do by default); a plain-HTTP LAN deployment never gets HSTS. If you add a new external origin to the app (an image host, an embed, a font), add it to the CSP in `nginx.conf` too, or browsers will block it.
+
 ---
 
 ## Testing
 
-### Unit tests — Jest (123 tests, 19 suites)
+### Unit tests — Jest (157 tests, 22 suites)
 
 Covers core hook and context logic (including load/error states, in-flight dedupe and stale-page discard), the authenticated API client's session handling, bulk-import chunking, and the backup/CSV round-trip. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
 
@@ -556,7 +582,8 @@ src/context/__tests__/
 
 src/api/__tests__/
 ├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
-                                  #   logout during refresh, retry-on-500 for safe methods only
+                                  #   logout during refresh, retry-on-500 for safe methods only,
+                                  #   X-Timezone header sent (omitted if Intl fails)
 └── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
 
 src/utils/__tests__/
@@ -565,24 +592,33 @@ src/utils/__tests__/
 ├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
-└── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
+├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
+├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
+└── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
+
+src/components/__tests__/
+└── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ```
 
 ```bash
 npm test
 ```
 
-### Unit tests — pytest (Django, 197 tests)
+### Unit tests — pytest (Django, 226 tests)
 
-Covers auth, sessions and account security, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers auth, sessions and account security (including password-bound tokens), log redaction, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
 ├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
 ├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
+├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
+├── test_logging.py                 # TMDB key redacted from every logger; prod 500s logged, 4xx quiet
 ├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images)
 ├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS refused
+├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
+├── test_local_dates.py            # X-Timezone parsing/fallback, CORS preflight, watched_tz storage, local stats/notification days
 ├── test_throttle_identity.py       # Spoofed X-Forwarded-For, shared-cache counters under load
 ├── test_health.py                  # Health check never throttled
 ├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout
@@ -609,7 +645,7 @@ pip install -r backend/requirements-test.txt -c backend/constraints.txt
 pytest backend/
 ```
 
-### E2E tests — Playwright (27 tests, 2 projects)
+### E2E tests — Playwright (38 tests, 2 projects)
 
 Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required; specs import `test`/`expect` from `e2e/fixtures.ts`, whose strict catch-all fails a test that makes an unmocked API call. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
 
@@ -618,25 +654,28 @@ e2e/
 ├── auth.spec.ts        # Login, register, forgot password, redirect guards
 ├── movies.spec.ts      # Movie/TV browse, category buttons, search, detail navigation
 ├── watchlist.spec.ts   # Empty state, add/remove, export CSV, watched list
-└── responsive.spec.ts  # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card
-                         #   and bottom-nav no-overflow checks at 320px/340px
+└── responsive.spec.ts  # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
+                         #   bottom-nav no-overflow at 320px, notification popup on-screen +
+                         #   anchored at 7 viewport/page combos, phone Filters button
 ```
 
 ```bash
 npx playwright test
 ```
 
-### E2E tests — pytest-playwright (166 tests)
+### E2E tests — pytest-playwright (176 tests)
 
 Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
 
 ```
 e2e/python/
 ├── conftest.py        # Shared fixtures + mock data (users, tokens, movies, TV shows)
+├── test_a11y_routing.py # Keyboard card links, person-card Follow, 404 page, signed-in auth-page redirect (9)
 ├── test_auth.py       # Login, register, password reset, redirect guards (29)
 ├── test_browse.py     # Movie/TV browse, categories, filters, browser-Back restore (18)
 ├── test_detail.py     # Movie/TV detail pages, cast, recommendations (17)
 ├── test_lists.py      # User lists CRUD + CSV export (16)
+├── test_local_dates.py # Watched dates in the logged zone + label, X-Timezone sent (London browser) (1)
 ├── test_profile.py    # Profile edit, password change, TMDB connect (11)
 ├── test_ratings.py    # Rate + review flow (11)
 ├── test_recommendations.py # For You failed load → in-place Retry (3)

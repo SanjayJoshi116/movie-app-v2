@@ -5,3 +5,8 @@ __pycache__
 .env
 .env.docker
 db.sqlite3
+**/__pycache__/
+.pytest_cache/
+# Uploaded files belong in the media_data volume, never in an image.
+media/
+staticfiles/

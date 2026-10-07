@@ -148,7 +148,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       <Divider style={{ margin: "4px 0" }} />
 
       {/* Footer: filter + theme + auth */}
-      <div className="sidebar-footer" style={{ padding: "6px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div className="sidebar-footer">
         {isBrowsePage && (
           <Button
             icon={<FilterOutlined />}
@@ -161,8 +161,8 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             <span className="sidebar-label">Filters</span>
           </Button>
         )}
-        <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
-          {isAuthenticated && <NotificationBell />}
+        <div className="sidebar-footer-icons">
+          {isAuthenticated && <NotificationBell placement="topLeft" autoAdjustOverflow={false} />}
           <Tooltip title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
             <Button
               type="text"
@@ -223,6 +223,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
           </div>
         ) : (
           <Button
+            className="sidebar-sign-in"
             icon={<LoginOutlined />}
             type="default"
             block

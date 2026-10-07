@@ -2,6 +2,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -51,8 +52,16 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {"redacting": {"()": "userdata.logging.RedactingFormatter"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "redacting"}},
+    # Every logger reaches the redacting handler through root: urllib3 logs
+    # retried URLs (TMDB api_key included) at WARNING, and Django's default
+    # handlers are debug-only, so prod 500s otherwise left no trace at all.
+    "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
-        "userdata": {"handlers": ["console"], "level": "INFO"},
+        # Drop Django's debug-only console and mail_admins; propagate to root.
+        "django": {"handlers": [], "level": "INFO", "propagate": True},
+        # ERROR keeps unhandled 500s; 4xx (401 refresh churn, 404s) stay quiet.
+        "django.request": {"level": "ERROR"},
+        "userdata": {"level": "INFO"},
     },
 }
 
@@ -115,6 +124,10 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
+# collectstatic target. Nothing serves /static/ in production (nginx sends it
+# to the SPA, admin isn't routed, the API is JSON-only), so it's never run in
+# the image — this just keeps the command working.
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -123,6 +136,10 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+# The app sends the device's IANA time zone on every authenticated request
+# (userdata/timezones.py). Dev is cross-origin (:3000 -> :8000), so the custom
+# header must pass CORS preflight.
+CORS_ALLOW_HEADERS = (*default_headers, "x-timezone")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -154,6 +171,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "userdata.pagination.DefaultPagination",
     "PAGE_SIZE": 100,
 }
+# The browsable HTML API is dev-only: its static assets aren't served in
+# production, so a browser opening an API URL gets JSON instead.
+if not DEBUG:
+    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = ("rest_framework.renderers.JSONRenderer",)
 
 # Throttle counters live in the cache. Per-process LocMem under gunicorn's 3
 # workers effectively tripled every rate limit, so production shares one
@@ -177,6 +198,10 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    # Stamps a password-hash claim on every token. JWTAuthentication rejects a
+    # stale one on access; SafeTokenRefreshSerializer does the same on refresh,
+    # which closes a refresh racing _revoke_all_refresh_tokens' snapshot.
+    "CHECK_REVOKE_TOKEN": True,
     "SIGNING_KEY": os.environ.get("JWT_SIGNING_KEY", SECRET_KEY),
     "ALGORITHM": "HS256",
 }

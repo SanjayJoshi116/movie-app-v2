@@ -11,6 +11,7 @@ import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
 import { browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
+import { AUTH_ONLY_PATHS, postLoginPath } from "./utils/postLoginPath";
 import "./App.css";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -32,6 +33,7 @@ const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const TMDBCallbackPage = lazy(() => import("./pages/TMDBCallbackPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 function AppInner() {
   const location = useLocation();
@@ -60,11 +62,17 @@ function AppInner() {
     if (appliedScope !== null) clearGenres();
   }, [appliedScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isPublicPath =
-    ["/login", "/register", "/forgot-password"].includes(location.pathname) ||
-    location.pathname.startsWith("/reset-password/");
+  const isAuthOnlyPath = AUTH_ONLY_PATHS.includes(location.pathname);
+  // Reset links stay public and reachable when signed in (an emailed link must work).
+  const isPublicPath = isAuthOnlyPath || location.pathname.startsWith("/reset-password/");
   if (!isLoading && !isAuthenticated && !isPublicPath) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  if (isAuthOnlyPath) {
+    // Blank while the session restores, so a signed-in user never sees the form flash.
+    if (isLoading) return null;
+    // Same target LoginPage navigates to after signing in.
+    if (isAuthenticated) return <Navigate to={postLoginPath(location.state)} replace />;
   }
 
   const isBrowsePage = filterScope !== null;
@@ -156,13 +164,19 @@ function AppInner() {
               <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
               <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />
               <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />              <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
-              <Route path="*" element={<Navigate to="/movies" replace />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </AnimatePresence>
           </Suspense>
         </main>
 
-        {isAuthenticated && <BottomNav />}
+        {isAuthenticated && (
+          <BottomNav
+            isBrowsePage={isBrowsePage}
+            showFilterPanel={showFilterPanel}
+            onToggleFilterPanel={() => setShowFilterPanel((v) => !v)}
+          />
+        )}
       </div>
       </AntApp>
     </ConfigProvider>

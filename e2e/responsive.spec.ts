@@ -59,8 +59,102 @@ test.describe("Responsive layout", () => {
     expect(hasOverflow).toBe(false);
   });
 
+  const popupCases = [
+    { name: "desktop sidebar", width: 1366, height: 768, collapsed: false, path: "/movies" },
+    { name: "desktop collapsed rail", width: 1366, height: 768, collapsed: true, path: "/movies" },
+    { name: "tablet rail", width: 800, height: 1024, collapsed: false, path: "/movies" },
+    { name: "tablet rail, non-browse page", width: 800, height: 1024, collapsed: false, path: "/watchlist" },
+    { name: "phone bottom nav", width: 375, height: 812, collapsed: false, path: "/movies" },
+    { name: "narrow phone, non-browse page", width: 320, height: 640, collapsed: false, path: "/watchlist" },
+    { name: "narrow phone, browse page", width: 320, height: 640, collapsed: false, path: "/movies" },
+  ];
+  for (const c of popupCases) {
+    test(`notification popup stays on-screen and anchored: ${c.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: c.width, height: c.height });
+      if (c.collapsed) {
+        await page.addInitScript(() => localStorage.setItem("cinedb_sidebar_collapsed", JSON.stringify(true)));
+      }
+      await mockAuthedBase(page);
+      await page.goto(c.path);
+
+      const bell = page.locator('button[aria-label="Notifications"]:visible');
+      await bell.click();
+      const popup = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+      await expect(popup).toBeVisible();
+      // Wait out antd's open animation: the box is final once two reads agree.
+      const settled = async () => {
+        let prev = "";
+        for (;;) {
+          const box = await popup.boundingBox();
+          const cur = JSON.stringify(box);
+          if (box && cur === prev) return box;
+          prev = cur;
+          await page.waitForTimeout(100);
+        }
+      };
+      const box = await settled();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(c.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(c.height);
+
+      // Popup keeps its offset from the bell when the page scrolls.
+      const offset = async () => {
+        const [p, b] = [await popup.boundingBox(), await bell.boundingBox()];
+        return { dx: p!.x - b!.x, dy: p!.y - b!.y };
+      };
+      const before = await offset();
+      await page.evaluate(() => {
+        const spacer = document.createElement("div");
+        spacer.style.height = "3000px";
+        document.querySelector(".app-content")?.appendChild(spacer);
+        window.scrollBy(0, 600);
+      });
+      await page.waitForTimeout(200);
+      expect(await offset()).toEqual(before);
+    });
+  }
+
+  test("phone: bottom-nav Filters opens the filter panel and applies", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await mockAuthedBase(page);
+    await page.goto("/movies");
+
+    const toggle = page.locator('.app-bottom-nav button[aria-label="Toggle filters"]');
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    const drawer = page.locator(".ant-drawer-content").filter({ hasText: "Filter & Sort" });
+    await expect(drawer).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await drawer.getByText("Action", { exact: true }).click();
+    const discover = page.waitForRequest((r) => r.url().includes("/api/tmdb/discover/movie") && r.url().includes("with_genres=28"));
+    await drawer.getByRole("button", { name: "Apply Filters" }).click();
+    await discover;
+    await expect(drawer).not.toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  for (const path of ["/tv", "/anime"]) {
+    test(`phone: bottom-nav Filters shown on ${path}`, async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await mockAuthedBase(page);
+      await page.goto(path);
+      await page.locator('.app-bottom-nav button[aria-label="Toggle filters"]').click();
+      await expect(page.locator(".ant-drawer-content").filter({ hasText: "Filter & Sort" })).toBeVisible();
+    });
+  }
+
+  test("phone: no Filters button off browse pages", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await mockAuthedBase(page);
+    await page.goto("/watchlist");
+    await expect(page.locator(".app-bottom-nav")).toBeVisible();
+    await expect(page.locator('.app-bottom-nav button[aria-label="Toggle filters"]')).toHaveCount(0);
+  });
+
   test("very narrow phone: bottom nav doesn't overflow or clip", async ({ page }) => {
-    await page.setViewportSize({ width: 340, height: 700 });
+    await page.setViewportSize({ width: 320, height: 640 });
     await mockAuthedBase(page);
     await page.goto("/movies");
 

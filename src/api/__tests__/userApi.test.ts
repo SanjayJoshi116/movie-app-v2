@@ -259,3 +259,33 @@ describe("retry on 500", () => {
     expect(server.hits["/lists/"]).toBe(1);
   });
 });
+
+describe("device time zone header", () => {
+  function captureHeaders() {
+    const seen: Record<string, unknown>[] = [];
+    userApi.defaults.adapter = (config) => {
+      seen.push({ ...config.headers });
+      return reply(config, 200, {});
+    };
+    return seen;
+  }
+
+  it("sends the device's IANA zone as X-Timezone", async () => {
+    jest.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+      ...new Intl.DateTimeFormat().resolvedOptions(),
+      timeZone: "Asia/Kolkata",
+    });
+    const seen = captureHeaders();
+    await userApi.get("/thing/");
+    expect(seen[0]?.["X-Timezone"]).toBe("Asia/Kolkata");
+  });
+
+  it("omits the header when the zone can't be read", async () => {
+    jest.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockImplementation(() => {
+      throw new Error("no Intl");
+    });
+    const seen = captureHeaders();
+    await userApi.get("/thing/");
+    expect(seen[0]).not.toHaveProperty("X-Timezone");
+  });
+});

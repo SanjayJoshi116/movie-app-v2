@@ -10,7 +10,7 @@ import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
-import { formatDateDMY } from "../utils/formatDate";
+import { formatWatchedDate } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
 import SkeletonCard from "../components/SkeletonCard";
@@ -88,6 +88,7 @@ function WatchedPage() {
       tmdb_id: i.id,
       vote_average: i.voteAverage,
       watched_at: i.watchedAt,
+      watched_tz: i.watchedTz ?? "",
     }));
     downloadCSV(rows, "watched.csv");
   };
@@ -198,6 +199,7 @@ function WatchedPage() {
               <LibraryItemCard
                 posterPath={item.posterPath}
                 title={item.title}
+                to={`/${item.type}/${item.id}`}
                 onOpen={() =>
                   navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
                 }
@@ -239,7 +241,7 @@ function WatchedPage() {
                 }
                 footer={
                   <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
-                    {formatDateDMY(item.watchedAt)}
+                    {formatWatchedDate(item.watchedAt, item.watchedTz)}
                   </Typography.Text>
                 }
               />

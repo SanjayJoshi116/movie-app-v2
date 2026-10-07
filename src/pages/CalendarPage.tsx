@@ -7,10 +7,12 @@ import { discoverMovies, discoverTV } from "../api/tmdb";
 import SkeletonCard from "../components/SkeletonCard";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
+import CardLink from "../components/CardLink";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { pageVariants, IMG_URL, RATING_GOLD } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
+import { localISODate } from "../utils/formatDate";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -71,7 +73,7 @@ function exportIcal(groups: DateGroup[]) {
     const d = group.date.replace(/-/g, "");
     const nextDay = new Date(group.date + "T12:00:00");
     nextDay.setDate(nextDay.getDate() + 1);
-    const dEnd = nextDay.toISOString().slice(0, 10).replace(/-/g, "");
+    const dEnd = localISODate(nextDay).replace(/-/g, "");
     for (const item of group.items) {
       const kind = item.type === "movie" ? "Movie" : "TV Show";
       lines.push(
@@ -122,7 +124,7 @@ function CalendarPage() {
   }, [groups, search]);
 
   const jumpToToday = useCallback(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localISODate(new Date());
     const target = filteredGroups.find((g) => g.date >= today) ?? filteredGroups[0];
     if (target) {
       document.getElementById(`date-${target.date}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -132,8 +134,9 @@ function CalendarPage() {
   const fetchCalendar = useCallback(async (filter: MediaFilter) => {
     setLoading(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const future = new Date(Date.now() + RELEASE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      // The device's local day, not the UTC one (just after local midnight they differ).
+      const today = localISODate(new Date());
+      const future = localISODate(new Date(Date.now() + RELEASE_WINDOW_DAYS * 24 * 60 * 60 * 1000));
 
       const movieParams = {
         "primary_release_date.gte": today,
@@ -317,9 +320,12 @@ function CalendarPage() {
                   <motion.div
                     whileHover={{ scale: 1.04, y: -4 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/calendar", scrollY: window.scrollY, mediaFilter, isReturn: false } })}
                   >
+                    <CardLink
+                      to={`/${item.type}/${item.id}`}
+                      label={item.title}
+                      onNavigate={() => navigate(`/${item.type}/${item.id}`, { state: { from: "/calendar", scrollY: window.scrollY, mediaFilter, isReturn: false } })}
+                    >
                     <Card
                       hoverable
                       className="glass-card"
@@ -357,6 +363,7 @@ function CalendarPage() {
                         )}
                       </div>
                     </Card>
+                    </CardLink>
                   </motion.div>
                 </Col>
               ))}

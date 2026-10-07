@@ -10,7 +10,7 @@ const watchlist: WatchlistEntry[] = [
   { id: 13, type: "movie", title: "Forrest Gump", posterPath: "/fg.jpg", voteAverage: 8.5, addedAt: "2024-02-01T10:00:00Z" },
 ];
 const watched: WatchedEntry[] = [
-  { id: 550, type: "movie", title: "Fight Club", posterPath: "/fc.jpg", voteAverage: 8.4, watchedAt: "2024-03-01T20:00:00Z", runtimeMinutes: 139, platform: "Netflix" },
+  { id: 550, type: "movie", title: "Fight Club", posterPath: "/fc.jpg", voteAverage: 8.4, watchedAt: "2024-03-01T20:00:00Z", watchedTz: "Asia/Kolkata", runtimeMinutes: 139, platform: "Netflix" },
   { id: 1396, type: "tv", title: "Breaking Bad", posterPath: null, voteAverage: 9, watchedAt: "2023-12-24T08:30:00Z" },
 ];
 const ratings: RatingEntry[] = [
@@ -34,11 +34,12 @@ describe("backup v2 round trip", () => {
     ]);
     expect(data.watched[0]).toEqual({
       mediaId: 550, title: "Fight Club", type: "movie", voteAverage: 8.4, posterPath: "/fc.jpg",
-      watchedAt: "2024-03-01T20:00:00Z", runtimeMinutes: 139, platform: "Netflix",
+      watchedAt: "2024-03-01T20:00:00Z", watchedTz: "Asia/Kolkata", runtimeMinutes: 139, platform: "Netflix",
     });
     expect(data.watched[1]).toMatchObject({ mediaId: 1396, type: "tv", posterPath: null });
     expect(data.watched[1]).not.toHaveProperty("runtimeMinutes");
     expect(data.watched[1]).not.toHaveProperty("platform");
+    expect(data.watched[1]).not.toHaveProperty("watchedTz"); // logged before zones were recorded
     expect(data.ratings).toEqual([
       { mediaId: 550, title: "Fight Club", type: "movie", voteAverage: 0, posterPath: null, userRating: 8, review: 'Great, "must" see,\nreally', ratedAt: "2024-03-02T09:00:00Z" },
     ]);
@@ -57,6 +58,7 @@ describe("backup v2 round trip", () => {
     expect(data.version).toBe(1);
     expect(data.watchlist).toHaveLength(1);
     expect(data.watched[0]).toMatchObject({ mediaId: 550, watchedAt: "2024-03-01T20:00:00Z" });
+    expect(data.watched[0]).not.toHaveProperty("watchedTz");
     expect(data.ratings).toEqual([]);
     expect(data.lists).toEqual([{ name: "Faves", description: "", entries: [expect.objectContaining({ mediaId: 1396, type: "tv" })] }]);
   });

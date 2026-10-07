@@ -3,7 +3,6 @@ import time as _time
 from collections import Counter
 from datetime import date, timedelta
 
-from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -11,6 +10,7 @@ from rest_framework.response import Response
 from .metadata_backfill import entry_needs_metadata, request_backfill
 from .models import WatchedEntry, RatingEntry, UserList, UserListItem, WatchlistEntry
 from . import tmdb_client
+from .timezones import entry_day, entry_local, local_today
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,9 @@ def stats(request):
 
     monthly_counts: dict[tuple[int, int], int] = {}
     for entry in watched_list:
-        month_key = (entry.watched_at.year, entry.watched_at.month)
+        # Days and months come from the zone each watch was logged in.
+        local = entry_local(entry, request)
+        month_key = (local.year, local.month)
         monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
     monthly_activity = [
         {"month": date(year, month, 1).strftime("%b %Y"), "count": monthly_counts[(year, month)]}
@@ -104,11 +106,12 @@ def stats(request):
         for decade, cnt in sorted(decade_counts.items())
     ]
 
-    cutoff = timezone.now() - timedelta(days=364)
+    # The window ends on the requesting device's today (the heatmap grid's last day).
+    cutoff = local_today(request) - timedelta(days=364)
     daily_counts: dict[date, int] = {}
     for entry in watched_list:
-        if entry.watched_at >= cutoff:
-            day = entry.watched_at.date()
+        day = entry_day(entry, request)
+        if day >= cutoff:
             daily_counts[day] = daily_counts.get(day, 0) + 1
     daily_activity = [
         {"date": day.strftime("%Y-%m-%d"), "count": cnt}
@@ -165,7 +168,7 @@ def stats(request):
         {
             "title": e.title,
             "posterPath": e.poster_path,
-            "watchedAt": e.watched_at.strftime("%Y-%m-%d"),
+            "watchedAt": entry_day(e, request).strftime("%Y-%m-%d"),
             "mediaType": e.media_type,
         }
         for e in recent_sorted[:8]

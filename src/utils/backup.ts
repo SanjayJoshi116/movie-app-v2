@@ -58,15 +58,17 @@ export function buildBackupZip(
     ),
   );
 
-  // v2 appends runtime_minutes/platform after the v1 columns, so v1 readers still work.
+  // v2 appends runtime_minutes/platform after the v1 columns, so v1 readers still work;
+  // watched_tz (the zone each watch was logged in) is appended last for the same reason.
   zip.file(
     "watched.csv",
     csvOrHeader(
       watched.map((i) => ({
         tmdb_id: i.id, title: i.title, type: i.type, vote_average: i.voteAverage, watched_at: i.watchedAt,
         poster_path: i.posterPath ?? "", runtime_minutes: i.runtimeMinutes ?? "", platform: i.platform ?? "",
+        watched_tz: i.watchedTz ?? "",
       })),
-      ["tmdb_id", "title", "type", "vote_average", "watched_at", "poster_path", "runtime_minutes", "platform"],
+      ["tmdb_id", "title", "type", "vote_average", "watched_at", "poster_path", "runtime_minutes", "platform", "watched_tz"],
     ),
   );
 

@@ -6,17 +6,21 @@ import MarqueeTitle from "./MarqueeTitle";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { PosterPlaceholder } from "./PosterPlaceholder";
+import CardLink from "./CardLink";
 
 interface Props {
   posterPath: string | null;
   title: string;
+  /** Detail-page path: the poster link's real href (keyboard, new tab). */
+  to: string;
+  /** Plain-click/Enter navigation, so callers can pass click-time router state. */
   onOpen: () => void;
   tags?: ReactNode;
   actionButtons?: ReactNode;
   footer?: ReactNode;
 }
 
-const LibraryItemCard = ({ posterPath, title, onOpen, tags, actionButtons, footer }: Props) => {
+const LibraryItemCard = ({ posterPath, title, to, onOpen, tags, actionButtons, footer }: Props) => {
   return (
     <motion.div
       role="article"
@@ -29,18 +33,14 @@ const LibraryItemCard = ({ posterPath, title, onOpen, tags, actionButtons, foote
         className="glass-card"
         style={{ height: "100%" }}
         cover={
-          posterPath ? (
-            <img
-              src={`${IMG_URL}${posterPath}`}
-              alt={title}
-              loading="lazy"
-              className="movie-poster-img"
-              onClick={onOpen}
-              style={{ cursor: "pointer" }}
-            />
-          ) : (
-            <PosterPlaceholder className="movie-poster-img" style={{ cursor: "pointer" }} onClick={onOpen} />
-          )
+          // Poster-only link: the action buttons must stay outside it.
+          <CardLink to={to} onNavigate={onOpen} label={`Open ${title}`}>
+            {posterPath ? (
+              <img src={`${IMG_URL}${posterPath}`} alt={title} loading="lazy" className="movie-poster-img" />
+            ) : (
+              <PosterPlaceholder className="movie-poster-img" />
+            )}
+          </CardLink>
         }
         styles={{ body: { padding: "10px 12px" } }}
       >

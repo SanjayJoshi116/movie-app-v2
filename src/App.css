@@ -45,6 +45,19 @@
   display: none;
 }
 
+.sidebar-footer {
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-footer-icons {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
 @media (min-width: 768px) and (max-width: 991px) {
   .app-sidebar {
     width: 64px;
@@ -67,9 +80,31 @@
     padding-inline: 0 !important;
     justify-content: center;
   }
+  /* 64px can't fit the icon row side by side, so the footer becomes a
+     2-column icon grid: Filters joins the icons on browse pages, keeping the
+     same 2 rows (no extra height; the rail is flush at 1366x768). */
   .app-sidebar .sidebar-footer {
-    align-items: center;
-    padding: 8px 4px;
+    display: grid;
+    grid-template-columns: repeat(2, 30px);
+    justify-content: center;
+    justify-items: center;
+    gap: 6px 0;
+    padding: 8px 0;
+  }
+  .app-sidebar .sidebar-footer-icons {
+    display: contents;
+  }
+  .app-sidebar .sidebar-footer > .ant-divider,
+  .app-sidebar .sidebar-footer > .sidebar-user-row,
+  .app-sidebar .sidebar-footer > .sidebar-sign-in {
+    grid-column: 1 / -1;
+  }
+  /* 30px, not antd's 32: the rail's 1px border leaves 63px of content. */
+  .app-sidebar .sidebar-footer > button[aria-label="Toggle filters"],
+  .app-sidebar .sidebar-footer-icons .ant-btn {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
   }
   .app-sidebar .sidebar-user-row {
     flex-direction: column;
@@ -105,9 +140,31 @@
     padding-inline: 0 !important;
     justify-content: center;
   }
+  /* 64px can't fit the icon row side by side, so the footer becomes a
+     2-column icon grid: Filters joins the icons on browse pages, keeping the
+     same 2 rows (no extra height; the rail is flush at 1366x768). */
   .app-sidebar.sidebar-collapsed .sidebar-footer {
-    align-items: center;
-    padding: 8px 4px;
+    display: grid;
+    grid-template-columns: repeat(2, 30px);
+    justify-content: center;
+    justify-items: center;
+    gap: 6px 0;
+    padding: 8px 0;
+  }
+  .app-sidebar.sidebar-collapsed .sidebar-footer-icons {
+    display: contents;
+  }
+  .app-sidebar.sidebar-collapsed .sidebar-footer > .ant-divider,
+  .app-sidebar.sidebar-collapsed .sidebar-footer > .sidebar-user-row,
+  .app-sidebar.sidebar-collapsed .sidebar-footer > .sidebar-sign-in {
+    grid-column: 1 / -1;
+  }
+  /* 30px, not antd's 32: the rail's 1px border leaves 63px of content. */
+  .app-sidebar.sidebar-collapsed .sidebar-footer > button[aria-label="Toggle filters"],
+  .app-sidebar.sidebar-collapsed .sidebar-footer-icons .ant-btn {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
   }
   .app-sidebar.sidebar-collapsed .sidebar-user-row {
     flex-direction: column;
@@ -437,6 +494,29 @@ body:not(.dark-theme) .app-bottom-nav {
   max-width: 300px;
   border-radius: 12px;
   object-fit: cover;
+}
+
+/* ── Card links (CardLink) ──────────────────────────────────── */
+.card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+}
+.card-link:hover {
+  color: inherit;
+}
+.card-link:focus:not(:focus-visible) {
+  outline: none;
+}
+body.dark-theme .card-link:focus-visible {
+  outline: 2px solid #f5c518;
+  outline-offset: 3px;
+}
+/* Darker gold: brand hue with >=3:1 contrast on light backgrounds. */
+body:not(.dark-theme) .card-link:focus-visible {
+  outline: 2px solid #8a6d00;
+  outline-offset: 3px;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────── */

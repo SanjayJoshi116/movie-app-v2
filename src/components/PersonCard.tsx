@@ -9,6 +9,7 @@ import { getApiError } from "../utils/apiError";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { PosterPlaceholder } from "./PosterPlaceholder";
+import CardLink from "./CardLink";
 
 interface PersonCardPerson {
   id: number;
@@ -39,20 +40,23 @@ const PersonCard = ({ person, onClick }: Props) => {
         hoverable
         className="glass-card"
         cover={
-          person.profile_path ? (
-            <img
-              src={`${IMG_URL}${person.profile_path}`}
-              alt={person.name}
-              loading="lazy"
-              className="movie-poster-img"
-            />
-          ) : (
-            <PosterPlaceholder className="movie-poster-img" />
-          )
+          // Poster-only link: the Follow button below must stay outside it.
+          // The card-level onClick above stays for mouse users.
+          <CardLink to={`/person/${person.id}`} onNavigate={onClick} stopPropagation label={`View profile of ${person.name}`}>
+            {person.profile_path ? (
+              <img
+                src={`${IMG_URL}${person.profile_path}`}
+                alt={person.name}
+                loading="lazy"
+                className="movie-poster-img"
+              />
+            ) : (
+              <PosterPlaceholder className="movie-poster-img" />
+            )}
+          </CardLink>
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}
-        aria-label={`View profile of ${person.name}`}
       >
         <Card.Meta
           title={

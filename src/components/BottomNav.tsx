@@ -18,6 +18,7 @@ import {
   RightOutlined,
   BarChartOutlined,
   UserAddOutlined,
+  FilterOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useAuth } from "../context/AuthContext";
@@ -38,7 +39,15 @@ function getInitials(user: { first_name?: string; last_name?: string; username: 
   return user.username.slice(0, 2).toUpperCase();
 }
 
-const BottomNav = () => {
+interface Props {
+  isBrowsePage: boolean;
+  showFilterPanel: boolean;
+  onToggleFilterPanel: () => void;
+}
+
+// Same filter state as Sidebar's Filters button: the sidebar is hidden below
+// 768px, so this is the only way to open FilterPanel on a phone.
+const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { watchlist, watchedList } = useAppContext();
@@ -107,7 +116,24 @@ const BottomNav = () => {
           );
         })}
 
-        {isAuthenticated && <NotificationBell buttonClassName="bottom-nav-btn" />}
+        {isBrowsePage && (
+          <Tooltip title="Filters" placement="top" open={flashKey === "filters" || undefined}>
+            <Button
+              type="text"
+              icon={<FilterOutlined />}
+              onClick={() => {
+                triggerFlash("filters");
+                onToggleFilterPanel();
+              }}
+              aria-label="Toggle filters"
+              aria-expanded={showFilterPanel}
+              className="bottom-nav-btn"
+              style={{ color: showFilterPanel ? RATING_GOLD : undefined }}
+            />
+          </Tooltip>
+        )}
+
+        {isAuthenticated && <NotificationBell buttonClassName="bottom-nav-btn" placement="top" />}
 
         <Tooltip title="Search" placement="top" open={flashKey === "search" || undefined}>
           <Button

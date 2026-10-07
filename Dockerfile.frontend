@@ -13,6 +13,8 @@ ENV CI=false
 ENV REACT_APP_API_BASE_URL=/api
 ENV REACT_APP_TMDB_BASE_URL=/api/tmdb
 ENV REACT_APP_MEDIA_BASE_URL=
+# Emit the webpack runtime as a file, so nginx's CSP needs no inline script.
+ENV INLINE_RUNTIME_CHUNK=false
 
 RUN npm run build
 

@@ -3,6 +3,67 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.19.0] - 2026-10-07
+
+Bug-audit release, part 4. Implements the remaining six OpenSpec changes from `docs/BUG_BACKLOG.md`: `user-local-dates`, `a11y-routing`, `harden-docker`, `fix-nav-polish`, `harden-logging` and `fix-password-revoke-race`, all archived under `openspec/changes/archive/`. This closes items 0–10 of the first audit. A second full audit, run after these changes, logged items 11–15 in the backlog; none of them are fixed in this release.
+
+### ⚠️ Notes for deploy
+- **Every user is signed out once.** Tokens are now bound to the password (see Security), and tokens issued before this release carry no password claim, so they're rejected at their next use.
+- **Rotate the TMDB API key if old production logs were ever shared.** Before this release, urllib3's retry warnings wrote the full TMDB URL, `api_key` included, to stderr (`docker logs`) unredacted.
+- **Docker: one-time media-volume ownership fix.** The backend container now runs as an unprivileged `app` user (uid 10001), and the existing `media_data` volume was created by the old root container. Follow README → Docker Setup → "Upgrading an existing deployment" before the first `docker compose up --build`.
+- **Docker: the backend now uses only the migrations baked into the image** (no host bind mount, and `migrate --noinput` instead of `--run-syncdb`). Rebuild both images.
+- **New migration `0020_watchedentry_watched_tz`.** It's additive: existing entries get a blank time zone and keep displaying in the viewing device's zone.
+- `tzdata` is now a direct backend dependency (`requirements.txt` + `constraints.txt`).
+- The Docker checks for this release (image build, container uid, nginx header emission, media chown) were waived on the dev machine (no Docker there). Verify them on first deploy.
+
+### Fixed — dates follow the user's day (`user-local-dates`)
+- "Today" uses the requesting device's time zone, sent as an `X-Timezone` header on every authenticated request. A missing or unknown zone falls back to UTC and never errors.
+- Each watched entry stores the time zone it was logged in (`watched_tz`). The Watched page date, the Stats heatmap, the monthly chart and "recently watched" use it, so a watch never moves to a different day on another device.
+- The Watched page shows a short zone label (e.g. `07-10-2026 · IST`) when a watch was logged in a zone whose offset differs from this device's.
+- The Calendar's 7-day window, and the notification window and its unread rule, use the device's local day (they used the UTC day).
+- Watched CSV export and backups carry a `watched_tz` column. Older backups without it still import.
+
+### Fixed — accessibility and routing (`a11y-routing`)
+- Every card that opens a detail or person page is a real link: Tab, Enter, and middle-click or Ctrl/Cmd+click to open a new tab. This covers detail-page Recommendations/Similar, cast cards, person credit tabs, Home's Recently Watched, Calendar, `PersonCard` and `LibraryItemCard`. Cards with their own buttons keep them as separate controls.
+- A visible focus outline in both themes.
+- The TV detail page's episode-progress icon buttons have accessible names.
+- Unknown URLs show a "Page not found" page instead of silently redirecting to Movies.
+- A signed-in user who opens `/login`, `/register` or `/forgot-password` is sent on to where they were headed, without the login form flashing. Password-reset links still work while signed in.
+
+### Fixed — navigation (`fix-nav-polish`)
+- The notification popup opens fully on-screen at every breakpoint. It used to open 85–290px off the left edge. In the 64px sidebar rail, the bell itself used to be clipped off-screen; the rail footer is now a 2-column icon grid that takes no extra height.
+- Phones get a Filters button in the bottom nav on Movies, TV and Anime. Below 768px there was no way to open the browse filters at all.
+- CINE DB app icons (a gold "C" monogram, from `public/icon.svg`) replace the React-logo favicon and install icons.
+
+### Security
+- **Password changes end other sessions immediately and reliably** (`fix-password-revoke-race`). Tokens carry a password-bound claim (simplejwt `CHECK_REVOKE_TOKEN`), and the token-refresh endpoint now checks it too. A refresh that was in flight on another device during a password change used to mint a token that survived revocation and kept rotating. Other devices' access tokens now stop at once instead of lasting up to 60 minutes.
+- **The TMDB API key no longer reaches logs** (`harden-logging`). The redacting log handler moved from the app's logger to the root logger, so Django, urllib3 and every other library is redacted.
+- **Production 500s are logged with a traceback.** With `DEBUG` off they used to log nothing at all. Routine 4xx responses stay out of the log.
+- **Docker hardening** (`harden-docker`):
+  - the backend runs as non-root, and `media/` is excluded from the build context
+  - nginx sends a Content-Security-Policy matching exactly what the app loads, HSTS when the request arrived over HTTPS, and `X-XSS-Protection: 0`
+  - the React build stops inlining its runtime chunk, so `script-src 'self'` needs no inline exception
+  - with `DEBUG` off, the API renders JSON only, and `STATIC_ROOT` is set
+
+### Changed
+- Removed the unused `web-vitals` dependency.
+- `.gitignore` ignores every `.env.*` file except the committed `.env.example` templates.
+- `NotificationBell` takes its popup placement from its host. The sidebar footer's layout moved from inline styles into `App.css` classes.
+
+### Docs
+- `docs/BUG_BACKLOG.md`:
+  - items 0–10 are done
+  - the migration-0018 item was closed as won't-fix
+  - the second audit is logged as items 11–15 (`fix-session-sync`, `harden-backend-2`, `surface-failures-2`, `harden-deploy-2`, `honest-tests`), plus 4 rounds of follow-up hunts and a longer "verified fine" list
+- `CLAUDE.md` and `docs/ARCHITECTURE.md` updated: per-host popup placement and the rail icon grid, password-bound tokens, root-logger redaction, local dates, `CardLink`, and the Docker runtime rules.
+
+### Tests
+- Django pytest 226. New: local dates, logging redaction, password-bound tokens, production rendering.
+- Jest 157 in 22 suites. New: `CardLink`, `formatDate`, `postLoginPath`.
+- pytest-playwright 176. New: a11y/routing, local dates.
+- Playwright TS 38 per project (chromium + mobile-chrome). New: the notification popup stays inside the viewport and anchored on scroll at 7 viewport/page combinations; the phone Filters button; the bottom nav fits at 320px.
+- New capability specs in `openspec/specs/`: `local-dates`, `accessibility`, `routing` and `container-deployment`. `data-backup`, `notifications`, `browse-filters`, `app-identity`, `api-hardening`, `service-health` and `auth-session` gained or changed requirements.
+
 ## [0.18.0] - 2026-10-07
 
 Bug-audit release, part 3. Implements five OpenSpec changes from `docs/BUG_BACKLOG.md` (`fix-browse-filters`, `fix-data-correctness`, `ci-coverage`, `fix-dependency-drift`, `frontend-polish`; archived under `openspec/changes/archive/`). Findings left over, plus 4 found while verifying this release, stay in the backlog (items 5, 7d, 7e, 8).

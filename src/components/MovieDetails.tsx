@@ -19,6 +19,7 @@ import { InfoTooltip } from "./InfoTooltip";
 import { SectionHeader } from "./SectionHeader";
 import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
+import CardLink from "./CardLink";
 import { ReviewsSection } from "./ReviewsSection";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
@@ -291,10 +292,10 @@ const MovieDetails = ({ movie }: Props) => {
             <div className="cast-scroll-container">
               {cast.slice(0, 15).map((actor) => (
                 <div key={actor.id} className="cast-scroll-item">
+                  <CardLink to={`/person/${actor.id}`} label={actor.name}>
                   <Card
                     hoverable
                     size="small"
-                    onClick={() => navigate(`/person/${actor.id}`)}
                     cover={
                       actor.profile_path ? (
                         <img
@@ -308,11 +309,11 @@ const MovieDetails = ({ movie }: Props) => {
                       )
                     }
                     styles={{ body: { padding: "6px 8px" } }}
-                    aria-label={`View details for ${actor.name}`}
                   >
                     <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{actor.name}</Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>{actor.character}</Typography.Text>
                   </Card>
+                  </CardLink>
                 </div>
               ))}
             </div>

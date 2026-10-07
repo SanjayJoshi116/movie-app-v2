@@ -9,6 +9,7 @@ import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadError } from "../components/LoadError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
+import CardLink from "../components/CardLink";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
@@ -178,12 +179,12 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
           </Typography.Text>
           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
             {recentWatched.map((item) => (
-              <div
-                key={`${item.type}-${item.id}`}
-                onClick={() => { stashBrowseState(); navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`); }}
-                title={item.title}
-                style={{ flexShrink: 0, width: 72, cursor: "pointer" }}
-              >
+              <div key={`${item.type}-${item.id}`} title={item.title} style={{ flexShrink: 0, width: 72 }}>
+                <CardLink
+                  to={`/${item.type}/${item.id}`}
+                  label={item.title}
+                  onNavigate={() => { stashBrowseState(); navigate(`/${item.type}/${item.id}`); }}
+                >
                 {item.posterPath ? (
                   <img
                     src={`${POSTER_THUMB_URL}${item.posterPath}`}
@@ -194,6 +195,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
                 ) : (
                   <PosterPlaceholder style={{ width: 72, height: 108, borderRadius: 6 }} />
                 )}
+                </CardLink>
               </div>
             ))}
           </div>

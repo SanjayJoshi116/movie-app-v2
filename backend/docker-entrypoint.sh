@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-python manage.py migrate --run-syncdb
+python manage.py migrate --noinput
 # Shared throttle-counter table for the DatabaseCache backend (idempotent).
 python manage.py createcachetable
 # Best-effort cache warm-up, capped like start.py so a hung TMDB call can't

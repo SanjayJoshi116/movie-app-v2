@@ -157,6 +157,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
             contents.watched.map((r) => ({
               ...mediaFields(r),
               watchedAt: r.watchedAt,
+              watchedTz: r.watchedTz,
               runtimeMinutes: r.runtimeMinutes,
               platform: r.platform,
             })),

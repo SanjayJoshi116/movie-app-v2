@@ -22,6 +22,7 @@ import { InfoTooltip } from "./InfoTooltip";
 import { SectionHeader } from "./SectionHeader";
 import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
+import CardLink from "./CardLink";
 import { ReviewsSection } from "./ReviewsSection";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
@@ -288,20 +289,20 @@ const TVShowDetails = ({ tvShow }: Props) => {
                       okType="danger"
                       cancelText="Cancel"
                     >
-                      <Button size="small" type="link" danger style={{ padding: 0 }} icon={<DeleteOutlined />} />
+                      <Button size="small" type="link" danger style={{ padding: 0 }} icon={<DeleteOutlined />} aria-label="Remove episode progress" />
                     </Popconfirm>
                   </>
                 ) : epEditing ? (
                   <>
                     <Typography.Text style={{ fontSize: FONT_SIZE.caption }}>S</Typography.Text>
-                    <Button size="small" icon={<MinusOutlined />} onClick={() => { setEpSeason((s) => Math.max(1, s - 1)); setEpEpisode(1); }} />
+                    <Button size="small" icon={<MinusOutlined />} aria-label="Previous season" onClick={() => { setEpSeason((s) => Math.max(1, s - 1)); setEpEpisode(1); }} />
                     <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epSeason}</Typography.Text>
-                    <Button size="small" icon={<PlusOutlined />} onClick={() => { setEpSeason((s) => Math.min(s + 1, number_of_seasons ?? 99)); setEpEpisode(1); }} />
+                    <Button size="small" icon={<PlusOutlined />} aria-label="Next season" onClick={() => { setEpSeason((s) => Math.min(s + 1, number_of_seasons ?? 99)); setEpEpisode(1); }} />
                     <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{number_of_seasons ?? "?"}</Typography.Text>
                     <Typography.Text style={{ fontSize: FONT_SIZE.caption, marginLeft: 4 }}>E</Typography.Text>
-                    <Button size="small" icon={<MinusOutlined />} onClick={() => setEpEpisode((e) => Math.max(1, e - 1))} />
+                    <Button size="small" icon={<MinusOutlined />} aria-label="Previous episode" onClick={() => setEpEpisode((e) => Math.max(1, e - 1))} />
                     <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epEpisode}</Typography.Text>
-                    <Button size="small" icon={<PlusOutlined />} onClick={() => setEpEpisode((e) => Math.min(e + 1, getMaxEpisodes(epSeason)))} />
+                    <Button size="small" icon={<PlusOutlined />} aria-label="Next episode" onClick={() => setEpEpisode((e) => Math.min(e + 1, getMaxEpisodes(epSeason)))} />
                     <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{getMaxEpisodes(epSeason)}</Typography.Text>
                     <Button
                       size="small"
@@ -409,10 +410,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
             <div className="cast-scroll-container">
               {castList.slice(0, 15).map((actor) => (
                 <div key={actor.id} className="cast-scroll-item">
+                  <CardLink to={`/person/${actor.id}`} label={actor.name}>
                   <Card
                     hoverable
                     size="small"
-                    onClick={() => navigate(`/person/${actor.id}`)}
                     cover={
                       actor.profile_path ? (
                         <img
@@ -426,13 +427,13 @@ const TVShowDetails = ({ tvShow }: Props) => {
                       )
                     }
                     styles={{ body: { padding: "6px 8px" } }}
-                    aria-label={`View details for ${actor.name}`}
                   >
                     <Typography.Text strong style={{ fontSize: FONT_SIZE.caption, display: "block" }}>{actor.name}</Typography.Text>
                     <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>
                       {actor.roles?.[0]?.character || ""}
                     </Typography.Text>
                   </Card>
+                  </CardLink>
                 </div>
               ))}
             </div>

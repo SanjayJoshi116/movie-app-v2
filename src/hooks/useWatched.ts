@@ -32,6 +32,7 @@ export function useWatched() {
           posterPath: item.posterPath,
           voteAverage: item.voteAverage,
           watchedAt: item.watchedAt,
+          watchedTz: item.watchedTz ?? "",
           runtimeMinutes: item.runtimeMinutes,
           platform: item.platform,
         };
@@ -78,7 +79,7 @@ export function useWatched() {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
       // Newest first, matching the API order (-watched_at) — Home's Recently
       // Watched strip takes the first 8.
-      return [{ ...entry, watchedAt: data.watchedAt }, ...prev];
+      return [{ ...entry, watchedAt: data.watchedAt, watchedTz: data.watchedTz ?? "" }, ...prev];
     });
   }, [isAuthenticated]);
 

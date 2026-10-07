@@ -9,6 +9,7 @@ from .pagination import DefaultPagination
 from .bulk_import import MAX_BULK_ENTRIES, bulk_import, timestamp_or_now  # noqa: F401 (MAX re-exported for tests)
 from .serializers import BulkWatchedEntrySerializer, WatchedEntrySerializer
 from .signals import schedule_refresh
+from .timezones import request_tz_name, valid_tz_name
 
 
 @api_view(["GET", "POST"])
@@ -34,6 +35,8 @@ def watched_list(request):
             "platform": serializer.validated_data.get("platform"),
             "original_language": serializer.validated_data.get("original_language"),
             "release_year": serializer.validated_data.get("release_year"),
+            # The logging device's zone fixes this watch's day everywhere.
+            "watched_tz": request_tz_name(request),
         },
     )
     return Response(
@@ -70,6 +73,9 @@ def bulk_watched(request):
             poster_path=item.get("posterPath"),
             vote_average=0 if vote_average is None else vote_average,
             watched_at=timestamp_or_now(item.get("watchedAt")),
+            # A row's own zone only (never the importer's header): the original
+            # zone of a CSV row is unknown, and blank is the honest value.
+            watched_tz=valid_tz_name(item.get("watchedTz")),
             runtime_minutes=item.get("runtimeMinutes"),
             platform=item.get("platform"),
         )

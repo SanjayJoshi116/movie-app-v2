@@ -14,3 +14,4 @@ requests==2.33.0
 scikit-learn==1.8.0
 numpy==2.2.6
 gunicorn==23.0.0
+tzdata==2026.5  # IANA zone database for zoneinfo (per-request/per-entry time zones); Linux images may lack a system one

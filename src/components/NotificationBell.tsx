@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, Dropdown, Typography, Empty, Tooltip } from "antd";
+import type { DropdownProps } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { useNotifications } from "../hooks/useNotifications";
 import { PosterPlaceholder } from "./PosterPlaceholder";
@@ -12,9 +13,16 @@ const THUMB_STYLE = { width: 32, height: 48, aspectRatio: "2 / 3", borderRadius:
 
 interface Props {
   buttonClassName?: string;
+  // Chosen by the host, not by viewport width: the sidebar bell sits at the
+  // screen's left edge, the bottom-nav bell near the middle of a phone bar.
+  placement?: DropdownProps["placement"];
+  // antd measures overflow against the popup container, not the viewport. In
+  // the 64px sidebar rail that makes it flip topLeft to right-aligned, pushing
+  // the popup off the left edge, so the sidebar turns the adjustment off.
+  autoAdjustOverflow?: boolean;
 }
 
-function NotificationBell({ buttonClassName }: Props) {
+function NotificationBell({ buttonClassName, placement = "topLeft", autoAdjustOverflow = true }: Props) {
   const navigate = useNavigate();
   const { items, unreadCount, hasError, markSeen } = useNotifications();
   const [open, setOpen] = useState(false);
@@ -45,6 +53,8 @@ function NotificationBell({ buttonClassName }: Props) {
       open={open}
       onOpenChange={setOpenState}
       trigger={["click"]}
+      placement={placement}
+      autoAdjustOverflow={autoAdjustOverflow}
       getPopupContainer={(triggerNode) => (triggerNode.parentElement as HTMLElement) ?? document.body}
       popupRender={() => (
         <div

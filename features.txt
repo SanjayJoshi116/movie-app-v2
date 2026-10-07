@@ -1,10 +1,10 @@
-CINE DB — Feature List (v0.18.0)
+CINE DB — Feature List (v0.19.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
 - Live search across movies, TV, and people; recent-searches dropdown
 - People page has its own search box (in addition to the global search bar)
-- Advanced filters: year range, TMDB rating, language, runtime, sort order; filters belong to one media type and reset when you switch between Movies, TV and the Anime tabs
+- Advanced filters: year range, TMDB rating, language, runtime, sort order; filters belong to one media type and reset when you switch between Movies, TV and the Anime tabs; on phones they open from a Filters button in the bottom nav
 - Genre tag filtering: movie genres on movie pages, TV genres (e.g. "Sci-Fi & Fantasy") on TV/anime-TV; picking a genre always applies, even from a category tab
 - Browser Back / swipe-back from a detail page restores the browse page's category, loaded pages and scroll, same as the in-app Back button
 - Infinite scroll (Home, TV, Anime)
@@ -22,14 +22,15 @@ DETAIL PAGES
 - Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle; one-click "Next Episode" advance (handles season rollover, hides at the series finale)
 - Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button
 - Following page: search + sort followed people, "Recommended From People You Follow" section
-- In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from every person you follow, polled every 3 minutes; keyboard-accessible dropdown, visible "couldn't check for updates" state if a poll fails
+- In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from every person you follow, polled every 3 minutes; keyboard-accessible dropdown that stays fully on screen at every screen size, visible "couldn't check for updates" state if a poll fails
 
 LIBRARY
 - Watchlist & Watched lists, tied to account
+- Watch dates follow your own day: "today" uses this device's time zone, and each watch keeps the time zone it was logged in, so the Watched page, Stats heatmap and monthly charts never shift a day; a watch logged in another time zone shows a short zone label (e.g. 07-10-2026 · IST)
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Watchlist's watched status is shared live with the Watched list (mark watched from any page, the Watchlist card reflects it immediately); marking watched opens the same runtime/platform-capture modal used everywhere else
 - Search/sort/CSV export on Watchlist and Watched
-- Full backup (ZIP) and restore: watchlist, watched (runtime/platform), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import
+- Full backup (ZIP) and restore: watchlist, watched (runtime/platform/time zone), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import
 - Ratings (0.5-10) + written reviews; remove a rating from the rating dialog; a failed save keeps your stars and review
 - User Lists: create, rename, add/remove items, CSV export, CSV import; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
 - Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap; genre charts fill in for any library size; readable in both light and dark theme
@@ -39,21 +40,29 @@ LIBRARY
 AUTH
 - JWT login/register; stay signed in for the full 7-day session (silent token refresh, works with several tabs open)
 - Sign Out revokes the session on the server too, and clears everything account-related from the tab (cached recommendations, search results, filters, recent searches) so the next person to sign in sees none of it; theme and sidebar preferences are kept
-- Changing your password signs out every other device (this one stays signed in); completing a password reset signs out all devices
+- Changing your password signs out every other device at once, including their already-issued access and any refresh that was in flight (this one stays signed in); completing a password reset signs out all devices
 - Changing your account email asks for your current password, rejects an email already used by another account, and notifies your old address
 - Email-based password reset; reset links expire after 1 hour
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
 - Profile photo upload/remove (JPEG/PNG/WebP, 5MB max, checked by the image's actual content rather than its file name), shown wherever the avatar appears
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
 - Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors
+- Signed-in users who open the login, register or forgot-password page go straight on to where they were headed (no login-form flash); password-reset links still work while signed in
 
 UI/UX
 - Skeleton loaders (staggered fade-in), toast notifications (success only after the server confirms; double-clicks send one request, one toast)
 - Every page shows loading, an error with in-place Retry, empty, or content — a failed load never looks like an empty library; detail pages degrade per section and show "not found" for bad ids
 - Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent — Poppins font throughout, unified size scale: caption/body/emphasis/display
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale
+- Keyboard accessible: every poster card that opens a page is a real link (Tab, Enter, middle/Ctrl-click opens a new tab) with a visible focus outline in both themes; icon-only buttons have screen-reader labels
+- Unknown URLs show a "Page not found" page with a link back to Movies
 - Framer Motion page transitions
-- Installs as "CINE DB" (web app manifest + page description)
+- Installs as "CINE DB" with its own gold "C" app icon and favicon (web app manifest + page description)
 - Responsive across screen sizes: full sidebar (desktop, 992px+), icon-only collapsed rail (tablet, 768-991px), bottom nav (phone, under 768px); no fixed-width overflow on narrow phones (auth cards, filter-bar inputs)
-- Desktop sidebar has a manual collapse toggle (folds to the same icon rail tablet uses); preference remembered
+- Desktop sidebar has a manual collapse toggle (folds to the same icon rail tablet uses); preference remembered; in the rail, the footer controls sit in a compact 2-column icon grid
 - Sidebar stays pinned in place while scrolling; nav icons briefly flash their tooltip label on click, most useful on the icon-only tablet rail and phone bottom nav
+
+SECURITY & OPERATIONS
+- Production Docker stack runs the backend as an unprivileged user from the image only (no host-mounted code or migrations)
+- Content-Security-Policy, HSTS (behind HTTPS) and other security headers on every response
+- The TMDB API key is redacted from every server log line, and unexpected server errors are logged with a traceback in production

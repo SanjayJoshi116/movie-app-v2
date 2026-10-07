@@ -18,6 +18,7 @@ export interface BackupRow {
   posterPath: string | null;
   addedAt?: string;
   watchedAt?: string;
+  watchedTz?: string;
   runtimeMinutes?: number | null;
   platform?: string | null;
   userRating?: number;
@@ -183,6 +184,8 @@ export function parseBackupCSV(text: string): BackupRow[] {
     if (addedAt) row.addedAt = addedAt;
     const watchedAt = optional(cols, "watched_at");
     if (watchedAt) row.watchedAt = watchedAt;
+    const watchedTz = optional(cols, "watched_tz");
+    if (watchedTz) row.watchedTz = watchedTz;
     const runtime = optional(cols, "runtime_minutes");
     if (runtime !== undefined) {
       const n = parseInt(runtime, 10);

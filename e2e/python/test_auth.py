@@ -88,12 +88,12 @@ class TestLoginPage:
         page.get_by_role("button", name="Sign In").click()
         expect(page.locator(".ant-message-notice-content")).to_be_visible(timeout=8_000)
 
-    def test_login_already_authenticated_still_shows_form(self, page: Page):
-        """Public /login route stays accessible even when tokens are present."""
+    def test_login_already_authenticated_redirects_to_movies(self, page: Page):
+        """Signed-in users skip /login (see test_a11y_routing for the no-flash check)."""
         seed_auth(page)
         mock_base_django_routes(page)
         page.goto("/login")
-        expect(page.get_by_role("heading", name="Sign In")).to_be_visible()
+        expect(page).to_have_url("/movies")
 
 
 # ---------------------------------------------------------------------------

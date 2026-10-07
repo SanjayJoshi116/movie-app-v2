@@ -28,7 +28,6 @@ services:
       # key on the client address it appends to X-Forwarded-For.
       TRUSTED_PROXY_COUNT: "1"
     volumes:
-      - ./backend/userdata/migrations:/app/userdata/migrations
       - media_data:/app/media
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/health/\")'"]

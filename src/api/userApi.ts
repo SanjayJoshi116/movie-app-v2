@@ -1,6 +1,7 @@
 import axios from "axios";
 import { fetchAllPages } from "../utils/fetchAllPages";
 import type { MediaType } from "../types";
+import { deviceTimeZone } from "../utils/formatDate";
 
 const API_HOST = window.location.hostname;
 const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:8000/api`;
@@ -19,6 +20,9 @@ userApi.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // The server decides "today" (and logs new watches) in this device's zone.
+  const timeZone = deviceTimeZone();
+  if (timeZone) config.headers["X-Timezone"] = timeZone;
   return config;
 });
 
@@ -280,6 +284,7 @@ export interface BulkImportEntry {
   voteAverage?: number;
   addedAt?: string;
   watchedAt?: string;
+  watchedTz?: string;
   runtimeMinutes?: number | null;
   platform?: string | null;
   userRating?: number;

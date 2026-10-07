@@ -6,8 +6,9 @@
 # requirements-test.txt (Python 3.12):
 #   python -m venv .venv-c && .venv-c/bin/pip install -r requirements-test.txt
 #   .venv-c/bin/pip freeze > constraints.txt   (then restore this header)
-# colorama and tzdata are only pulled in on Windows; a constraint only applies
-# when something requires the package, so Linux/Docker installs ignore them.
+# colorama is only pulled in on Windows; a constraint only applies when
+# something requires the package, so Linux/Docker installs ignore it.
+# tzdata is a direct dependency (requirements.txt), so it installs everywhere.
 asgiref==3.12.1
 certifi==2026.7.22
 charset-normalizer==3.5.2

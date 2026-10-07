@@ -163,6 +163,7 @@ class WatchedEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
     voteAverage = FiniteFloatField(source="vote_average")
     watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
+    watchedTz = serializers.CharField(source="watched_tz", read_only=True)
     originalLanguage = serializers.CharField(
         source="original_language", allow_null=True, allow_blank=True, required=False, max_length=10
     )
@@ -184,12 +185,13 @@ class WatchedEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
             "posterPath",
             "voteAverage",
             "watchedAt",
+            "watchedTz",
             "originalLanguage",
             "releaseYear",
             "runtimeMinutes",
             "platform",
         )
-        read_only_fields = ("id", "watchedAt")
+        read_only_fields = ("id", "watchedAt", "watchedTz")
 
 
 class RatingEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
@@ -246,6 +248,10 @@ class BulkMediaEntrySerializer(BulkEntrySerializer):
 
 class BulkWatchedEntrySerializer(BulkMediaEntrySerializer):
     watchedAt = _past_timestamp()
+    # Validated as a zone at save time: an unknown name is stored blank, not
+    # rejected, so one bad cell can't fail a whole import. Over-length is still
+    # a 400, like every string longer than its column.
+    watchedTz = serializers.CharField(max_length=64, allow_null=True, allow_blank=True, required=False)
     runtimeMinutes = serializers.IntegerField(allow_null=True, required=False, min_value=0, max_value=INT32_MAX)
     platform = serializers.CharField(allow_null=True, allow_blank=True, required=False, max_length=100)
 

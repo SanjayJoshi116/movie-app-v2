@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- CINE DB app icon: the sidebar's compact "C" logo (Poppins 700, RATING_GOLD)
+       on the manifest theme_color. Glyph is an outlined path, so rendering needs
+       no font. Source for favicon.ico / logo192.png / logo512.png (see
+       docs/ARCHITECTURE.md for how to regenerate). -->
+  <rect width="512" height="512" rx="112" fill="#0d0f1a"/>
+  <path transform="translate(82.5 418.7) scale(0.4615 -0.4615)" fill="#f5c518" d="M386 710Q511 710 600.0 644.0Q689 578 719 464H531Q510 508 471.5 531.0Q433 554 384 554Q305 554 256.0 499.0Q207 444 207 352Q207 260 256.0 205.0Q305 150 384 150Q433 150 471.5 173.0Q510 196 531 240H719Q689 126 600.0 60.5Q511 -5 386 -5Q284 -5 203.5 40.5Q123 86 78.0 167.0Q33 248 33 352Q33 456 78.0 537.5Q123 619 203.5 664.5Q284 710 386 710Z"/>
+</svg>

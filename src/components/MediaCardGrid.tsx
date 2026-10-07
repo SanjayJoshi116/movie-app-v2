@@ -1,9 +1,9 @@
 import { Row, Col, Card, Typography } from "antd";
-import { useNavigate } from "react-router-dom";
 import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { SectionHeader } from "./SectionHeader";
 import { PosterPlaceholder } from "./PosterPlaceholder";
+import CardLink from "./CardLink";
 
 export interface MediaCardGridItem {
   id: number;
@@ -20,7 +20,6 @@ interface MediaCardGridProps {
 }
 
 export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCardGridProps) {
-  const navigate = useNavigate();
   if (!items || items.length === 0) return null;
 
   return (
@@ -29,10 +28,10 @@ export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCard
       <Row gutter={[12, 16]}>
         {items.slice(0, limit).map((item) => (
           <Col key={item.id} xs={8} sm={6} md={4} lg={3}>
+            <CardLink to={`/${mediaType}/${item.id}`} label={item.name}>
             <Card
               hoverable
               size="small"
-              onClick={() => navigate(`/${mediaType}/${item.id}`)}
               cover={
                 item.posterPath ? (
                   <img
@@ -52,6 +51,7 @@ export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCard
                 <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>{item.subtitle}</Typography.Text>
               )}
             </Card>
+            </CardLink>
           </Col>
         ))}
       </Row>

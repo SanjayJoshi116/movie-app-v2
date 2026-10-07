@@ -16,6 +16,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from .models import Profile
 from .serializers import (
@@ -61,8 +63,12 @@ def _tokens_for_user(user):
 def _revoke_all_refresh_tokens(user):
     """Blacklist every refresh token ever issued to user, rotated ones included.
 
-    Access tokens stay valid until they expire (stateless JWTs), so other
-    sessions end at their next refresh. Relies on simplejwt >= 5.5.0 recording
+    Defense in depth since fix-password-revoke-race: the primary guard is the
+    CHECK_REVOKE_TOKEN password claim, which SafeTokenRefreshSerializer and
+    JWTAuthentication check on every use, so a token this snapshot misses
+    still dies. This keeps the blacklist table consistent with what's revoked.
+
+    Relies on simplejwt >= 5.5.0 recording
     rotated refresh tokens as outstanding — older versions would miss them.
 
     Only live, not-yet-blacklisted tokens: expired ones already fail validation,
@@ -81,9 +87,24 @@ def _revoke_all_refresh_tokens(user):
 class SafeTokenRefreshSerializer(TokenRefreshSerializer):
     def validate(self, attrs):
         try:
+            self._check_password_claim(attrs["refresh"])
             return super().validate(attrs)
         except User.DoesNotExist:
             raise InvalidToken("No account found for this token.") from None
+
+    def _check_password_claim(self, raw):
+        """Reject a refresh token minted under a since-changed password.
+
+        Stock simplejwt checks CHECK_REVOKE_TOKEN's claim only on access tokens.
+        Without this, a refresh that passed the blacklist check just before a
+        password change could record its rotated token after the revoke snapshot
+        and keep rotating forever. Runs before super() so a stale token is never
+        rotated or recorded. A missing claim (pre-rollout token) is rejected too.
+        """
+        token = self.token_class(raw)
+        user = User.objects.get(**{jwt_settings.USER_ID_FIELD: token[jwt_settings.USER_ID_CLAIM]})
+        if token.get(jwt_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(user.password):
+            raise InvalidToken("Password changed; sign in again.")
 
 
 class SafeTokenRefreshView(TokenRefreshView):

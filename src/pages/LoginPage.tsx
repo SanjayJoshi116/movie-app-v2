@@ -3,6 +3,7 @@ import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { AxiosError } from "axios";
 import { useAuth } from "../context/AuthContext";
+import { postLoginPath } from "../utils/postLoginPath";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -11,9 +12,7 @@ export default function LoginPage() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
-  // Keep the query string and hash too (e.g. /search?tab=people), not just the path.
-  const fromLoc = (location.state as { from?: { pathname: string; search?: string; hash?: string } } | null)?.from;
-  const from = fromLoc ? `${fromLoc.pathname}${fromLoc.search ?? ""}${fromLoc.hash ?? ""}` : "/movies";
+  const from = postLoginPath(location.state);
 
   const onFinish = async (values: { username: string; password: string }) => {
     const username = values.username.trim();

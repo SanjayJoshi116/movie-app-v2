@@ -200,6 +200,7 @@ function WatchlistPage() {
               <LibraryItemCard
                 posterPath={item.posterPath}
                 title={item.title}
+                to={`/${item.type}/${item.id}`}
                 onOpen={() => {
                   sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
                   navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });

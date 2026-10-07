@@ -9,6 +9,7 @@ from rest_framework.throttling import UserRateThrottle
 
 from .models import NotificationCheckpoint
 from .social_views import _fetch_followed_people_credits
+from .timezones import local_today, request_tz
 
 NEW_RELEASE_WINDOW_DAYS = 30
 MAX_ITEMS = 30
@@ -27,9 +28,10 @@ def new_release_notifications(request):
     )
 
     results = _fetch_followed_people_credits(request.user)
-    today = timezone.now().date()
+    # "Today" and the last-check day are the requesting device's, not the server's.
+    today = local_today(request)
     cutoff = today - timedelta(days=NEW_RELEASE_WINDOW_DAYS)
-    last_seen_date = timezone.localtime(checkpoint.last_seen_at).date()
+    last_seen_date = checkpoint.last_seen_at.astimezone(request_tz(request)).date()
 
     items = []
     seen_ids = set()

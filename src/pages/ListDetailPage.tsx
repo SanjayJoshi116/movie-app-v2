@@ -221,6 +221,7 @@ function ListDetailPage() {
               <LibraryItemCard
                 posterPath={item.posterPath}
                 title={item.title}
+                to={`/${item.type}/${item.id}`}
                 onOpen={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: `/lists/${list.id}` } })}
                 tags={
                   <>

@@ -35,13 +35,15 @@ export interface WatchedEntry {
   posterPath: string | null;
   voteAverage: number;
   watchedAt: string;
+  /** IANA zone the watch was logged in; "" for older entries (shown in the device zone). */
+  watchedTz?: string;
   runtimeMinutes?: number | null;
   platform?: string | null;
   originalLanguage?: string | null;
   releaseYear?: number | null;
 }
 
-export type WatchedInput = Omit<WatchedEntry, "watchedAt">;
+export type WatchedInput = Omit<WatchedEntry, "watchedAt" | "watchedTz">;
 
 export type RatingsMap = Record<string, RatingEntry>;
 
@@ -99,6 +101,7 @@ export interface WatchedEntryDTO {
   posterPath: string | null;
   voteAverage: number;
   watchedAt: string;
+  watchedTz?: string;
   originalLanguage: string | null;
   releaseYear: number | null;
   runtimeMinutes?: number | null;

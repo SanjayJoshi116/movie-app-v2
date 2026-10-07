@@ -35,6 +35,9 @@ class WatchedEntry(models.Model):
     original_language = models.CharField(max_length=10, null=True, blank=True)
     release_year = models.IntegerField(null=True, blank=True)
     watched_at = models.DateTimeField(default=timezone.now, db_index=True)
+    # IANA zone the watch was logged in (decides its day on every device);
+    # blank for entries logged before zones were recorded. See timezones.py.
+    watched_tz = models.CharField(max_length=64, blank=True, default="")
     runtime_minutes = models.IntegerField(null=True, blank=True)
     platform = models.CharField(max_length=100, null=True, blank=True)
 
