@@ -1,4 +1,4 @@
-import { test, expect, mockAppApi } from "./fixtures";
+import { test, expect, mockAppApi, MOCK_USER } from "./fixtures";
 
 // Mocks for backend — tests run without a real Django server
 
@@ -69,7 +69,7 @@ test.describe("Login page", () => {
         json: {
           access: "fake-access-token",
           refresh: "fake-refresh-token",
-          user: { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "" },
+          user: MOCK_USER,
         },
       })
     );
@@ -82,6 +82,80 @@ test.describe("Login page", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
 
     await expect(page).toHaveURL("/movies");
+  });
+
+  test("shows the rate-limit message on 429", async ({ page }) => {
+    await page.route("**/api/auth/login/", (route) =>
+      route.fulfill({ status: 429, json: { detail: "Request was throttled." } })
+    );
+    await page.goto("/login");
+    await page.getByLabel("Username").fill("testuser");
+    await page.getByLabel("Password").fill("testpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await expect(page.locator(".ant-message-notice-content")).toContainText(
+      "Too many login attempts. Please wait a moment and try again.",
+      { timeout: 8_000 }
+    );
+  });
+
+  test("focuses the username field on load", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByLabel("Username")).toBeFocused();
+  });
+
+  test("submits the trimmed username", async ({ page }) => {
+    const bodies: { username: string }[] = [];
+    await page.route("**/api/auth/login/", (route) => {
+      bodies.push(route.request().postDataJSON());
+      return route.fulfill({ status: 400, json: { detail: "Invalid credentials." } });
+    });
+    await page.goto("/login");
+    await page.getByLabel("Username").fill("  testuser  ");
+    await page.getByLabel("Password").fill("testpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await expect(page.locator(".ant-message-notice-content")).toBeVisible({ timeout: 8_000 });
+    expect(bodies.map((b) => b.username)).toEqual(["testuser"]);
+  });
+
+  test("locks the form while the login request is in flight", async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route("**/api/auth/login/", async (route) => {
+      await held;
+      await route.fulfill({ status: 400, json: { detail: "Invalid credentials." } });
+    });
+    await page.goto("/login");
+    await page.getByLabel("Username").fill("testuser");
+    await page.getByLabel("Password").fill("testpass");
+    const submit = page.getByRole("button", { name: "Sign In" });
+    await submit.click();
+
+    await expect(page.getByLabel("Username")).toBeDisabled();
+    await expect(page.getByLabel("Password")).toBeDisabled();
+    await expect(submit).toBeDisabled();
+
+    release();
+    await expect(page.locator(".ant-message-notice-content")).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByLabel("Username")).toBeEnabled();
+    await expect(page.getByLabel("Password")).toBeEnabled();
+    await expect(submit).toBeEnabled();
+  });
+
+  test("returns to the full original location after login", async ({ page }) => {
+    await page.route("**/api/auth/login/", (route) =>
+      route.fulfill({ json: { access: "fake-access-token", refresh: "fake-refresh-token", user: MOCK_USER } })
+    );
+    await mockAppApi(page);
+
+    await page.goto("/search?q=nolan&tab=people");
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByLabel("Username").fill("testuser");
+    await page.getByLabel("Password").fill("testpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    await expect(page).toHaveURL("/search?q=nolan&tab=people");
+    await expect(page.locator(".ant-tabs-tab-active")).toHaveText("People");
+    await expect(page.getByText('No people found for "nolan"')).toBeVisible();
   });
 
   test("unauthenticated /movies redirects to /login", async ({ page }) => {

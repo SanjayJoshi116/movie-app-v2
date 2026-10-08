@@ -3,6 +3,63 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.20.0] - 2026-10-08
+
+Bug-audit release, part 5. Implements the five OpenSpec changes from the second audit (`docs/BUG_BACKLOG.md` items 11–15): `fix-session-sync`, `honest-tests`, `surface-failures-2`, `harden-backend-2` and `harden-deploy-2`, all archived under `openspec/changes/archive/`. Every backlog item is now closed.
+
+### ⚠️ Notes for deploy
+- **Docker: the database password moves to its own file.** Before the next `docker compose up`: `cp .env.db.example .env.db`, set `POSTGRES_PASSWORD` to the value currently in `.env.docker` (keep it the same, since the existing `pgdata` volume was initialized with it), then delete both `POSTGRES_PASSWORD` and `DB_PASSWORD` from `.env.docker`. Without `.env.db`, compose refuses to start and names the file. See README → Docker Setup → "Upgrading an existing deployment".
+- **New migration `0021_userrecommendationcache_refreshing_since`.** It's additive (one nullable column).
+- **Frontend dependencies changed:** run `npm ci`. axios 1.7.2 → 1.20.0, react-router-dom 6.24.1 → 6.30.6. `json2csv`, `file-saver`, `@types/file-saver` and `@testing-library/user-event` were removed, and `concurrently` and `@testing-library/*` moved to `devDependencies`.
+- **Node 22** is now declared (`.nvmrc`, `engines`). A newer Node only warns.
+- `TRUSTED_PROXY_COUNT` is now set from the environment in compose (default 1). Behind an extra proxy or TLS terminator, set it in the shell or the root `.env`.
+- The Docker checks for this release (`nginx -t`, the cache/404 curls, `docker compose config`) were waived on the dev machine (no Docker there). `test_nginx_conf.py` checks the config statically; verify the rest on first deploy.
+- Still open, accepted: two react-router advisories (GHSA-wrjc-x8rr-h8h6, GHSA-337j-9hxr-rhxg) that are fixed only in v7. One is SSR-only. The other needs an attacker-controlled navigation target, which the app never uses.
+
+### Fixed — sessions across tabs (`fix-session-sync`)
+- Each tab is bound to the account it shows. Signing out in another tab signs this one out, signing in as a different account in another tab reloads this one, and a profile update in another tab is adopted. Until the other tab's change arrives, the API client refuses to send a request with another account's token. Writes used to land in the wrong account.
+- Token refresh and logout have their own `token_refresh` throttle (60/min per IP) instead of the shared `anon: 300/day` bucket. About 12 users behind one NAT could exhaust that and get logged out.
+- Only a rejected refresh (`400`/`401`) ends the session. A `429`, `5xx`, timeout or network error fails the request and keeps you signed in.
+- A password rehash during a profile edit now reissues this session's tokens, so saving your profile can't sign you out.
+
+### Fixed — failures shown as failures (`surface-failures-2`)
+- Following, the Calendar and the "from people you follow" recommendations show an error with Retry when they fail to load, instead of an empty state. The profile dialog shows an "unknown" TMDB state instead of offering Connect when the status check fails.
+- The Calendar and the hero banner ignore responses for a filter or media type you've already left.
+- Register and the create/edit list dialogs submit once, even on a double-click.
+- Error messages never show an HTML error page or a raw network error. A network failure says "Can't reach the server. Check your connection and try again."
+- The sidebar avatar is a real "Edit profile" button, and Sign Out is labelled. List cards, Search results and Recommendations/Following cards open from the keyboard (poster links).
+- Lists show their creation date as your local day, and Stats' recently-watched dates use `dd-mm-yyyy`.
+- Calendar `.ics` export is standards-compliant (`DTSTAMP`, escaped titles, folded long lines).
+- Home and Anime infinite scroll stop at TMDB's 500-page limit instead of erroring.
+- The search term and tab are in the URL (`/search?q=…&tab=…`), so reload, a shared link or a sign-in round trip shows the same results.
+
+### Fixed — backend hardening (`harden-backend-2`)
+- Time-zone values that are tzdata directory names (`America`, `Etc`, `America/Argentina`) fall back to UTC instead of causing a 500 on Stats, notifications, mark-watched and watched imports.
+- Recommendation refreshes no longer write to the database from worker threads (each opened and leaked its own connection), and the refresh thread closes its connection when it ends.
+- A refresh during a TMDB outage keeps the previous recommendations instead of replacing them with empty ones for 12 hours.
+- The recommendations "updating" status is right whichever server process answers. It used to say "ready" while another worker was still refreshing. A refresh killed mid-run stops counting after 10 minutes.
+- A notifications poll fetches at most 40 uncached people within 15 seconds and caches each as it arrives. Hundreds of follows used to run past gunicorn's 30s timeout on every poll, so the worker was killed and nothing was ever cached. Large follow lists are now covered over consecutive polls.
+- Avatars get a new file name per upload, so a new photo shows at once instead of the cached old one. The old file is deleted only after the new one is saved, so a failed replace keeps your photo. Deleting your account deletes the photo too.
+- Disconnecting TMDB, or deleting your account while connected, revokes the session on TMDB's side (best-effort, never blocking).
+
+### Fixed — deploy and dependencies (`harden-deploy-2`)
+- A redeploy never leaves an open tab on a blank page: `index.html` is sent with `Cache-Control: no-cache`, and a missing old chunk is a 404 instead of `index.html` served as JavaScript. No security header was lost.
+- The database container receives only its password, not the app's secret key, TMDB key or mail credentials. The password is defined once, in `.env.db`.
+- Both `.dockerignore` files exclude every env file and editing copy (`.env.*`, `*.env.bak`) except the committed examples.
+- CI installs a pinned ruff (0.15.16) and builds the same CSP-safe bundle the image ships (`INLINE_RUNTIME_CHUNK=false`).
+
+### Security
+- **TMDB proxy calls carry the user's token**, so its rate limit applies per user, not per shared IP. A `401` on this public data is retried once without the token and never ends the session.
+- **Detail and person pages accept only a numeric id.** A crafted URL like `/movie/..%2F..%2Fwatchlist` used to make the TMDB proxy path request `/api/watchlist` instead. It now shows "Page not found" and fetches nothing.
+- **Exported CSVs can't run as spreadsheet formulas.** Cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'`, and the app's importers remove it again, so backups round-trip exactly and older backups import unchanged.
+- **A TMDB person homepage becomes a link only for `http`/`https` addresses.** A `javascript:` value is shown as text.
+
+### Tests (`honest-tests` and the changes above)
+- Tests that couldn't fail were fixed: `if locator.count() > 0:` guards, "network error" tests that only checked the page body, sleeps before asserting absence, and bare-array list mocks (Python mocks now reject them like the TS fixtures).
+- E2E mock records match the API's serializers, and `test_e2e_mock_shapes.py` pins them so they can't drift.
+- New coverage includes tab sync, the token-refresh throttle, load failures, double-submit, search URLs, invalid route ids, untrusted links, the nginx config, CSV neutralization, the TMDB client's token handling and every backend fix above. Each new test was shown to fail against a temporary break of the behavior it covers.
+- Found while testing: the refresh-status stamp wasn't cleared when a short refresh started and finished in the same clock tick (Windows), which left the status "updating" for up to 10 minutes. Fixed.
+
 ## [0.19.0] - 2026-10-07
 
 Bug-audit release, part 4. Implements the remaining six OpenSpec changes from `docs/BUG_BACKLOG.md`: `user-local-dates`, `a11y-routing`, `harden-docker`, `fix-nav-polish`, `harden-logging` and `fix-password-revoke-race`, all archived under `openspec/changes/archive/`. This closes items 0–10 of the first audit. A second full audit, run after these changes, logged items 11–15 in the backlog; none of them are fixed in this release.

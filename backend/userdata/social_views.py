@@ -1,5 +1,6 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from django.core.cache import cache
@@ -110,21 +111,28 @@ def _fetch_person_credits(person_id):
     return [{k: c[k] for k in _CREDIT_FIELDS if k in c} for c in data.get("cast", []) if isinstance(c, dict)]
 
 
-def _fetch_followed_people_credits(user, limit=None):
+def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seconds=None):
     """Fetch TMDB cast credits for a user's followed people (all of them, or the
     `limit` most recently followed). Returns [(FollowedPerson, cast_list)];
-    cast_list is [] for a person whose TMDB fetch failed, so callers never need
-    to special-case a failure separately from "no credits".
+    cast_list is [] for a person whose TMDB fetch failed (or wasn't fetched this
+    call), so callers never need to special-case a failure separately from
+    "no credits".
 
     Credits are cached per person (shared by every follower) for
-    PERSON_CREDITS_TTL. Failures are never cached, so the next call retries."""
+    PERSON_CREDITS_TTL, each as soon as it arrives. Failures are never cached,
+    so the next call retries. `max_fetch` caps how many uncached people one
+    call fetches (in followed order, so the next call's first uncached ones are
+    new people), and `budget_seconds` caps how long it waits for them. Fetches
+    still running at the deadline are abandoned: they only do HTTP."""
     followed = FollowedPerson.objects.filter(user=user).order_by("-followed_at", "-id")
     followed = list(followed[:limit] if limit is not None else followed)
     if not followed:
         return []
 
     cached = cache.get_many([_credits_key(fp.person_id) for fp in followed])
-    to_fetch = list({fp.person_id for fp in followed if _credits_key(fp.person_id) not in cached})
+    to_fetch = list(dict.fromkeys(fp.person_id for fp in followed if _credits_key(fp.person_id) not in cached))
+    if max_fetch is not None:
+        to_fetch = to_fetch[:max_fetch]
 
     def fetch(person_id):
         try:
@@ -134,10 +142,24 @@ def _fetch_followed_people_credits(user, limit=None):
             return person_id, None
 
     if to_fetch:
-        with ThreadPoolExecutor(max_workers=5) as ex:
-            fetched = {pid: cast for pid, cast in ex.map(fetch, to_fetch) if cast is not None}
-        cache.set_many({_credits_key(pid): cast for pid, cast in fetched.items()}, PERSON_CREDITS_TTL)
-        cached.update({_credits_key(pid): cast for pid, cast in fetched.items()})
+        deadline = time.monotonic() + budget_seconds if budget_seconds is not None else None
+        ex = ThreadPoolExecutor(max_workers=5)
+        futures = [ex.submit(fetch, pid) for pid in to_fetch]
+        try:
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            for future in as_completed(futures, timeout=remaining):
+                pid, cast = future.result()
+                if cast is not None:
+                    # On this thread: the production cache is DB-backed.
+                    cache.set(_credits_key(pid), cast, PERSON_CREDITS_TTL)
+                    cached[_credits_key(pid)] = cast
+        except TimeoutError:
+            logger.warning(
+                "Followed-people credits budget (%ss) ran out with %s of %s fetches unfinished",
+                budget_seconds, sum(not f.done() for f in futures), len(futures),
+            )
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
     return [(fp, cached.get(_credits_key(fp.person_id), [])) for fp in followed]
 

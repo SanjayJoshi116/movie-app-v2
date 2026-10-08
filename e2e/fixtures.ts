@@ -1,4 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
+import type { AuthUser } from "../src/types/domain";
 
 /**
  * Shared e2e fixtures. Specs import `test`/`expect` from here, not from
@@ -9,7 +10,12 @@ import { test as base, expect, type Page } from "@playwright/test";
  * adds wins over it.
  */
 
-export const MOCK_USER = { id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "" };
+// `satisfies` the app's own API types, so a renamed or missing field is a
+// type error (npm run typecheck covers e2e/) instead of a silently wrong mock.
+export const MOCK_USER = {
+  id: 1, username: "testuser", email: "t@t.com", first_name: "", last_name: "",
+  is_staff: false, avatar_url: null,
+} satisfies AuthUser;
 const MOCK_TOKENS = { access: "fake-access", refresh: "fake-refresh" };
 
 const EMPTY_TMDB_PAGE = { results: [], total_pages: 1, total_results: 0, page: 1 };

@@ -85,4 +85,55 @@ describe("useLists", () => {
     expect(mockDelete).toHaveBeenCalledTimes(1);
     expect(result.current.lists).toHaveLength(0);
   });
+
+  it("a double create with the same name sends one POST and makes one list", async () => {
+    let release!: () => void;
+    mockPost.mockImplementation((url: string) =>
+      url === "/lists/"
+        ? new Promise((resolve) => { release = () => resolve({ data: { ...listDTO, id: 9, name: "Horror" } }); })
+        : Promise.resolve({ data: {} })
+    );
+    const { result } = renderHook(() => useLists(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let a!: Promise<unknown>;
+    let b!: Promise<unknown>;
+    act(() => {
+      a = result.current.createList("Horror", "");
+      b = result.current.createList(" horror ", "");
+    });
+    await act(async () => { release(); await Promise.all([a, b]); });
+    expect(mockPost.mock.calls.filter(([url]) => url === "/lists/")).toHaveLength(1);
+    expect(result.current.lists.filter((l) => l.name === "Horror")).toHaveLength(1);
+  });
+
+  it("creates with different names are independent", async () => {
+    mockPost.mockImplementation(() => new Promise(() => {}));
+    const { result } = renderHook(() => useLists(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => {
+      void result.current.createList("Horror", "");
+      void result.current.createList("Comedy", "");
+    });
+    expect(mockPost.mock.calls.filter(([url]) => url === "/lists/")).toHaveLength(2);
+  });
+
+  it("a double update sends one PATCH", async () => {
+    let release!: () => void;
+    mockPatch.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve({ data: { ...listDTO, name: "Renamed" } }); })
+    );
+    const { result } = renderHook(() => useLists(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let a!: Promise<unknown>;
+    let b!: Promise<unknown>;
+    act(() => {
+      a = result.current.updateList(5, { name: "Renamed" });
+      b = result.current.updateList(5, { name: "Renamed" });
+    });
+    await act(async () => { release(); await Promise.all([a, b]); });
+    expect(mockPatch).toHaveBeenCalledTimes(1);
+    expect(result.current.lists[0]!.name).toBe("Renamed");
+  });
 });

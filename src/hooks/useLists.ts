@@ -52,13 +52,16 @@ export function useLists() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  const createList = useCallback(async (name: string, description: string): Promise<UserList | undefined> => {
-    if (!isAuthenticated) return undefined;
-    const { data } = await userApi.post<UserListDTO>("/lists/", { name, description });
-    const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
-    setLists((prev) => [...prev, created]);
-    return created;
-  }, [isAuthenticated]);
+  // Keyed by the normalized name: a double-click (or double Enter) on "create"
+  // gets the first request's result instead of making a second, identical list.
+  const createList = useCallback((name: string, description: string): Promise<UserList | undefined> =>
+    inflight.current.run(`create-${name.trim().toLowerCase()}`, async () => {
+      if (!isAuthenticated) return undefined;
+      const { data } = await userApi.post<UserListDTO>("/lists/", { name, description });
+      const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
+      setLists((prev) => [...prev, created]);
+      return created;
+    }), [isAuthenticated]);
 
   const deleteList = useCallback((id: number) => inflight.current.run(`list-${id}`, async () => {
     if (!isAuthenticated) return;
@@ -66,11 +69,13 @@ export function useLists() {
     setLists((prev) => prev.filter((l) => l.id !== id));
   }), [isAuthenticated]);
 
-  const updateList = useCallback(async (id: number, patch: { name?: string; description?: string }) => {
-    if (!isAuthenticated) return;
-    const { data } = await userApi.patch<UserListDTO>(`/lists/${id}/`, patch);
-    setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
-  }, [isAuthenticated]);
+  // Shares the list's slot with delete/clear: one write per list at a time.
+  const updateList = useCallback((id: number, patch: { name?: string; description?: string }) =>
+    inflight.current.run(`list-${id}`, async () => {
+      if (!isAuthenticated) return;
+      const { data } = await userApi.patch<UserListDTO>(`/lists/${id}/`, patch);
+      setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
+    }), [isAuthenticated]);
 
   const addToList = useCallback((listId: number, entry: WatchlistInput) =>
     inflight.current.run(`${listId}-${entry.type}-${entry.id}`, async () => {

@@ -13,6 +13,12 @@ from .timezones import local_today, request_tz
 
 NEW_RELEASE_WINDOW_DAYS = 30
 MAX_ITEMS = 30
+# One poll fetches at most this many uncached people, so a huge cold follow
+# list is covered over ceil(n / 40) polls instead of in one request.
+NOTIFICATIONS_MAX_FETCH = 40
+# Wall-clock cap on one poll's TMDB fetches. Must stay well under gunicorn's
+# --timeout (docker-entrypoint.sh); test_notifications pins the margin.
+NOTIFICATIONS_BUDGET_SECONDS = 15
 
 
 class NotificationsThrottle(UserRateThrottle):
@@ -27,7 +33,9 @@ def new_release_notifications(request):
         user=request.user, defaults={"last_seen_at": timezone.now()}
     )
 
-    results = _fetch_followed_people_credits(request.user)
+    results = _fetch_followed_people_credits(
+        request.user, max_fetch=NOTIFICATIONS_MAX_FETCH, budget_seconds=NOTIFICATIONS_BUDGET_SECONDS,
+    )
     # "Today" and the last-check day are the requesting device's, not the server's.
     today = local_today(request)
     cutoff = today - timedelta(days=NEW_RELEASE_WINDOW_DAYS)

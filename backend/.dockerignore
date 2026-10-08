@@ -2,8 +2,13 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
+# Every env file except the committed templates, including stray copies
+# (.env.local, .env.docker.bak, ...): none of them may end up in an image.
 .env
-.env.docker
+.env.*
+!.env.example
+!.env.db.example
+*.env.bak
 db.sqlite3
 **/__pycache__/
 .pytest_cache/

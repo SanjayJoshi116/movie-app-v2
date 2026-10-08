@@ -35,6 +35,7 @@ import { fetchStats, type StatsData } from "../api/userApi";
 import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL } from "../constants/ui";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { LoadError } from "../components/LoadError";
+import { formatDateDMY } from "../utils/formatDate";
 
 const { Title, Text } = Typography;
 
@@ -682,7 +683,8 @@ function StatsPage() {
                             key={i}
                             title={item.title}
                             posterPath={item.posterPath}
-                            badge={item.watchedAt}
+                            // Already the watch's local day (yyyy-mm-dd) from the API; display it dd-mm-yyyy.
+                            badge={formatDateDMY(item.watchedAt)}
                             mediaType={item.mediaType}
                           />
                         ))}

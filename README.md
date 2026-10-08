@@ -33,7 +33,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
-- **513 automated tests** — 123 Jest, 197 Django pytest, 27 Playwright (TS, ×2 viewports), 166 pytest-playwright — plus `tsc`, `eslint`, `ruff` and a `makemigrations --check`; all of it runs in CI on every push (`## Testing`)
+- **Four automated test suites**: Jest, Django pytest, Playwright (TS, ×2 viewports) and pytest-playwright, plus `tsc`, `eslint`, `ruff` and a `makemigrations --check`. All of it runs in CI on every push (`## Testing`)
 
 ---
 
@@ -83,12 +83,12 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 ## Features
 
 ### Discovery
-- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people; the People page also has its own search box
+- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people (the term and tab live in the URL, `/search?q=…&tab=…`, so reload, a shared link or a sign-in round trip shows the same results); the People page also has its own search box
 - **Hero Banner** — Trending title of the week as a full-width backdrop with title, overview, rating, and direct link
 - **Recent Searches** — Search history dropdown (last 5 queries)
 - **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies
 - **Genre Tags** — Click any genre to filter results
-- **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll
+- **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll (capped at TMDB's 500-page limit)
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
 
 ### Detail Pages
@@ -98,26 +98,28 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
 - **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time
-- **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links
-- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section
+- **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything
+- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section; a failed load shows an error with Retry instead of "not following anyone"
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
 - **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
-- **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export
+- **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed
-- **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
+- **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); watched list refreshes immediately after import
 - **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, and every list (names, descriptions, empty lists) plus a `manifest.json`; importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section. Older v1 backups still import
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size
-- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land
-- **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`) for Google Calendar / Apple Calendar (`/calendar`)
+- **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them
+- **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
 
 ### Auth
 - **Login / Register** — JWT-based auth; tokens stored in `localStorage`. Signed-in users opening `/login`, `/register` or `/forgot-password` are sent straight on (no form flash); unknown URLs show a "Page not found" page instead of silently redirecting
+- **Tabs Follow the Signed-In Account** — Signing out in one tab signs out the others; signing in as a different account in another tab reloads this one, and a request is never sent with another account's token in between. Only a rejected token refresh ends the session: a busy (429) or failing (5xx/network) server keeps you signed in. Token refresh and logout have their own rate limit, so many users behind one NAT don't share one bucket
 - **Password Reset** — Email-based: enter your account email, receive a reset link, set a new password via the link
 - **Password Change Signs Out Other Devices** — Tokens are bound to the current password. Changing it (or completing a reset) ends every other session at once, including its already-issued access token and any refresh that was in flight. The device that made the change stays signed in
-- **Profile Photo** — Upload/remove a JPEG/PNG/WebP avatar (5MB max) from the Edit Profile modal; replaces the initials avatar in the sidebar/bottom nav everywhere
+- **Profile Photo** — Upload/remove a JPEG/PNG/WebP avatar (5MB max) from the Edit Profile modal; replaces the initials avatar in the sidebar/bottom nav everywhere. Each upload gets a new URL, so a new photo shows at once; a replaced, removed or deleted-account photo is no longer served, and a failed replace keeps the current one
+- **TMDB Connection** — Disconnecting TMDB, or deleting your account while connected, also revokes the session on TMDB's side (best-effort; a TMDB outage never blocks either)
 
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
@@ -296,6 +298,8 @@ src/
 │   │                            #   Home/Anime/People/Search; error + retry(), drops stale-query responses
 │   ├── useToast.ts              # Memoized App.useApp() toast wrapper; identical messages collapse
 │   ├── useLocalStorage.ts       # Generic localStorage hook
+│   ├── useValidId.ts            # `:id` route param as a TMDB id (positive int ≤ INT32_MAX) or null;
+│   │                            #   detail/person pages show not-found instead of building a proxy path
 │   ├── useRecentSearches.ts     # Last 5 searches
 │   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
 │                                #   used by Sidebar.tsx and BottomNav.tsx
@@ -324,9 +328,13 @@ src/
 │   ├── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
 │   └── NotFoundPage.tsx         # Any unknown path — "Page not found" + link to Movies (URL kept)
 ├── utils/
-│   ├── export.ts                # downloadCSV / downloadJSON helpers (Blob + URL.createObjectURL)
+│   ├── export.ts                # downloadCSV / downloadJSON helpers; CSV cells neutralized against formulas
 │   ├── backup.ts                # Backup ZIP v2 build/parse (manifest, ratings, lists, watched_tz column); v1-compatible import
-│   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection)
+│   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection),
+│   │                            #   strips export.ts's formula-neutralizing `'`
+│   ├── safeUrl.ts               # safeHttpUrl(): third-party URL → link target only if http(s)
+│   ├── ics.ts                   # Calendar .ics builder (DTSTAMP, text escaping, 75-octet folding)
+│   ├── tmdbPages.ts             # Caps TMDB total_pages at its 500-page limit
 │   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations
 │   ├── settled.ts               # settledData()/isNotFound() helpers for Promise.allSettled pages
 │   ├── postLoginPath.ts         # Where to go after sign-in (state.from path+query+hash, else /movies);
@@ -363,7 +371,7 @@ src/
 
 ### Prerequisites
 
-- Node.js 22 LTS
+- Node.js 22 LTS (`.nvmrc`; `package.json` `engines`, same as CI and the Docker image)
 - Python 3.12 (Anaconda recommended)
 - PostgreSQL
 - A free [TMDB API key](https://developer.themoviedb.org/docs/getting-started)
@@ -473,11 +481,15 @@ FRONTEND_URL=http://localhost:3000
 
 All three services (frontend, backend, database) run together via Docker Compose.
 
-1. Create `.env.docker` in the project root:
+1. Create `.env.db` from the template and set the database password. It's the only file the `db` container reads, and the backend reads the same password from it:
+
+```bash
+cp .env.db.example .env.db   # then fill in POSTGRES_PASSWORD=...
+```
+
+2. Create `.env.docker` in the project root (no password here: it lives only in `.env.db`):
 
 ```
-POSTGRES_PASSWORD=your_db_password
-DB_PASSWORD=your_db_password
 DB_NAME=cinedb
 DB_USER=postgres
 DB_HOST=db
@@ -497,15 +509,24 @@ EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
 ```
 
-2. Build and start all services:
+3. Build and start all services (no extra flags; compose reads both files itself):
 
 ```bash
 docker compose up --build
 ```
 
-The app will be available at `http://localhost`.
+The app will be available at `http://localhost`. If `.env.db` is missing, compose refuses to start and names the file.
 
 ### Upgrading an existing deployment
+
+**Database password moved to `.env.db`** (one-time, before the next `docker compose up`):
+
+1. `cp .env.db.example .env.db` and set `POSTGRES_PASSWORD` to the value currently in `.env.docker`. Keep the same value: the existing `pgdata` volume was initialized with it.
+2. Delete both `POSTGRES_PASSWORD` and `DB_PASSWORD` from `.env.docker`.
+
+After that, `docker compose up` is unchanged. The `db` container no longer receives the app's other secrets (Django and JWT keys, TMDB key, mail password).
+
+**Non-root backend:**
 
 The backend container now runs as an unprivileged `app` user (uid 10001) and no longer bind-mounts `backend/userdata/migrations` from the host. Before the first `docker compose up --build` after upgrading:
 
@@ -552,7 +573,7 @@ Nginx proxies `/api/*` straight to the `backend` service (which itself proxies T
 
 The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice.
 
-> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY` or an empty/wildcard `ALLOWED_HOSTS`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` sets `TRUSTED_PROXY_COUNT=1` for the bundled nginx; if you put another proxy/TLS terminator in front, raise it to match.
+> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY` or an empty/wildcard `ALLOWED_HOSTS`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` defaults `TRUSTED_PROXY_COUNT` to 1 for the bundled nginx. If you put another proxy/TLS terminator in front, raise it to match: `TRUSTED_PROXY_COUNT=2 docker compose up -d`, or set it in the root `.env` (compose reads that file for `${...}` values).
 
 > **HTTPS and security headers:** nginx sends a Content-Security-Policy on every response, and sends `Strict-Transport-Security` only when the request carries `X-Forwarded-Proto: https`. Make sure your TLS terminator sets that header (most do by default); a plain-HTTP LAN deployment never gets HSTS. If you add a new external origin to the app (an image host, an embed, a font), add it to the CSP in `nginx.conf` too, or browsers will block it.
 
@@ -560,7 +581,7 @@ The Docker Compose setup above is a complete production stack (nginx + React bui
 
 ## Testing
 
-### Unit tests — Jest (157 tests, 22 suites)
+### Unit tests — Jest
 
 Covers core hook and context logic (including load/error states, in-flight dedupe and stale-page discard), the authenticated API client's session handling, bulk-import chunking, and the backup/CSV round-trip. Hooks are tested with mocked `AuthContext` and `userApi`; the API client tests run against an in-memory fake server (rotating refresh tokens) — no backend required.
 
@@ -573,28 +594,36 @@ src/hooks/__tests__/
 ├── useWatched.test.ts
 ├── useRatings.test.ts
 ├── useLists.test.ts
+├── useToast.test.tsx            # Memoized, identical messages deduped by key
 └── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch)
 
 src/context/__tests__/
 ├── AppContext.test.tsx
 ├── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
+├── AuthContext.sync.test.tsx     # Other tab logs out / signs in as someone else / updates the profile
 └── FollowedPeopleContext.test.tsx # Lazy fetch, state shared across consumers
 
 src/api/__tests__/
 ├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
                                   #   logout during refresh, retry-on-500 for safe methods only,
                                   #   X-Timezone header sent (omitted if Intl fails)
-└── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
+├── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
+└── tmdb.test.ts                  # Token attached; a 401 retries once without it; never logs out
 
 src/utils/__tests__/
+├── apiError.test.ts              # Object bodies only; HTML/string bodies → fallback; network → connection message
 ├── backup.test.ts                # Backup v2 build/parse, v1 compatibility
 ├── browseFilters.test.ts         # Genres per media type, active-filter detection, scopes
 ├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
+├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
+├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
 ├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
-└── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
+├── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
+├── safeUrl.test.ts               # http(s) kept; javascript:/data:/relative rejected
+└── tmdbPages.test.tsx            # TMDB's 500-page cap
 
 src/components/__tests__/
 └── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
@@ -604,7 +633,7 @@ src/components/__tests__/
 npm test
 ```
 
-### Unit tests — pytest (Django, 226 tests)
+### Unit tests — pytest (Django)
 
 Covers auth, sessions and account security (including password-bound tokens), log redaction, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
@@ -615,24 +644,31 @@ backend/userdata/tests/
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
 ├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
 ├── test_logging.py                 # TMDB key redacted from every logger; prod 500s logged, 4xx quiet
-├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images)
-├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS refused
+├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images),
+│                                   #   versioned names, old file deleted on commit, failed replace keeps the old photo
+├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS refused, DB password fallback
+├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache
 ├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
-├── test_local_dates.py            # X-Timezone parsing/fallback, CORS preflight, watched_tz storage, local stats/notification days
+├── test_local_dates.py            # X-Timezone parsing/fallback (incl. tzdata directory names), CORS preflight,
+│                                  #   watched_tz storage, local stats/notification days
 ├── test_throttle_identity.py       # Spoofed X-Forwarded-For, shared-cache counters under load
+├── test_session_throttle.py        # Refresh/logout on their own token_refresh scope, not anon 300/day
 ├── test_health.py                  # Health check never throttled
-├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout
-├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to
-├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors
+├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout, per-user throttle
+├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke
+├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
+│                                   #   cache DB access off worker threads, outage guard, cross-process status
 ├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
-├── test_notifications.py           # New-release notifications (every followed person, credits cache)
+├── test_notifications.py           # New-release notifications (every followed person, credits cache),
+│                                   #   40-person/15s poll budget pinned under gunicorn's timeout
 ├── test_metadata_backfill.py       # One backfill per user, 404 settled, failures back off
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
 ├── test_followed_people.py         # Follow/unfollow, ownership
 ├── test_episode_progress.py        # Episode progress CRUD, ownership
 ├── test_profile.py                 # Profile GET/PATCH
-├── test_dependency_versions.py     # Installed Django major.minor matches requirements.txt
+├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins
+├── test_e2e_mock_shapes.py         # Python e2e mock records match the serializers and a real /api/stats/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings: create-only, timestamps, all-or-nothing
@@ -645,25 +681,35 @@ pip install -r backend/requirements-test.txt -c backend/constraints.txt
 pytest backend/
 ```
 
-### E2E tests — Playwright (38 tests, 2 projects)
+### E2E tests — Playwright (2 projects)
 
-Covers auth flows, movie browsing, search, watchlist operations, and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required; specs import `test`/`expect` from `e2e/fixtures.ts`, whose strict catch-all fails a test that makes an unmocked API call. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
+Covers auth flows, movie browsing, search, watchlist operations, notifications, failed-write feedback, keyboard/link accessibility and responsive layout behavior. All API calls are mocked via Playwright route interception — no backend required; specs import `test`/`expect` from `e2e/fixtures.ts`, whose strict catch-all fails a test that makes an unmocked API call. Runs against both a `chromium` (Desktop Chrome) and `mobile-chrome` (Pixel 5) project. The React dev server starts automatically.
 
 ```
 e2e/
-├── auth.spec.ts        # Login, register, forgot password, redirect guards
-├── movies.spec.ts      # Movie/TV browse, category buttons, search, detail navigation
-├── watchlist.spec.ts   # Empty state, add/remove, export CSV, watched list
-└── responsive.spec.ts  # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
-                         #   bottom-nav no-overflow at 320px, notification popup on-screen +
-                         #   anchored at 7 viewport/page combos, phone Filters button
+├── auth.spec.ts           # Login (incl. 429, trim, autofocus, locked in flight, return URL),
+│                           #   register, forgot password, redirect guards
+├── movies.spec.ts         # Movie/TV browse, category buttons, search, detail navigation
+├── watchlist.spec.ts      # Empty state, add/remove, export CSV, watched list
+├── notifications.spec.ts  # Both bells share one poll; unread shown until close marks seen
+├── write-feedback.spec.ts # Failed clear/follow/rating save leave the UI as it was; unfollow
+│                           #   from Following
+├── accessibility.spec.ts  # Ctrl/Cmd-click opens a new tab; light-theme focus outline
+├── load-failures.spec.ts  # Following/Calendar/profile TMDB-status failures shown, not empty states
+├── double-submit.spec.ts  # Register and list create/edit submit once
+├── search-url.spec.ts     # Search term and tab survive reload and a sign-in round trip
+├── route-ids.spec.ts      # Invalid/traversal ids show not-found and request nothing
+├── untrusted-links.spec.ts # A javascript: TMDB homepage is never a link
+└── responsive.spec.ts     # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
+                            #   bottom-nav no-overflow at 320px, notification popup on-screen +
+                            #   anchored at 7 viewport/page combos, phone Filters button
 ```
 
 ```bash
 npx playwright test
 ```
 
-### E2E tests — pytest-playwright (176 tests)
+### E2E tests — pytest-playwright
 
 Broader-coverage E2E suite in Python, one file per feature area. Same approach as the TS suite — `page.route()` mocks every network call, so only the React dev server (`http://localhost:3000`) needs to be running.
 
@@ -673,14 +719,14 @@ e2e/python/
 ├── test_a11y_routing.py # Keyboard card links, person-card Follow, 404 page, signed-in auth-page redirect (9)
 ├── test_auth.py       # Login, register, password reset, redirect guards (29)
 ├── test_browse.py     # Movie/TV browse, categories, filters, browser-Back restore (18)
-├── test_detail.py     # Movie/TV detail pages, cast, recommendations (17)
+├── test_detail.py     # Movie/TV detail pages, cast, recommendations (19)
 ├── test_lists.py      # User lists CRUD + CSV export (16)
 ├── test_local_dates.py # Watched dates in the logged zone + label, X-Timezone sent (London browser) (1)
 ├── test_profile.py    # Profile edit, password change, TMDB connect (11)
 ├── test_ratings.py    # Rate + review flow (11)
 ├── test_recommendations.py # For You failed load → in-place Retry (3)
 ├── test_search.py     # Live search across movies/TV/people (7)
-├── test_stats.py      # Stats dashboard charts, error + Retry (19)
+├── test_stats.py      # Stats dashboard charts, error + Retry (21)
 ├── test_watched.py    # Watched list CRUD, CSV import/export (16)
 └── test_watchlist.py  # Watchlist CRUD, sort, export (19)
 ```

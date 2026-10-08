@@ -2,7 +2,7 @@ from django.urls import path
 from . import views
 from rest_framework_simplejwt.views import TokenBlacklistView
 
-from .auth_views import SafeTokenRefreshView
+from .auth_views import SafeTokenRefreshView, TokenSessionThrottle
 from .recommendations import personalized_recommendations, recommendations_for_you
 from .tmdb_proxy_views import tmdb_proxy
 from .notifications_views import new_release_notifications, mark_notifications_seen
@@ -21,7 +21,7 @@ urlpatterns = [
     path("auth/token/refresh/", SafeTokenRefreshView.as_view()),
     # Blacklists the posted refresh token. Stock view is safe as-is: a token
     # whose user was deleted is handled (user=None), not a 500.
-    path("auth/logout/", TokenBlacklistView.as_view()),
+    path("auth/logout/", TokenBlacklistView.as_view(throttle_classes=(TokenSessionThrottle,))),
     path("auth/profile/", views.profile),
     path("auth/avatar/", views.avatar),
     path("auth/delete-account/", views.delete_account),

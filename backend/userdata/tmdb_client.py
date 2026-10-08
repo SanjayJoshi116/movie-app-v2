@@ -1,7 +1,10 @@
+import logging
 import os
 
 import requests
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 # api.tmdb.org is TMDB's official alternate API host. Some network paths reset
 # roughly half of TLS handshakes to api.themoviedb.org (SNI-based filtering)
@@ -86,11 +89,25 @@ def _post(path, body=None, params=None):
     return r.json()
 
 
-def _delete(path, params=None):
+def _delete(path, params=None, json=None):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.delete(f"{TMDB_BASE}{path}", params=p, timeout=10)
+    r = requests.delete(f"{TMDB_BASE}{path}", params=p, json=json, timeout=10)
     r.raise_for_status()
     return r.json()
+
+
+def revoke_tmdb_session(user_id, session_id):
+    """Ask TMDB to delete a session (best-effort). Returns whether it succeeded.
+
+    A failure is logged by exception type only: str(e) carries the request
+    URL with the api_key, and the session id is a credential too.
+    """
+    try:
+        _delete("/authentication/session", json={"session_id": session_id})
+        return True
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("TMDB session revoke failed for user %s (%s)", user_id, type(e).__name__)
+        return False
 
 
 def get_request_token():

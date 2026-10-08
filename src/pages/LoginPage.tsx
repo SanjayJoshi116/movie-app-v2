@@ -4,6 +4,7 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { AxiosError } from "axios";
 import { useAuth } from "../context/AuthContext";
 import { postLoginPath } from "../utils/postLoginPath";
+import { CONNECTION_ERROR } from "../utils/apiError";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -28,7 +29,7 @@ export default function LoginPage() {
       } else if (status === 400 || status === 401) {
         message.error("Invalid username or password.");
       } else {
-        message.error("Can't reach the server. Check your connection and try again.");
+        message.error(CONNECTION_ERROR);
       }
       setTimeout(() => form.getFieldInstance("password")?.focus(), 0);
     } finally {
@@ -50,7 +51,9 @@ export default function LoginPage() {
             <Input.Password size="large" autoComplete="current-password" disabled={loading} />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={loading}>
+            {/* disabled as well as loading: login-page spec locks the button, and
+                antd's loading state alone isn't exposed as disabled. */}
+            <Button type="primary" htmlType="submit" block size="large" loading={loading} disabled={loading}>
               Sign In
             </Button>
           </Form.Item>

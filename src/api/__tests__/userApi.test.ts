@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import userApi, { clearSession, saveSessionCache } from "../userApi";
+import userApi, { bindSessionUser, clearSession, saveSessionCache } from "../userApi";
 
 // A tiny fake Django: rotating refresh tokens (old one dies on use, like
 // ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION), Bearer-checked endpoints,
@@ -12,6 +12,7 @@ type Server = {
   gates: Record<string, Promise<void>>;
   failFirst: Record<string, number>; // path -> status to return on its first hit
   onRefresh?: () => void; // runs when a refresh request reaches the server (simulate other tabs)
+  refreshFailure?: number | "network"; // refresh fails this way (transient) instead of rotating
 };
 
 let server: Server;
@@ -32,6 +33,8 @@ async function fakeAdapter(config: InternalAxiosRequestConfig): Promise<AxiosRes
   if (path === "/auth/token/refresh/") {
     server.refreshCalls += 1;
     server.onRefresh?.();
+    if (server.refreshFailure === "network") throw new AxiosError("Network Error", "ERR_NETWORK", config);
+    if (server.refreshFailure) return reply(config, server.refreshFailure);
     const { refresh } = JSON.parse(config.data);
     if (!server.refreshTokens.delete(refresh)) return reply(config, 401);
     const next = `refresh-${++seq}`;
@@ -69,6 +72,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  bindSessionUser(null);
   userApi.defaults.adapter = realUserAdapter;
   axios.defaults.adapter = realGlobalAdapter;
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
@@ -104,6 +108,45 @@ describe("token refresh", () => {
     expect(localStorage.getItem("cinedb_access")).toBeNull();
     expect(localStorage.getItem("cinedb_user")).toBeNull();
     expect(sessionStorage.length).toBe(0);
+  });
+});
+
+describe("transient refresh failures", () => {
+  it.each([429, 503, "network"] as const)("a refresh failing with %s keeps the session", async (failure) => {
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
+    server.refreshFailure = failure;
+    expireAccess();
+    await expect(userApi.get("/thing/")).rejects.toBeTruthy();
+    expect(window.location.href).not.toContain("/login");
+    expect(localStorage.getItem("cinedb_access")).toBe("access-0");
+    expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-0");
+    expect(localStorage.getItem("cinedb_user")).not.toBeNull();
+
+    // Once the server recovers, the next 401 refreshes again and succeeds.
+    server.refreshFailure = undefined;
+    await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
+    expect(server.refreshCalls).toBe(2);
+  });
+});
+
+describe("tab bound to the account it shows", () => {
+  it("refuses to send a request once storage holds a different account", async () => {
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 2 })); // another tab signed in as B
+    bindSessionUser(1); // this tab still shows A
+    await expect(userApi.post("/watched/", { mediaId: 550 })).rejects.toBeTruthy();
+    expect(server.hits["/watched/"]).toBeUndefined();
+  });
+
+  it("refuses once the other tab signed out", async () => {
+    bindSessionUser(1);
+    await expect(userApi.get("/thing/")).rejects.toBeTruthy(); // no cinedb_user stored
+    expect(server.hits["/thing/"]).toBeUndefined();
+  });
+
+  it("sends normally for the bound account", async () => {
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
+    bindSessionUser(1);
+    await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
   });
 });
 

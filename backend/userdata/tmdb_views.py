@@ -68,8 +68,11 @@ def tmdb_auth_status(request):
 def tmdb_disconnect(request):
     try:
         profile = request.user.tmdb_profile
+    except TMDBProfile.DoesNotExist:
+        return Response({"connected": False})
+    if profile.session_id:
+        # Best-effort: a TMDB failure is logged and never blocks the disconnect.
+        tmdb_client.revoke_tmdb_session(request.user.id, profile.session_id)
         profile.session_id = ""
         profile.save()
-    except TMDBProfile.DoesNotExist:
-        pass
     return Response({"connected": False})

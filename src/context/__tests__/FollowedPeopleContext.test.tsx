@@ -79,4 +79,66 @@ describe("FollowedPeopleProvider", () => {
     expect(screen.getByTestId("b")).toHaveTextContent("Tom Hanks");
     expect(screen.getByTestId("b")).not.toHaveTextContent("Brad Pitt");
   });
+
+  it("a failed load sets error instead of an empty list, and retry() refetches", async () => {
+    let a!: FollowedPeopleContextType;
+    mockGet.mockRejectedValueOnce(new Error("down"));
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(a.error).toBe(true));
+    expect(a.loading).toBe(false);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+
+    act(() => a.retry());
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+    expect(a.error).toBe(false);
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed reload keeps the list it already had", async () => {
+    let a!: FollowedPeopleContextType;
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+    mockGet.mockRejectedValueOnce(new Error("down"));
+    act(() => a.retry());
+    await waitFor(() => expect(a.error).toBe(true));
+    expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt");
+  });
+
+  it("a double-click follow sends one request and both settle with its outcome", async () => {
+    let a!: FollowedPeopleContextType;
+    let release!: () => void;
+    mockFollow.mockImplementation(
+      (personId: number, name: string) =>
+        new Promise((resolve) => {
+          release = () => resolve({ data: { id: personId, personId, name, profilePath: null } });
+        })
+    );
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = a.follow(31, "Tom Hanks", null);
+      second = a.follow(31, "Tom Hanks", null);
+    });
+    await act(async () => {
+      release();
+      await Promise.all([first, second]);
+    });
+    expect(mockFollow).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt,Tom Hanks");
+  });
+
+  it("follows of different people are independent", async () => {
+    let a!: FollowedPeopleContextType;
+    mockFollow.mockImplementation(() => new Promise(() => {})); // both stay in flight
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+    act(() => {
+      void a.follow(31, "Tom Hanks", null);
+      void a.follow(32, "Meryl Streep", null);
+    });
+    expect(mockFollow).toHaveBeenCalledTimes(2);
+  });
 });

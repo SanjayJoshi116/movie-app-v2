@@ -26,6 +26,7 @@ import { stashReturnState } from "../utils/browseReturnState";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants, POSTER_THUMB_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { pageableTotal } from "../utils/tmdbPages";
 
 const MOVIE_CATEGORIES = [
   { key: "discover", label: "Discover" },
@@ -129,7 +130,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
       return {
         results: response.data.results as (TMDBMovieSummary | TMDBTVSummary)[],
-        totalPages: response.data.total_pages,
+        totalPages: pageableTotal(response.data.total_pages),
       };
     },
     [isMovie, mediaType, searchTerm, genreString, hasFilters, activeCategory, externalFilters, externalSortBy, includeAdult]

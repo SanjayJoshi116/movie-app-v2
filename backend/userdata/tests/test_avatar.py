@@ -1,7 +1,13 @@
 import io
+import shutil
+import tempfile
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.files.storage import FileSystemStorage, default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import DatabaseError
+from django.test import override_settings
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -59,7 +65,8 @@ class AvatarUploadTests(APITestCase):
         self.user.refresh_from_db()
         self.client.force_authenticate(user=self.user)
 
-        res = self.client.delete("/api/auth/avatar/")
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.delete("/api/auth/avatar/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIsNone(res.data["avatar_url"])
         profile.refresh_from_db()
@@ -72,17 +79,90 @@ class AvatarUploadTests(APITestCase):
         first_name = profile.avatar.name
         storage = profile.avatar.storage
 
-        self.client.post(
-            "/api/auth/avatar/",
-            {"avatar": make_image_file(name="second.jpg", fmt="JPEG", content_type="image/jpeg")},
-            format="multipart",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                "/api/auth/avatar/",
+                {"avatar": make_image_file(name="second.jpg", fmt="JPEG", content_type="image/jpeg")},
+                format="multipart",
+            )
         profile.refresh_from_db()
         second_name = profile.avatar.name
 
         self.assertNotEqual(first_name, second_name)
         self.assertFalse(storage.exists(first_name))
         self.assertTrue(storage.exists(second_name))
+
+
+class AvatarLifecycleTests(APITestCase):
+    """Replaced, removed and orphaned avatar files, against a throwaway MEDIA_ROOT."""
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.user = User.objects.create_user(username="ivy", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def _upload(self, color="red"):
+        buf = io.BytesIO()
+        Image.new("RGB", (20, 20), color=color).save(buf, format="PNG")
+        f = SimpleUploadedFile("avatar.png", buf.getvalue(), content_type="image/png")
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+        self.user.refresh_from_db()  # drop the cached profile relation (see test_delete_clears_avatar)
+        return res
+
+    def _stored_files(self):
+        _, files = default_storage.listdir("avatars")
+        return files
+
+    def test_same_format_reupload_gets_new_url_and_drops_old_file(self):
+        # Three uploads: with a fixed name, storage only suffixes the second
+        # (the first still exists then); the third reused the first's URL.
+        urls = [self._upload(color).data["avatar_url"] for color in ("red", "green")]
+        first_name = Profile.objects.get(user=self.user).avatar.name
+        second = self._upload("blue")
+        second_name = Profile.objects.get(user=self.user).avatar.name
+
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        urls.append(second.data["avatar_url"])
+        self.assertEqual(len(set(urls)), 3, urls)
+        self.assertFalse(default_storage.exists(first_name))
+        self.assertTrue(default_storage.exists(second_name))
+        self.assertEqual(self._stored_files(), [second_name.rsplit("/", 1)[-1]])
+
+    def test_account_deletion_removes_avatar_file(self):
+        self._upload()
+        name = Profile.objects.get(user=self.user).avatar.name
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(default_storage.exists(name))
+        self.assertEqual(self._stored_files(), [])
+
+    def _assert_failed_replace_kept(self, old_name):
+        self.assertEqual(Profile.objects.get(user=self.user).avatar.name, old_name)
+        self.assertEqual(self._stored_files(), [old_name.rsplit("/", 1)[-1]])  # old kept, new not orphaned
+
+    def test_row_save_failure_keeps_old_avatar(self):
+        self._upload("red")
+        old_name = Profile.objects.get(user=self.user).avatar.name
+        self.client.raise_request_exception = False
+        with patch.object(Profile, "_do_update", side_effect=DatabaseError("db down")):
+            res = self._upload("blue")
+        self.assertEqual(res.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self._assert_failed_replace_kept(old_name)
+
+    def test_storage_failure_keeps_old_avatar(self):
+        self._upload("red")
+        old_name = Profile.objects.get(user=self.user).avatar.name
+        self.client.raise_request_exception = False
+        with patch.object(FileSystemStorage, "_save", side_effect=OSError("disk full")):
+            res = self._upload("blue")
+        self.assertEqual(res.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self._assert_failed_replace_kept(old_name)
 
 
 def make_polyglot_file(name="x.html"):
@@ -145,7 +225,7 @@ class AvatarTypeFromContentTests(APITestCase):
         from ..models import avatar_upload_path
 
         profile = Profile(user=self.user)
-        self.assertEqual(avatar_upload_path(profile, "a.WEBP"), f"avatars/user_{self.user.id}.webp")
+        self.assertRegex(avatar_upload_path(profile, "a.WEBP"), rf"^avatars/user_{self.user.id}_\d+\.webp$")
         with self.assertRaises(ValueError):
             avatar_upload_path(profile, "a.html")
 

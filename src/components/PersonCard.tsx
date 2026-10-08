@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
-import { Card, Tag, Button } from "antd";
+import { Card, Tag, Button, Tooltip } from "antd";
 import { UserOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import MarqueeTitle from "./MarqueeTitle";
 import { useFollowedPeople } from "../hooks/useFollowedPeople";
@@ -24,7 +24,7 @@ interface Props {
 }
 
 const PersonCard = ({ person, onClick }: Props) => {
-  const { isFollowing, follow, unfollow } = useFollowedPeople();
+  const { isFollowing, follow, unfollow, error: followStatusError } = useFollowedPeople();
   const { showSuccess, showError } = useToast();
   const following = isFollowing(person.id);
 
@@ -69,8 +69,11 @@ const PersonCard = ({ person, onClick }: Props) => {
                   {person.known_for_department}
                 </Tag>
               ) : <span />}
+              {/* While the followed list failed to load, "Follow" would be a guess. */}
+              <Tooltip title={followStatusError ? "Couldn't load who you follow. Retry from the Following page." : undefined}>
               <Button
                 size="small"
+                disabled={followStatusError}
                 type={following ? "default" : "primary"}
                 icon={following ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 onClick={async (e) => {
@@ -91,6 +94,7 @@ const PersonCard = ({ person, onClick }: Props) => {
               >
                 {following ? "Unfollow" : "Follow"}
               </Button>
+              </Tooltip>
             </div>
           }
         />

@@ -28,6 +28,18 @@ export interface BackupRow {
 
 const DELIMITERS = [",", ";", "\t"] as const;
 
+/**
+ * Undo export.ts's formula neutralization: one leading `'` before a formula
+ * character (or before another `'`) is removed. Files exported before it
+ * existed never have that pair (barring a title that literally starts `'=`),
+ * so a real leading apostrophe like `'Salem's Lot` is kept.
+ */
+const NEUTRALIZED = /^'[=+\-@\t\r']/;
+
+function unneutralize(field: string): string {
+  return NEUTRALIZED.test(field) ? field.slice(1) : field;
+}
+
 /** Most frequent of `,` `;` tab in the header line, counted outside quotes. */
 function detectDelimiter(text: string): string {
   const counts: Record<string, number> = { ",": 0, ";": 0, "\t": 0 };
@@ -44,7 +56,8 @@ function detectDelimiter(text: string): string {
  * RFC 4180 parser: quoted fields with "" escapes, delimiters and line breaks
  * inside quotes, CRLF or LF, a leading UTF-8 BOM, and `,` / `;` / tab
  * delimiters (detected from the header). Blank lines are skipped. Fields are
- * returned untrimmed; callers trim what should be trimmed.
+ * returned with export.ts's formula-neutralizing `'` removed, and
+ * untrimmed; callers trim what should be trimmed.
  */
 export function parseCSV(text: string): string[][] {
   const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -55,7 +68,7 @@ export function parseCSV(text: string): string[][] {
   let inQuotes = false;
 
   const endRow = () => {
-    row.push(field);
+    row.push(unneutralize(field));
     if (row.some((f) => f.trim() !== "")) rows.push(row);
     row = [];
     field = "";
@@ -77,7 +90,7 @@ export function parseCSV(text: string): string[][] {
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === delimiter) {
-      row.push(field);
+      row.push(unneutralize(field));
       field = "";
     } else if (ch === "\n" || ch === "\r") {
       if (ch === "\r" && src[i + 1] === "\n") i++;

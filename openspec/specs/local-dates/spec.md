@@ -21,6 +21,10 @@ app and the API are on different origins, SHALL accept the time zone header.
 - **WHEN** a request carries no time zone at all
 - **THEN** the request succeeds and its dates are computed in UTC, as before this change
 
+#### Scenario: Zone name that is a tzdata directory
+- **WHEN** a request to the stats, notifications or mark-watched endpoint (or a watched import entry) carries `America`, `Etc` or `America/Argentina` as its time zone
+- **THEN** the request succeeds, its dates are computed in UTC, and a stored watch records no zone
+
 ### Requirement: A watch is logged with its time zone
 When a user marks a title as watched, the entry SHALL record the time zone of
 the device that logged it. A bulk-imported entry SHALL record the time zone
@@ -78,3 +82,14 @@ keep the app's `dd-mm-yyyy` format.
 #### Scenario: Entry logged on this device's zone
 - **WHEN** the entry was logged in the device's own time zone
 - **THEN** only the date is shown
+
+### Requirement: Other record dates follow the display convention
+A list's creation date SHALL be shown as the device's local calendar day of when it was created, in `dd-mm-yyyy`. The Stats page's recently-watched dates SHALL be shown in `dd-mm-yyyy`.
+
+#### Scenario: List created late in the evening
+- **WHEN** a list was created at 23:30 local time on a day when UTC has already moved to the next date
+- **THEN** the Lists page shows the local day of creation, not the UTC day
+
+#### Scenario: Recently watched badge
+- **WHEN** the Stats page lists a title watched on 15 January 2024
+- **THEN** its date shows as `15-01-2024`, not `2024-01-15`

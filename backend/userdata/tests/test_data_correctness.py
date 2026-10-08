@@ -21,7 +21,7 @@ class SectionKeyTests(APITestCase):
         self.user = User.objects.create_user(username="keys", password="Xk9#mQ2vTz8p")
         self.client.force_authenticate(user=self.user)
 
-    @patch("userdata.recommendations._ensure_cached", return_value=None)
+    @patch("userdata.recommendations._fetch_media_details", return_value=None)
     @patch("userdata.recommendations.tmdb_client.get_genre_names", return_value={})
     @patch("userdata.recommendations.tmdb_client._get")
     def test_because_keys_include_media_type(self, mock_get, _names, _cached):

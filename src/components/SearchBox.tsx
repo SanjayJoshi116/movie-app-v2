@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Input, Dropdown, Typography } from "antd";
 import type { MenuProps } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/useAppContext";
 import { useRecentSearches } from "../hooks/useRecentSearches";
 import { FONT_SIZE } from "../constants/typography";
@@ -16,6 +16,7 @@ const SearchBox = () => {
   const { setSearchTerm, searchTerm } = useAppContext();
   const { recents, addRecent, clearRecents } = useRecentSearches();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSearch = (value: string) => {
     if (value === CLEAR_KEY) {
@@ -31,7 +32,11 @@ const SearchBox = () => {
     setSearchTerm(trimmed);
     addRecent(trimmed);
     setDropdownOpen(false);
-    navigate("/search");
+    // Term in the URL (reloadable, shareable); keep the current tab when re-searching.
+    const params = new URLSearchParams({ q: trimmed });
+    const tab = location.pathname === "/search" ? new URLSearchParams(location.search).get("tab") : null;
+    if (tab) params.set("tab", tab);
+    navigate(`/search?${params}`);
   };
 
   const recentItems: MenuItem[] = recents.map((r) => ({ key: r, label: r }));

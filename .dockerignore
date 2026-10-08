@@ -1,9 +1,13 @@
 node_modules
 build
+# Every env file except the committed templates, including the copies people
+# make while editing (.env.docker.bak, .env.local, ...). .env.db holds the
+# database password.
 .env
-.env.docker
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.db.example
+*.env.bak
 e2e
 test-results
 playwright-report

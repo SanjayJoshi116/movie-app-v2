@@ -27,6 +27,35 @@ def _import_settings(**env):
     )
 
 
+PASSWORD_PROBE = (
+    "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "
+    "import cinedb.settings as s; print(repr(s.DATABASES['default']['PASSWORD']))"
+)
+
+
+class DatabasePasswordSettingsTests(TestCase):
+    """Docker keeps the password only in .env.db (POSTGRES_PASSWORD)."""
+
+    def _password(self, **env):
+        full_env = {k: v for k, v in os.environ.items() if k not in ("DB_PASSWORD", "POSTGRES_PASSWORD")}
+        full_env.update(DEBUG="True", **env)
+        res = subprocess.run(
+            [sys.executable, "-c", PASSWORD_PROBE], cwd=BACKEND_DIR, env=full_env,
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        return res.stdout.strip()
+
+    def test_falls_back_to_postgres_password(self):
+        self.assertEqual(self._password(POSTGRES_PASSWORD="from-env-db"), "'from-env-db'")
+
+    def test_db_password_wins_when_both_set(self):
+        self.assertEqual(self._password(DB_PASSWORD="explicit", POSTGRES_PASSWORD="from-env-db"), "'explicit'")
+
+    def test_neither_set_is_empty(self):
+        self.assertEqual(self._password(), "''")
+
+
 class FailClosedSettingsTests(TestCase):
     def test_debug_defaults_off_when_unset(self):
         res = _import_settings(**PROD, ALLOWED_HOSTS="localhost,cinedb.example.com")

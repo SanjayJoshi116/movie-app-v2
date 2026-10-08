@@ -2,6 +2,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import status
+from django.contrib.auth.hashers import PBKDF2PasswordHasher
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from userdata.tests.test_session_revocation import NEW_PASSWORD, PASSWORD, SessionTestCase
@@ -86,7 +87,33 @@ class PasswordBoundTokenTests(SessionTestCase):
         try:
             res = self.client.patch("/api/auth/profile/", {"first_name": "Max"}, format="json")
             self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertNotIn("access", res.data)
         finally:
             self.client.credentials()
         self.assertEqual(self._api(access).status_code, status.HTTP_200_OK)
         self.assertEqual(self._refresh(refresh).status_code, status.HTTP_200_OK)
+
+    def test_email_change_that_rehashes_keeps_this_session(self):
+        # A hash made under other hasher parameters (e.g. Django 6.0's iteration
+        # count) and a session minted before this Django version rehashed it.
+        hasher = PBKDF2PasswordHasher()
+        self.user.password = hasher.encode(PASSWORD, hasher.salt(), iterations=hasher.iterations + 1)
+        self.user.save(update_fields=["password"])
+        stale = RefreshToken.for_user(self.user)
+        old_hash = self.user.password
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {stale.access_token}")
+        try:
+            res = self.client.patch(
+                "/api/auth/profile/",
+                {"email": "max2@example.com", "current_password": PASSWORD},
+                format="json",
+            )
+        finally:
+            self.client.credentials()
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.user.refresh_from_db()
+        self.assertNotEqual(self.user.password, old_hash)  # the rehash actually happened
+
+        self.assertEqual(self._api(res.data["access"]).status_code, status.HTTP_200_OK)
+        self.assertEqual(self._refresh(res.data["refresh"]).status_code, status.HTTP_200_OK)

@@ -22,10 +22,14 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
   const navigate = useNavigate();
 
   useEffect(() => {
+    // /anime toggles mediaType on this same instance: a slower earlier response
+    // must not show a movie as the TV hero (and link to /tv/<movieId>).
+    let cancelled = false;
     setLoading(true);
     setItem(null);
     fetchTrending(mediaType, "week")
       .then((res) => {
+        if (cancelled) return;
         const results = res.data.results;
         let picked = results[0];
         if (excludeGenreId) {
@@ -38,7 +42,8 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
       .catch(() => {
         // silently fail — banner is optional
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [mediaType, excludeGenreId, requireGenreId]);
 
   if (loading) {

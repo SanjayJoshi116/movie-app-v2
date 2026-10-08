@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, Link } from "react-router-dom";
 import { isAxiosError } from "axios";
@@ -8,8 +9,15 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const [loading, setLoading] = useState(false);
+  // The ref closes the gap before the disabled state renders (a fast double
+  // Enter): a second POST would report "username exists" over a good signup.
+  const submitting = useRef(false);
 
   const onFinish = async (values: { username: string; email: string; password: string; confirmPassword: string }) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setLoading(true);
     try {
       await register(values.username, values.email, values.password);
       navigate("/movies", { replace: true });
@@ -20,6 +28,9 @@ export default function RegisterPage() {
           ? Object.values(detail).flat().join(" ")
           : getApiError(err, "Registration failed.");
       message.error(msg);
+    } finally {
+      submitting.current = false;
+      setLoading(false);
     }
   };
 
@@ -60,7 +71,7 @@ export default function RegisterPage() {
             <Input.Password size="large" autoComplete="new-password" />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large">
+            <Button type="primary" htmlType="submit" block size="large" loading={loading} disabled={loading}>
               Register
             </Button>
           </Form.Item>

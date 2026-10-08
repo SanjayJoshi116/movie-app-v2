@@ -178,3 +178,75 @@ class NotificationsLocalDayTests(APITestCase):
         self.assertEqual(ny["unreadCount"], 1)
         # The old server-clock behaviour: the check already happened "on the 7th".
         self.assertFalse(utc["items"][0]["isUnread"])
+
+
+DIRECTORY_ZONES = ("America", "Etc", "America/Argentina")
+
+
+@patch("userdata.stats_views.request_backfill")
+@patch("userdata.stats_views._get_cached_genre_names", return_value={})
+class DirectoryZoneNameTests(APITestCase):
+    """tzdata directory names raise OSError from ZoneInfo, not ZoneInfoNotFoundError."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="dz", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def test_helper_falls_back(self, *_):
+        for name in DIRECTORY_ZONES:
+            with self.subTest(name=name):
+                self.assertEqual(valid_tz_name(name), "")
+                self.assertEqual(str(request_tz(_request(name))), "UTC")
+
+    def test_stats_uses_utc_day(self, *_):
+        day = timezone.now().date() - timedelta(days=3)
+        WatchedEntry.objects.create(
+            user=self.user, media_id=1, media_type="movie", title="M1",
+            watched_at=datetime(day.year, day.month, day.day, 23, 30, tzinfo=UTC), watched_tz="",
+            genre_ids=[18], original_language="en", release_year=1999,
+        )
+        for name in DIRECTORY_ZONES:
+            with self.subTest(name=name):
+                res = self.client.get("/api/stats/", HTTP_X_TIMEZONE=name)
+                self.assertEqual(res.status_code, status.HTTP_200_OK)
+                self.assertEqual(res.data["recentItems"][0]["watchedAt"], day.isoformat())
+
+    @patch("userdata.tmdb_client._get")
+    def test_notifications_use_utc_day(self, mock_get, *_):
+        FollowedPerson.objects.create(user=self.user, person_id=1, name="Some Actor")
+        NotificationCheckpoint.objects.create(user=self.user, last_seen_at=datetime(2026, 10, 7, 3, 0, tzinfo=UTC))
+        mock_get.return_value = {"cast": [
+            {"id": 9, "media_type": "movie", "title": "Premiere", "poster_path": None, "release_date": "2026-10-07"},
+        ]}
+        with patch("django.utils.timezone.now", return_value=datetime(2026, 10, 7, 5, 0, tzinfo=UTC)):
+            for name in DIRECTORY_ZONES:
+                with self.subTest(name=name):
+                    res = self.client.get("/api/notifications/new-releases/", HTTP_X_TIMEZONE=name)
+                    self.assertEqual(res.status_code, status.HTTP_200_OK)
+                    # Same as UTC: the check already happened "on the 7th".
+                    self.assertFalse(res.data["items"][0]["isUnread"])
+
+    def test_mark_watched_stores_blank_zone(self, *_):
+        for i, name in enumerate(DIRECTORY_ZONES, start=1):
+            with self.subTest(name=name):
+                res = self.client.post(
+                    "/api/watched/",
+                    {"mediaId": i, "mediaType": "movie", "title": f"M{i}", "posterPath": None, "voteAverage": 7.0},
+                    format="json",
+                    HTTP_X_TIMEZONE=name,
+                )
+                self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+                self.assertEqual(WatchedEntry.objects.get(media_id=i).watched_tz, "")
+
+    def test_bulk_import_stores_blank_zone(self, *_):
+        res = self.client.post(
+            "/api/watched/bulk/",
+            {"mediaType": "movie", "entries": [
+                {"mediaId": i, "title": f"M{i}", "watchedAt": "2024-03-01T20:00:00Z", "watchedTz": name}
+                for i, name in enumerate(DIRECTORY_ZONES, start=1)
+            ]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(set(WatchedEntry.objects.values_list("watched_tz", flat=True)), {""})

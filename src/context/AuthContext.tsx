@@ -1,15 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
-import userApi, { clearSession, logoutSession, publicApi } from "../api/userApi";
-
-interface AuthUser {
-  id: number;
-  username: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  is_staff: boolean;
-  avatar_url: string | null;
-}
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from "react";
+import userApi, { bindSessionUser, clearSession, logoutSession, publicApi } from "../api/userApi";
+import type { AuthUser } from "../types/domain";
 
 export interface ProfileUpdateData {
   first_name?: string;
@@ -35,22 +26,62 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 const OLD_KEYS = ["cinedb_watchlist", "cinedb_watched", "cinedb_ratings", "cinedb_lists"];
 
+/** The signed-in user per localStorage, or null when there's no full session. */
+function readStoredUser(): AuthUser | null {
+  const stored = localStorage.getItem("cinedb_user");
+  if (!stored || !localStorage.getItem("cinedb_access")) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUserState] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const userRef = useRef<AuthUser | null>(null);
+
+  // Every user change goes through here, so userApi's request guard always
+  // knows which account this tab shows before the next request can go out.
+  const setUser = useCallback((next: AuthUser | null) => {
+    userRef.current = next;
+    bindSessionUser(next?.id ?? null);
+    setUserState(next);
+  }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem("cinedb_user");
-    const token = localStorage.getItem("cinedb_access");
-    if (stored && token) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        // ignore
-      }
-    }
+    setUser(readStoredUser());
     setIsLoading(false);
-  }, []);
+  }, [setUser]);
+
+  // Another tab signed in, signed out or edited the profile. The library
+  // hooks only refetch when isAuthenticated flips, so a switch straight from
+  // one account to another reloads the tab rather than leaving any of the
+  // previous account's state (or history state) behind.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== "cinedb_user" && e.key !== "cinedb_access") return;
+      const current = userRef.current;
+      const next = readStoredUser();
+      if (!next) {
+        if (current) {
+          sessionStorage.clear(); // this tab's caches are the signed-out account's
+          setUser(null);
+        }
+      } else if (!current) {
+        setUser(next);
+      } else if (next.id !== current.id) {
+        sessionStorage.clear();
+        bindSessionUser(-1); // nothing goes out before the reload lands
+        window.location.reload();
+      } else if (JSON.stringify(next) !== JSON.stringify(current)) {
+        setUser(next);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [setUser]);
 
   const login = useCallback(async (username: string, password: string) => {
     const { data } = await publicApi.post("/auth/login/", { username, password });
@@ -59,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("cinedb_refresh", data.refresh);
     localStorage.setItem("cinedb_user", JSON.stringify(data.user));
     setUser(data.user);
-  }, []);
+  }, [setUser]);
 
   const register = useCallback(async (username: string, email: string, password: string) => {
     const { data } = await publicApi.post("/auth/register/", { username, email, password });
@@ -68,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("cinedb_refresh", data.refresh);
     localStorage.setItem("cinedb_user", JSON.stringify(data.user));
     setUser(data.user);
-  }, []);
+  }, [setUser]);
 
   const logout = useCallback(() => {
     // Revoke server-side, but never let that block or fail the local logout
@@ -77,12 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (refresh) logoutSession(refresh).catch(() => {});
     clearSession();
     setUser(null);
-  }, []);
+  }, [setUser]);
 
   const setUserData = useCallback((updated: AuthUser) => {
     localStorage.setItem("cinedb_user", JSON.stringify(updated));
     setUser(updated);
-  }, []);
+  }, [setUser]);
 
   const updateProfile = useCallback(async (data: ProfileUpdateData) => {
     const { data: body } = await userApi.patch("/auth/profile/", data);

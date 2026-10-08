@@ -70,7 +70,7 @@ class TestWatchedWithItems:
             {**MOCK_WATCHED_ITEM, "id": 2, "mediaId": 551, "mediaType": "tv", "title": "Breaking Bad"},
         ]
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
-        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watched")
         expect(authed_page.get_by_text("Watched (2)")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_text("1 movie")).to_be_visible()
@@ -97,11 +97,10 @@ class TestWatchedWithItems:
             {**MOCK_WATCHED_ITEM, "id": 2, "mediaId": 551, "title": "The Shawshank Redemption"},
         ]
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
-        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watched")
         expect(authed_page.get_by_text("Watched (2)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("Fight")
-        authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
         expect(authed_page.get_by_text("The Shawshank Redemption")).not_to_be_visible()
 
@@ -111,13 +110,12 @@ class TestWatchedWithItems:
         authed_page.goto("/watched")
         expect(authed_page.get_by_text("Watched (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("zzznotfound")
-        authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text('No results for "zzznotfound"')).to_be_visible()
 
     def test_watched_pagination_with_many_items(self, authed_page: Page):
         items = make_watched_items(50)
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
-        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watched")
         expect(authed_page.get_by_text("Watched (50)")).to_be_visible(timeout=8_000)
         # With pageSize=48, pagination should appear
@@ -141,7 +139,9 @@ class TestWatchedClearAll:
         authed_page.get_by_role("button", name="Clear All").click()
         expect(authed_page.get_by_text("Clear all watched?")).to_be_visible(timeout=5_000)
         authed_page.get_by_role("button", name="Cancel").last.click()
-        authed_page.wait_for_timeout(300)
+        # Positive anchor first: the confirm closed, and nothing was cleared.
+        expect(authed_page.get_by_text("Clear all watched?")).not_to_be_visible()
+        expect(authed_page.get_by_text("Watched (1)")).to_be_visible()
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
 
     def test_clear_all_confirmed_shows_success_toast(self, authed_page: Page):

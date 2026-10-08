@@ -1,6 +1,8 @@
 """
 Profile modal tests: open, show user data, save changes, validation, theme toggle.
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from conftest import paginated, fulfill_json, MOCK_USER, mock_tmdb_movies
@@ -28,54 +30,51 @@ class TestProfileModalOpen:
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        # Username field should be pre-filled with "testuser"
-        username_input = authed_page.locator(".ant-modal").get_by_label("Username")
-        if username_input.count() > 0:
-            expect(username_input).to_have_value("testuser")
+        expect(authed_page.locator(".ant-modal").get_by_label("Username")).to_have_value("testuser")
 
     def test_profile_modal_shows_email(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        email_input = authed_page.locator(".ant-modal").get_by_label("Email")
-        if email_input.count() > 0:
-            expect(email_input).to_have_value("t@t.com")
+        expect(authed_page.locator(".ant-modal").get_by_label("Email")).to_have_value("t@t.com")
 
     def test_profile_modal_close_via_button(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)
-        # Click the X close button on the modal
         authed_page.locator(".ant-modal-close").click()
-        authed_page.wait_for_timeout(500)
         expect(authed_page.locator(".ant-modal")).not_to_be_visible()
+
+
+def save_button(page: Page):
+    # The modal has footer={null}; Save is the form's own submit button.
+    return page.locator(".ant-modal").get_by_role("button", name="Save Changes")
 
 
 class TestProfileSave:
     def test_profile_save_changes_success(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
-        authed_page.route("**/api/auth/profile/**", lambda r: fulfill_json(r, {
-            **MOCK_USER, "first_name": "Test"
-        }))
+        sent = []
+
+        def profile(r):
+            sent.append(r.request.post_data_json)
+            fulfill_json(r, {**MOCK_USER, "first_name": "Test"})
+
+        authed_page.route("**/api/auth/profile/**", profile)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        # Fill first name if available
-        first_name_input = authed_page.locator(".ant-modal").get_by_label("First Name")
-        if first_name_input.count() > 0:
-            first_name_input.fill("Test")
-        save_btn = authed_page.locator(".ant-modal-footer").get_by_role("button", name="Save Changes")
-        if save_btn.count() > 0:
-            save_btn.click()
-            expect(authed_page.locator(".ant-message-notice-content")).to_be_visible(timeout=5_000)
+        authed_page.locator(".ant-modal").get_by_label("First Name").fill("Test")
+        save_button(authed_page).click()
+        expect(authed_page.get_by_text("Profile updated successfully.")).to_be_visible(timeout=5_000)
+        expect(authed_page.locator(".ant-modal")).not_to_be_visible()
+        assert sent and sent[0]["first_name"] == "Test"
+        # Unchanged email and no new password: no password field is sent.
+        assert "current_password" not in sent[0] and "new_password" not in sent[0]
 
-    def test_profile_save_network_error(self, authed_page: Page):
+    def test_profile_save_error_keeps_dialog_open(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.route("**/api/auth/profile/**", lambda r: r.fulfill(
             status=400, content_type="application/json",
@@ -84,11 +83,12 @@ class TestProfileSave:
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        save_btn = authed_page.locator(".ant-modal-footer").get_by_role("button", name="Save Changes")
-        if save_btn.count() > 0:
-            save_btn.click()
-            expect(authed_page.locator(".ant-message-notice-content")).to_be_visible(timeout=8_000)
+        save_button(authed_page).click()
+        expect(authed_page.locator(".ant-message-notice-content")).to_contain_text(
+            "This username is already taken.", timeout=8_000
+        )
+        expect(authed_page.locator(".ant-modal")).to_be_visible()
+        expect(authed_page.get_by_text("Profile updated successfully.")).not_to_be_visible()
 
 
 class TestProfileValidation:
@@ -97,32 +97,21 @@ class TestProfileValidation:
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        username_input = authed_page.locator(".ant-modal").get_by_label("Username")
-        if username_input.count() > 0:
-            username_input.click(click_count=3)
-            username_input.fill("")
-            save_btn = authed_page.locator(".ant-modal-footer").get_by_role("button", name="Save Changes")
-            if save_btn.count() > 0:
-                save_btn.click()
-                expect(authed_page.get_by_text("Username is required", exact=False)).to_be_visible(timeout=5_000)
+        authed_page.locator(".ant-modal").get_by_label("Username").fill("")
+        save_button(authed_page).click()
+        # The catch-all fails the test at teardown if a PATCH went out anyway.
+        expect(authed_page.locator(".ant-modal .ant-form-item-explain-error")).to_have_text("Required.")
 
     def test_profile_password_mismatch_shows_validation(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         open_profile_modal(authed_page)
-        expect(authed_page.get_by_text("Edit Profile")).to_be_visible()
-        # Fill mismatched passwords — use exact IDs to avoid strict mode violation
-        new_pass = authed_page.locator("#new_password")
-        confirm_pass = authed_page.locator("#confirm_password")
-        if new_pass.count() > 0 and confirm_pass.count() > 0:
-            new_pass.fill("newpassword")
-            confirm_pass.fill("differentpassword")
-            save_btn = authed_page.locator(".ant-modal-footer").get_by_role("button", name="Save Changes")
-            if save_btn.count() > 0:
-                save_btn.click()
-                expect(authed_page.get_by_text("Passwords do not match", exact=False)).to_be_visible(timeout=5_000)
+        modal = authed_page.locator(".ant-modal")
+        modal.get_by_label("New Password").fill("newpassword")
+        modal.get_by_label("Confirm Password").fill("differentpassword")
+        save_button(authed_page).click()
+        expect(modal.get_by_text("Passwords do not match.")).to_be_visible(timeout=5_000)
 
 
 class TestThemeToggle:
@@ -137,28 +126,26 @@ class TestThemeToggle:
         mock_tmdb_movies(authed_page)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
-        toggle = authed_page.locator("[aria-label*='Switch to']").first
-        label_before = toggle.get_attribute("aria-label")
+        toggle = authed_page.get_by_role("button", name="Switch to light mode")
+        expect(authed_page.locator("body")).to_have_class(re.compile(r"dark-theme"))
         toggle.click()
-        authed_page.wait_for_timeout(300)
-        label_after = toggle.get_attribute("aria-label")
-        assert label_before != label_after, "Theme toggle should flip its aria-label"
+        expect(authed_page.get_by_role("button", name="Switch to dark mode")).to_be_visible()
+        expect(authed_page.locator("body")).not_to_have_class(re.compile(r"dark-theme"))
 
     def test_theme_toggle_persists_after_navigation(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
-        toggle = authed_page.locator("[aria-label*='Switch to']").first
-        label_before = toggle.get_attribute("aria-label")
+        toggle = authed_page.get_by_role("button", name="Switch to light mode")
+        expect(authed_page.locator("body")).to_have_class(re.compile(r"dark-theme"))
         toggle.click()
-        authed_page.wait_for_timeout(300)
-        # Navigate away and back
+        expect(authed_page.get_by_role("button", name="Switch to dark mode")).to_be_visible()
+        expect(authed_page.locator("body")).not_to_have_class(re.compile(r"dark-theme"))
+        # Navigate away and back (full page loads, so it comes from storage)
         authed_page.goto("/watchlist")
-        authed_page.wait_for_timeout(500)
-        mock_tmdb_movies(authed_page)
+        expect(authed_page.get_by_text("My Watchlist (0)")).to_be_visible(timeout=8_000)
         authed_page.goto("/movies")
-        authed_page.wait_for_timeout(500)
-        toggle_after = authed_page.locator("[aria-label*='Switch to']").first
-        label_after = toggle_after.get_attribute("aria-label")
-        assert label_before != label_after, "Theme toggle state should persist across navigation"
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_role("button", name="Switch to dark mode")).to_be_visible()
+        expect(authed_page.locator("body")).not_to_have_class(re.compile(r"dark-theme"))

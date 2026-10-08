@@ -5,6 +5,7 @@ All tests use page.route() to mock network calls — no real Django server
 is required; only the React dev server on http://localhost:3000 must be running.
 """
 import json
+import re
 import pytest
 from playwright.sync_api import Page, Route
 
@@ -19,6 +20,10 @@ def base_url():
 
 # ---------------------------------------------------------------------------
 # Mock data constants
+#
+# Keep every MOCK_* record a plain dict literal with the API's own field names:
+# backend/userdata/tests/test_e2e_mock_shapes.py reads them with ast and fails
+# when their keys drift from the serializers / stats response.
 # ---------------------------------------------------------------------------
 
 MOCK_USER = {
@@ -27,6 +32,8 @@ MOCK_USER = {
     "email": "t@t.com",
     "first_name": "",
     "last_name": "",
+    "is_staff": False,
+    "avatar_url": None,
 }
 
 MOCK_TOKENS = {"access": "fake-access", "refresh": "fake-refresh"}
@@ -99,7 +106,6 @@ MOCK_WATCHLIST_ITEM = {
     "posterPath": None,
     "voteAverage": 8.4,
     "addedAt": "2024-01-15T10:00:00Z",
-    "watched": False,
 }
 
 MOCK_WATCHED_ITEM = {
@@ -110,6 +116,11 @@ MOCK_WATCHED_ITEM = {
     "posterPath": None,
     "voteAverage": 8.4,
     "watchedAt": "2024-01-15T10:00:00Z",
+    "watchedTz": "",
+    "originalLanguage": "en",
+    "releaseYear": 1999,
+    "runtimeMinutes": 139,
+    "platform": None,
 }
 
 MOCK_LIST = {
@@ -127,7 +138,7 @@ MOCK_RATING = {
     "title": "Fight Club",
     "userRating": 9,
     "review": "Masterpiece.",
-    "createdAt": "2024-01-01T00:00:00Z",
+    "ratedAt": "2024-01-01T00:00:00Z",
 }
 
 MOCK_STATS = {
@@ -137,8 +148,19 @@ MOCK_STATS = {
     "totalRatings": 15,
     "avgUserRating": 7.8,
     "avgTmdbRating": 7.2,
-    "ratingDistribution": [{"rating": str(i), "count": max(0, i - 3)} for i in range(1, 11)],
-    "monthlyActivity": [{"month": "2024-01", "count": 5}, {"month": "2024-02", "count": 8}],
+    "ratingDistribution": [
+        {"rating": "1", "count": 0},
+        {"rating": "2", "count": 0},
+        {"rating": "3", "count": 0},
+        {"rating": "4", "count": 1},
+        {"rating": "5", "count": 2},
+        {"rating": "6", "count": 3},
+        {"rating": "7", "count": 4},
+        {"rating": "8", "count": 5},
+        {"rating": "9", "count": 6},
+        {"rating": "10", "count": 7},
+    ],
+    "monthlyActivity": [{"month": "Jan 2024", "count": 5}, {"month": "Feb 2024", "count": 8}],
     "topGenres": [{"genre": "Action", "count": 10}, {"genre": "Drama", "count": 8}],
     "languageBreakdown": [{"language": "en", "count": 35}, {"language": "ko", "count": 7}],
     "decadeBreakdown": [{"decade": "2010s", "count": 20}, {"decade": "2000s", "count": 15}],
@@ -149,6 +171,14 @@ MOCK_STATS = {
     "recentItems": [
         {"title": "Fight Club", "posterPath": None, "watchedAt": "2024-01-15", "mediaType": "movie"}
     ],
+    "totalRuntimeMinutes": 5040,
+    "platformBreakdown": [{"platform": "Netflix", "count": 12}],
+    "ratingByGenre": [{"genre": "Drama", "avgRating": 8.1}],
+    "reviewsWritten": 4,
+    "listsCount": 2,
+    "listsItemsCount": 9,
+    "watchlistTotal": 6,
+    "watchlistUnwatched": 3,
 }
 
 MOCK_MOVIE_DETAIL = {
@@ -212,8 +242,29 @@ EMPTY_RESPONSE = {"results": [], "total_pages": 1, "total_results": 0, "page": 1
 # Helpers
 # ---------------------------------------------------------------------------
 
+# Collection URLs of the paginated list endpoints (not detail/bulk/clear routes).
+PAGINATED_LIST_URL = re.compile(r"/api/(watchlist|watched|ratings|lists|followed-people)/(\?|$)")
+
+# Bare-list bodies sent to a paginated endpoint; the autouse fixture below
+# fails the test at teardown. Raising inside a route handler wouldn't reach
+# the test reliably (it runs on Playwright's dispatch thread).
+_bare_list_mocks: list = []
+
+
+@pytest.fixture(autouse=True)
+def _reject_bare_list_mocks():
+    _bare_list_mocks.clear()
+    yield
+    assert not _bare_list_mocks, (
+        "List endpoints mocked with a bare list (wrap them in paginated()):\n  "
+        + "\n  ".join(_bare_list_mocks)
+    )
+
+
 def fulfill_json(route: Route, data, status: int = 200) -> None:
     """Fulfill a Playwright route with JSON data."""
+    if isinstance(data, list) and PAGINATED_LIST_URL.search(route.request.url):
+        _bare_list_mocks.append(route.request.url)
     route.fulfill(
         status=status,
         content_type="application/json",

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import TVShowDetails from "../components/TVShowDetails";
 import type { TVShowDetailData } from "../components/TVShowDetails";
@@ -14,10 +13,12 @@ import {
 } from "../api/tmdb";
 import { pageVariants } from "../constants/ui";
 import { LoadError } from "../components/LoadError";
+import NotFoundPage from "./NotFoundPage";
+import { useValidId } from "../hooks/useValidId";
 import { settledData, isNotFound } from "../utils/settled";
 
 function TVDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const id = useValidId();
   const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
@@ -70,6 +71,7 @@ function TVDetailPage() {
     };
   }, [id, reloadKey]);
 
+  if (id === null) return <NotFoundPage />;
   if (loading) return <DetailPageSkeleton />;
   if (error === "not-found") return <LoadError notFound title="TV show not found" />;
   if (error)

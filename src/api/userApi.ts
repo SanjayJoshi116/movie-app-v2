@@ -15,7 +15,31 @@ export const publicApi = axios.create({
   baseURL: DJANGO_BASE,
 });
 
+/** The session ended or changed hands (logout, or a different login): either
+ *  while a refresh was in flight, or while this tab still shows the previous
+ *  account. Drop the result or refuse the request, don't redirect. */
+class SessionChangedError extends Error {}
+
+function storedUserId(): number | undefined {
+  try {
+    return JSON.parse(localStorage.getItem("cinedb_user") ?? "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The account this tab is showing (AuthProvider binds it). localStorage is
+ *  shared across tabs, so once another tab signs in as someone else the stored
+ *  token belongs to that account; this is what stops our requests using it. */
+let boundUserId: number | null = null;
+
+export function bindSessionUser(id: number | null) {
+  boundUserId = id;
+}
+
 userApi.interceptors.request.use((config) => {
+  // Before the other tab's storage event reaches us: refuse rather than send.
+  if (boundUserId !== null && storedUserId() !== boundUserId) throw new SessionChangedError();
   const token = localStorage.getItem("cinedb_access");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -69,19 +93,15 @@ function processQueue(error: unknown, token: string | null) {
 
 function forceLogout() {
   clearSession();
+  boundUserId = null;
   window.location.href = "/login";
 }
 
-/** The session this refresh belonged to ended or changed hands (logout, or a
- *  different login) while it was in flight — drop its result, don't redirect. */
-class SessionChangedError extends Error {}
-
-function storedUserId(): number | undefined {
-  try {
-    return JSON.parse(localStorage.getItem("cinedb_user") ?? "null")?.id;
-  } catch {
-    return undefined;
-  }
+/** The refresh endpoint refused the token itself (expired, revoked, malformed):
+ *  SafeTokenRefreshSerializer answers 401, a missing/blank token 400. */
+function isRejectedRefresh(err: unknown): boolean {
+  const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+  return status === 400 || status === 401;
 }
 
 /** Serializes refreshes across tabs: they share one localStorage, so two tabs
@@ -216,9 +236,11 @@ userApi.interceptors.response.use(
         return userApi(original);
       } catch (err) {
         processQueue(err, null);
-        // A changed session already reflects what the user did; only a genuinely
-        // dead refresh token ends the session here.
-        if (!(err instanceof SessionChangedError)) forceLogout();
+        // Only the server rejecting the refresh token itself ends the session. A
+        // 429, 5xx, timeout or network error fails these requests but keeps the
+        // tokens, so the next 401 refreshes again. A changed session already
+        // reflects what the user did.
+        if (isRejectedRefresh(err)) forceLogout();
         return Promise.reject(err);
       } finally {
         isRefreshing = false;

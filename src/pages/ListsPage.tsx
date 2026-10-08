@@ -12,7 +12,7 @@ import {
 import { LoadError } from "../components/LoadError";
 import { useListsContext } from "../context/useListsContext";
 import type { UserList } from "../types";
-import { formatDateDMY } from "../utils/formatDate";
+import { formatDateInTz } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
@@ -22,6 +22,7 @@ import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
+import CardLink from "../components/CardLink";
 
 type SortKey = "created-desc" | "created-asc" | "name-asc" | "items-desc";
 
@@ -50,8 +51,11 @@ function ListsPage() {
     getTitle: (l) => l.name,
   });
 
+  const [creating, setCreating] = useState(false);
   const handleCreate = () => {
+    if (creating) return;
     form.validateFields().then(async (values) => {
+      setCreating(true);
       try {
         await createList(values.name, values.description || "");
         form.resetFields();
@@ -59,6 +63,8 @@ function ListsPage() {
         showSuccess("List created");
       } catch (err) {
         showError(getApiError(err, "Failed to create list."));
+      } finally {
+        setCreating(false);
       }
     });
   };
@@ -137,17 +143,21 @@ function ListsPage() {
                 style={{ height: "100%", cursor: "pointer" }}
                 onClick={() => navigate(`/lists/${list.id}`)}
                 cover={
-                  list.items[0]?.posterPath ? (
-                    <img
-                      src={`${IMG_URL}${list.items[0].posterPath}`}
-                      alt={list.name}
-                      loading="lazy"
-                      className="movie-poster-img"
-                      style={{ aspectRatio: "2 / 3", objectFit: "cover" }}
-                    />
-                  ) : (
-                    <PosterPlaceholder className="movie-poster-img" style={{ aspectRatio: "2 / 3" }} />
-                  )
+                  // Poster-only link (the card holds a Delete button): Tab/Enter
+                  // and Ctrl-click work. The card's mouse onClick stays.
+                  <CardLink to={`/lists/${list.id}`} label={list.name} stopPropagation>
+                    {list.items[0]?.posterPath ? (
+                      <img
+                        src={`${IMG_URL}${list.items[0].posterPath}`}
+                        alt=""
+                        loading="lazy"
+                        className="movie-poster-img"
+                        style={{ aspectRatio: "2 / 3", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <PosterPlaceholder className="movie-poster-img" style={{ aspectRatio: "2 / 3" }} />
+                    )}
+                  </CardLink>
                 }
                 actions={[
                   <Popconfirm
@@ -183,7 +193,7 @@ function ListsPage() {
                 <Space size={4}>
                   <Tag color="gold">{list.items.length} item{list.items.length !== 1 ? "s" : ""}</Tag>
                   <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>
-                    {formatDateDMY(list.createdAt)}
+                    {formatDateInTz(list.createdAt)}
                   </Typography.Text>
                 </Space>
               </Card>
@@ -199,6 +209,7 @@ function ListsPage() {
         onOk={handleCreate}
         onCancel={() => { setCreateModalOpen(false); form.resetFields(); }}
         okText="Create"
+        confirmLoading={creating}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

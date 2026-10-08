@@ -21,6 +21,8 @@ import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { getApiError } from "../utils/apiError";
 import type { MediaType } from "../types";
+import { pageableTotal } from "../utils/tmdbPages";
+import CardLink from "../components/CardLink";
 
 interface PendingWatch {
   id: number;
@@ -168,7 +170,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
   const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
-      return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
+      return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
     },
     query,
     adult,
@@ -197,16 +199,20 @@ function MoviesTab({ query, adult, active }: TabProps) {
                 hoverable
                 className="glass-card"
                 cover={
-                  m.poster_path ? (
-                    <img
-                      src={`${IMG_URL}${m.poster_path}`}
-                      alt={m.title}
-                      loading="lazy"
-                      className="movie-poster-img"
-                    />
-                  ) : (
-                    <PosterPlaceholder className="movie-poster-img" />
-                  )
+                  // Poster-only link (the card has its own buttons); the
+                  // wrapper's mouse onClick stays, so stop the click there.
+                  <CardLink to={`/movie/${m.id}`} label={m.title} stopPropagation>
+                    {m.poster_path ? (
+                      <img
+                        src={`${IMG_URL}${m.poster_path}`}
+                        alt=""
+                        loading="lazy"
+                        className="movie-poster-img"
+                      />
+                    ) : (
+                      <PosterPlaceholder className="movie-poster-img" />
+                    )}
+                  </CardLink>
                 }
                 styles={{ body: { padding: "10px 12px" } }}
                 style={{ height: "100%" }}
@@ -289,7 +295,7 @@ function TVTab({ query, adult, active }: TabProps) {
   const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
-      return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
+      return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
     },
     query,
     adult,
@@ -318,16 +324,20 @@ function TVTab({ query, adult, active }: TabProps) {
                 hoverable
                 className="glass-card"
                 cover={
-                  t.poster_path ? (
-                    <img
-                      src={`${IMG_URL}${t.poster_path}`}
-                      alt={t.name}
-                      loading="lazy"
-                      className="movie-poster-img"
-                    />
-                  ) : (
-                    <PosterPlaceholder className="movie-poster-img" />
-                  )
+                  // Poster-only link (the card has its own buttons); the
+                  // wrapper's mouse onClick stays, so stop the click there.
+                  <CardLink to={`/tv/${t.id}`} label={t.name} stopPropagation>
+                    {t.poster_path ? (
+                      <img
+                        src={`${IMG_URL}${t.poster_path}`}
+                        alt=""
+                        loading="lazy"
+                        className="movie-poster-img"
+                      />
+                    ) : (
+                      <PosterPlaceholder className="movie-poster-img" />
+                    )}
+                  </CardLink>
                 }
                 styles={{ body: { padding: "10px 12px" } }}
                 style={{ height: "100%" }}
@@ -407,7 +417,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
   const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchPeople(q, p, a);
-      return { results: res.data.results, totalPages: Math.min(res.data.total_pages, 500) };
+      return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
     },
     query,
     adult,
@@ -438,9 +448,16 @@ function PeopleTab({ query, adult, active }: TabProps) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 function SearchPage() {
-  const { searchTerm, includeAdult } = useAppContext();
+  const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "movies";
+  const urlQuery = searchParams.get("q")?.trim() ?? "";
+
+  // The URL carries the search, so a reload, a shared link or a return from
+  // login shows it. Layout effect: the tabs read searchTerm in their first effects.
+  useLayoutEffect(() => {
+    if (urlQuery) setSearchTerm(urlQuery);
+  }, [urlQuery, setSearchTerm]);
 
   return (
     <motion.div
@@ -468,7 +485,10 @@ function SearchPage() {
       ) : (
         <Tabs
           activeKey={activeTab}
-          onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
+          onChange={(key) => setSearchParams(
+            (prev) => { const next = new URLSearchParams(prev); next.set("tab", key); return next; },
+            { replace: true },
+          )}
           items={[
             { key: "movies", label: "Movies", children: <MoviesTab query={searchTerm} adult={includeAdult} active={activeTab === "movies"} /> },
             { key: "tv", label: "TV Shows", children: <TVTab query={searchTerm} adult={includeAdult} active={activeTab === "tv"} /> },

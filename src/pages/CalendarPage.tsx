@@ -8,6 +8,8 @@ import SkeletonCard from "../components/SkeletonCard";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import CardLink from "../components/CardLink";
+import { LoadError } from "../components/LoadError";
+import { buildIcs } from "../utils/ics";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { pageVariants, IMG_URL, RATING_GOLD } from "../constants/ui";
@@ -62,32 +64,7 @@ function groupByDate(items: CalendarItem[]): DateGroup[] {
 }
 
 function exportIcal(groups: DateGroup[]) {
-  const lines: string[] = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//CINE DB//Release Calendar//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-  ];
-  for (const group of groups) {
-    const d = group.date.replace(/-/g, "");
-    const nextDay = new Date(group.date + "T12:00:00");
-    nextDay.setDate(nextDay.getDate() + 1);
-    const dEnd = localISODate(nextDay).replace(/-/g, "");
-    for (const item of group.items) {
-      const kind = item.type === "movie" ? "Movie" : "TV Show";
-      lines.push(
-        "BEGIN:VEVENT",
-        `DTSTART;VALUE=DATE:${d}`,
-        `DTEND;VALUE=DATE:${dEnd}`,
-        `SUMMARY:${item.title} (${kind})`,
-        `UID:cinedb-${item.type}-${item.id}@cinedb`,
-        "END:VEVENT",
-      );
-    }
-  }
-  lines.push("END:VCALENDAR");
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const blob = new Blob([buildIcs(groups)], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -111,6 +88,10 @@ function CalendarPage() {
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [groups, setGroups] = useState<DateGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Only the latest fetch may update the page: "All" fetches movies then TV,
+  // so it can finish after a later "TV Shows" pick and overwrite it.
+  const requestIdRef = useRef(0);
   const didRestoreRef = useRef(false);
 
   useEffect(() => { sessionStorage.setItem(SS_SEARCH, search); }, [search]);
@@ -132,7 +113,10 @@ function CalendarPage() {
   }, [filteredGroups]);
 
   const fetchCalendar = useCallback(async (filter: MediaFilter) => {
+    const requestId = ++requestIdRef.current;
+    const isCurrent = () => requestId === requestIdRef.current;
     setLoading(true);
+    setLoadFailed(false);
     try {
       // The device's local day, not the UTC one (just after local midnight they differ).
       const today = localISODate(new Date());
@@ -212,11 +196,13 @@ function CalendarPage() {
         return true;
       });
 
-      setGroups(groupByDate(dedupedItems));
+      if (isCurrent()) setGroups(groupByDate(dedupedItems));
     } catch (err) {
+      // A failed or rate-limited TMDB call used to render as "no releases".
       console.error("Error fetching calendar:", err);
+      if (isCurrent()) setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, []);
 
@@ -293,6 +279,8 @@ function CalendarPage() {
 
       {loading ? (
         <SkeletonCard count={12} />
+      ) : loadFailed ? (
+        <LoadError title="Couldn't load upcoming releases" onRetry={() => fetchCalendar(mediaFilter)} />
       ) : filteredGroups.length === 0 ? (
         <Empty
           image={<CalendarOutlined style={{ fontSize: 48, color: "#aaa" }} />}

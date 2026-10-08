@@ -1,10 +1,31 @@
 import re
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import django
 from django.test import SimpleTestCase
 
 REQUIREMENTS = Path(__file__).resolve().parents[2] / "requirements.txt"
+TEST_REQUIREMENTS = REQUIREMENTS.with_name("requirements-test.txt")
+CONSTRAINTS = REQUIREMENTS.with_name("constraints.txt")
+
+
+class RuffVersionTests(SimpleTestCase):
+    def _pin(self, path):
+        match = re.search(r"^ruff==(\S+)", path.read_text(encoding="utf-8"), re.M)
+        self.assertIsNotNone(match, f"no `ruff==X.Y.Z` pin in {path}")
+        return match.group(1)
+
+    def test_installed_ruff_matches_pin(self):
+        """CI lints with the pinned ruff; a local ruff that differs can pass
+        code CI rejects (or the other way round)."""
+        pinned = self._pin(TEST_REQUIREMENTS)
+        self.assertEqual(self._pin(CONSTRAINTS), pinned, "constraints.txt and requirements-test.txt disagree on ruff")
+        try:
+            installed = version("ruff")
+        except PackageNotFoundError:
+            self.fail(f"ruff isn't installed; pip install -r requirements-test.txt -c constraints.txt (pin {pinned})")
+        self.assertEqual(installed, pinned, f"Installed ruff {installed} doesn't match the {pinned} pin")
 
 
 class DjangoVersionTests(SimpleTestCase):

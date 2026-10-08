@@ -1,7 +1,9 @@
 services:
   db:
     image: postgres:15-alpine
-    env_file: .env.docker
+    # Only its own secret (POSTGRES_PASSWORD). The app's keys stay in
+    # .env.docker, which this container never sees.
+    env_file: .env.db
     environment:
       POSTGRES_DB: cinedb
       POSTGRES_USER: postgres
@@ -21,12 +23,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env.docker
+    # .env.db supplies the same POSTGRES_PASSWORD the db gets; settings.py
+    # falls back to it when DB_PASSWORD is unset, so it's defined once.
+    env_file:
+      - .env.docker
+      - .env.db
     environment:
       DB_HOST: db
       # nginx (frontend container) is the one proxy in front of Django; throttles
-      # key on the client address it appends to X-Forwarded-For.
-      TRUSTED_PROXY_COUNT: "1"
+      # key on the client address it appends to X-Forwarded-For. Add one per
+      # extra proxy/TLS terminator in front (set it in the shell or root .env).
+      TRUSTED_PROXY_COUNT: "${TRUSTED_PROXY_COUNT:-1}"
     volumes:
       - media_data:/app/media
     healthcheck:

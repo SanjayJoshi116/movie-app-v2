@@ -25,9 +25,12 @@ jobs:
           CI: true
       # CI=false: lint warnings already fail the lint step above. No TMDB key:
       # CRA only bundles REACT_APP_* variables, so it never reached the build.
+      # INLINE_RUNTIME_CHUNK=false: the same bundle Dockerfile.frontend ships,
+      # which nginx's CSP (script-src 'self') needs.
       - run: npm run build
         env:
           CI: false
+          INLINE_RUNTIME_CHUNK: "false"
 
   backend:
     name: Backend (ruff + pytest)
@@ -52,10 +55,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install ruff
-      - run: ruff check backend/
-      # Same pinned set as dev and the Docker image (backend/constraints.txt).
+      # Same pinned set as dev and the Docker image (backend/constraints.txt),
+      # including the pinned ruff, so a new ruff release can't fail CI on
+      # unchanged code.
       - run: pip install -r backend/requirements-test.txt -c backend/constraints.txt
+      - run: ruff check backend/
       - run: python backend/manage.py migrate
         env:
           SECRET_KEY: ci-test-secret-key-not-for-production

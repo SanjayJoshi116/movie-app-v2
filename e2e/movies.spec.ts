@@ -112,7 +112,7 @@ test.describe("Search", () => {
     const box = page.getByPlaceholder(/search/i).filter({ visible: true });
     await box.fill("inception");
     await box.press("Enter");
-    await expect(page).toHaveURL("/search");
+    await expect(page).toHaveURL("/search?q=inception");
     await expect(page.getByText(/Results for/i)).toBeVisible();
   });
 });

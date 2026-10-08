@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest==9.1.1  # >=8.4: pytest.ini's `-p pytest_dev_env` needs pythonpath applied before -p plugins load
 pytest-django==4.12.0
+ruff==0.15.16  # CI lints with exactly this; test_dependency_versions checks the installed one

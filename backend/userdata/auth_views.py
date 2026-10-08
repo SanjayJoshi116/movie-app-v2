@@ -19,7 +19,9 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
-from .models import Profile
+from . import tmdb_client
+from .models import Profile, TMDBProfile
+from .signals import delete_avatar_on_commit
 from .serializers import (
     LoginInputSerializer,
     PasswordInputSerializer,
@@ -47,6 +49,16 @@ class RegisterThrottle(AnonRateThrottle):
 
 class PasswordResetThrottle(AnonRateThrottle):
     scope = "password_reset"
+
+
+class TokenSessionThrottle(AnonRateThrottle):
+    """Token refresh and logout. Set as the views' *only* throttle, replacing
+    the defaults: under the shared anon 300/day bucket, ~12 users behind one NAT
+    refreshing hourly ran it dry and got logged out. Anon-based on purpose:
+    these views set authentication_classes=(), so request.user is always
+    anonymous and the key is the client IP either way."""
+
+    scope = "token_refresh"
 
 
 def _reset_link_lifetime():
@@ -109,6 +121,7 @@ class SafeTokenRefreshSerializer(TokenRefreshSerializer):
 
 class SafeTokenRefreshView(TokenRefreshView):
     serializer_class = SafeTokenRefreshSerializer
+    throttle_classes = (TokenSessionThrottle,)
 
 
 @api_view(["POST"])
@@ -250,6 +263,10 @@ def delete_account(request):
     password = body.validated_data["password"]
     if not password or not request.user.check_password(password):
         return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
+    session_id = TMDBProfile.objects.filter(user=request.user).values_list("session_id", flat=True).first()
+    if session_id:
+        # Best-effort, before the id is gone with the account; never blocks deletion.
+        tmdb_client.revoke_tmdb_session(request.user.id, session_id)
     request.user.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -260,6 +277,10 @@ def profile(request):
     if request.method == "GET":
         return Response(UserSerializer(request.user).data)
 
+    # Verifying current_password (in is_valid) can rehash the stored password
+    # when the hasher's parameters changed, which changes the CHECK_REVOKE_TOKEN
+    # claim and kills this session's tokens. Snapshot it before that happens.
+    claim_before = get_md5_hash_password(request.user.password)
     serializer = UserProfileUpdateSerializer(data=request.data, context={"request": request})
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
@@ -288,6 +309,10 @@ def profile(request):
         # Revoke first, then issue the fresh pair, so this session survives
         # while every other session ends at its next refresh.
         _revoke_all_refresh_tokens(user)
+        body.update(_tokens_for_user(user))
+    elif get_md5_hash_password(user.password) != claim_before:
+        # Rehash only: same password, so nothing to revoke, but this session
+        # needs tokens carrying the new claim to stay signed in.
         body.update(_tokens_for_user(user))
     return Response(body)
 
@@ -324,9 +349,11 @@ def avatar(request):
 
     if request.method == "DELETE":
         if profile.avatar:
-            profile.avatar.delete(save=False)
+            old_name = profile.avatar.name
             profile.avatar = None
-            profile.save()
+            with transaction.atomic():
+                profile.save()
+                delete_avatar_on_commit(old_name)
         return Response(UserSerializer(request.user).data)
 
     file = request.FILES.get("avatar")
@@ -367,8 +394,19 @@ def avatar(request):
         )
     file.name = f"avatar.{ext}"
 
-    if profile.avatar:
-        profile.avatar.delete(save=False)
+    # The old file goes only after the new one is stored and the row committed,
+    # so a failed replace leaves the current photo in place and served.
+    old_name = profile.avatar.name if profile.avatar else ""
     profile.avatar = file
-    profile.save()
+    try:
+        with transaction.atomic():
+            profile.save()  # stores the file first, then the row
+            if old_name != profile.avatar.name:
+                delete_avatar_on_commit(old_name)
+    except Exception:
+        # Broad on purpose, and re-raised: storage and DB errors both land
+        # here, and either way the newly written file must not be orphaned.
+        if profile.avatar._committed and profile.avatar.name != old_name:
+            profile.avatar.storage.delete(profile.avatar.name)
+        raise
     return Response(UserSerializer(request.user).data)

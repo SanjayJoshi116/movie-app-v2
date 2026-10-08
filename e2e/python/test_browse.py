@@ -47,9 +47,9 @@ class TestMoviesPage:
         authed_page.route("**/api/tmdb/discover/movie**", lambda r: fulfill_json(r, EMPTY_RESPONSE))
         authed_page.route("**/api/tmdb/trending/**", lambda r: fulfill_json(r, EMPTY_RESPONSE))
         authed_page.goto("/movies")
-        # Wait for initial load
-        authed_page.wait_for_timeout(2000)
-        # No article cards should appear
+        # The empty state only renders once loading has finished, so the count
+        # below can't pass on the skeleton.
+        expect(authed_page.get_by_text("No movies found.")).to_be_visible(timeout=10_000)
         expect(authed_page.get_by_role("article")).to_have_count(0)
 
     def test_movies_card_has_details_button(self, authed_page: Page):
@@ -184,10 +184,8 @@ class TestSidebar:
         mock_tmdb_movies(authed_page)
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
-        toggle = authed_page.locator("[aria-label*='Switch to']").first
-        original_label = toggle.get_attribute("aria-label")
+        toggle = authed_page.get_by_role("button", name="Switch to light mode")
+        expect(authed_page.locator("body")).to_have_class(re.compile(r"dark-theme"))
         toggle.click()
-        # After click the label should flip
-        authed_page.wait_for_timeout(300)
-        new_label = toggle.get_attribute("aria-label")
-        assert original_label != new_label, "Theme toggle aria-label should change after click"
+        expect(authed_page.get_by_role("button", name="Switch to dark mode")).to_be_visible()
+        expect(authed_page.locator("body")).not_to_have_class(re.compile(r"dark-theme"))

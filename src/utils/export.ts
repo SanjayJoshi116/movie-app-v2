@@ -2,8 +2,16 @@ import type { WatchlistEntry, WatchedEntry, RatingEntry, UserList } from "../typ
 import { buildBackupZip } from "./backup";
 import { localISODate } from "./formatDate";
 
+/**
+ * Cells a spreadsheet would run as a formula (`=` `+` `-` `@`, tab, CR) get a
+ * leading `'`, which spreadsheets show as text. A value already starting with
+ * `'` gets one too, so parseCSV's strip of exactly one `'` is reversible.
+ */
+const FORMULA_START = /^[=+\-@\t\r']/;
+
 function escape(v: unknown): string {
-  const s = String(v ?? "");
+  const raw = String(v ?? "");
+  const s = FORMULA_START.test(raw) ? `'${raw}` : raw;
   return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

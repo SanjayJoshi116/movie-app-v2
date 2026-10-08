@@ -109,6 +109,9 @@ class UserRecommendationCache(models.Model):
     for_you_json = models.JSONField(default=list)
     personalized_json = models.JSONField(default=list)
     computed_at = models.DateTimeField(auto_now=True)
+    # Set when a refresh starts on any process, cleared when it ends; see
+    # recommendations.REFRESH_STATUS_WINDOW.
+    refreshing_since = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} — rec cache ({self.computed_at:%Y-%m-%d %H:%M})"
@@ -131,7 +134,10 @@ def avatar_upload_path(instance, filename):
     ext = filename.rsplit(".", 1)[-1].lower()
     if ext not in AVATAR_EXTENSIONS:
         raise ValueError(f"Refusing to store avatar with extension {ext!r}")
-    return f"avatars/user_{instance.user_id}.{ext}"
+    # Versioned per upload, so a replaced photo gets a new URL that no cache
+    # can answer with the old image.
+    stamp = int(timezone.now().timestamp() * 1000)
+    return f"avatars/user_{instance.user_id}_{stamp}.{ext}"
 
 
 class Profile(models.Model):

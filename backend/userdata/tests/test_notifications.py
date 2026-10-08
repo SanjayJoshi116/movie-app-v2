@@ -1,4 +1,8 @@
+import re
+import threading
+import time
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import requests
@@ -8,6 +12,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from userdata import notifications_views
 from userdata.models import FollowedPerson, NotificationCheckpoint
 
 
@@ -119,6 +124,72 @@ class NotificationCoverageAndCacheTests(APITestCase):
         res = self.client.get("/api/notifications/new-releases/")
         self.assertEqual(mock_get.call_count, 1)  # only person 2; person 1 was cached
         self.assertEqual([i["title"] for i in res.data["items"]], ["Now Works"])
+
+
+def _person_id(path):
+    return int(re.fullmatch(r"/person/(\d+)/combined_credits", path).group(1))
+
+
+class NotificationPollBudgetTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="nell", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        NotificationCheckpoint.objects.create(user=self.user, last_seen_at=timezone.now() - timedelta(days=60))
+
+    def _follow(self, n):
+        FollowedPerson.objects.bulk_create([
+            FollowedPerson(user=self.user, person_id=i, name=f"P{i}") for i in range(1, n + 1)
+        ])
+
+    @patch("userdata.tmdb_client._get")
+    def test_cold_follows_are_covered_over_consecutive_polls(self, mock_get):
+        self._follow(100)
+        mock_get.return_value = {"cast": []}
+        per_poll = []
+        for _ in range(4):
+            mock_get.reset_mock()
+            res = self.client.get("/api/notifications/new-releases/")
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            per_poll.append({_person_id(c.args[0]) for c in mock_get.call_args_list})
+
+        self.assertEqual([len(p) for p in per_poll], [40, 40, 20, 0])
+        self.assertEqual(per_poll[0] | per_poll[1] | per_poll[2], set(range(1, 101)))
+
+    @patch("userdata.notifications_views.NOTIFICATIONS_BUDGET_SECONDS", 0.5)
+    @patch("userdata.tmdb_client._get")
+    def test_slow_tmdb_returns_within_budget_and_keeps_what_arrived(self, mock_get):
+        self._follow(6)
+        release = threading.Event()
+        self.addCleanup(release.set)  # let abandoned worker threads finish
+
+        def get(path, *args, **kwargs):
+            if _person_id(path) != 6:  # the newest follow, so first in the queue
+                release.wait(10)  # far past the budget
+            return {"cast": []}
+        mock_get.side_effect = get
+
+        started = time.monotonic()
+        res = self.client.get("/api/notifications/new-releases/")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertLess(elapsed, 0.5 + 2)
+        self.assertEqual(cache.get("tmdb:person_credits:6"), [])  # arrived in time: cached
+        self.assertIsNone(cache.get("tmdb:person_credits:5"))
+
+        release.set()
+        mock_get.reset_mock(side_effect=True)
+        mock_get.return_value = {"cast": []}
+        self.client.get("/api/notifications/new-releases/")
+        self.assertEqual({_person_id(c.args[0]) for c in mock_get.call_args_list}, {1, 2, 3, 4, 5})
+
+    def test_budget_fits_under_gunicorn_timeout(self):
+        entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
+        match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
+        self.assertIsNotNone(match, "docker-entrypoint.sh must set gunicorn --timeout explicitly")
+        # Headroom for the DB work after the fetch and the response itself.
+        self.assertLessEqual(notifications_views.NOTIFICATIONS_BUDGET_SECONDS, int(match.group(1)) - 10)
 
 
 class MarkNotificationsSeenTests(APITestCase):

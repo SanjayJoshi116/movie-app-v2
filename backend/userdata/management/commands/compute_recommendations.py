@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
 
 from userdata.models import WatchedEntry
-from userdata.recommendations import _compute_for_you, _compute_personalized, UserRecommendationCache
+from userdata.recommendations import FetchHealth, _compute_for_you, _compute_personalized, save_recommendations
 
 
 class Command(BaseCommand):
@@ -23,13 +23,12 @@ class Command(BaseCommand):
 
         for i, user in enumerate(users, 1):
             try:
-                for_you = _compute_for_you(user)
-                personalized = _compute_personalized(user)
-                UserRecommendationCache.objects.update_or_create(
-                    user=user,
-                    defaults={"for_you_json": for_you, "personalized_json": personalized},
-                )
-                self.stdout.write(f"  [{i}/{total}] {user.username} — done")
+                health = FetchHealth()
+                for_you = _compute_for_you(user, health)
+                personalized = _compute_personalized(user, health)
+                saved = save_recommendations(user, for_you, personalized, health)
+                outcome = "done" if saved else "kept previous (TMDB failed)"
+                self.stdout.write(f"  [{i}/{total}] {user.username} — {outcome}")
             except Exception as e:
                 # Broad on purpose: same heterogeneous TMDB/numpy/DB surface
                 # as recommendations.py's _refresh_cache, plus this loop's

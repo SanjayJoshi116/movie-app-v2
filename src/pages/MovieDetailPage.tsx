@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import MovieDetails from "../components/MovieDetails";
 import type { MovieDetailData } from "../components/MovieDetails";
@@ -13,10 +12,12 @@ import {
 } from "../api/tmdb";
 import { pageVariants } from "../constants/ui";
 import { LoadError } from "../components/LoadError";
+import NotFoundPage from "./NotFoundPage";
+import { useValidId } from "../hooks/useValidId";
 import { settledData, isNotFound } from "../utils/settled";
 
 function MovieDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const id = useValidId();
   const [movie, setMovie] = useState<MovieDetailData | null>(null);
   // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
@@ -74,6 +75,7 @@ function MovieDetailPage() {
     };
   }, [id, reloadKey]);
 
+  if (id === null) return <NotFoundPage />;
   if (loading) return <DetailPageSkeleton />;
   if (error === "not-found") return <LoadError notFound title="Movie not found" />;
   if (error)

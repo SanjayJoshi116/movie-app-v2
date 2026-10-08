@@ -1,6 +1,8 @@
 """
 Search tests: navigation, results tabs, edge cases (empty, special chars, no results).
 """
+from urllib.parse import urlencode
+
 from playwright.sync_api import Page, expect
 
 from conftest import (
@@ -40,6 +42,11 @@ def mount_search_routes(page: Page):
     page.route("**/api/tmdb/search/multi**", lambda r: fulfill_json(r, SEARCH_MOVIES))
 
 
+
+def search_url(term: str) -> str:
+    """Where a search from the box lands: the term rides in the URL (reloadable, shareable)."""
+    return "/search?" + urlencode({"q": term.strip()})
+
 class TestSearchNavigation:
     def test_search_typing_and_enter_navigates_to_search_page(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
@@ -48,7 +55,7 @@ class TestSearchNavigation:
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         authed_page.get_by_placeholder("Search movies, shows or people…").fill("inception")
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(authed_page).to_have_url("/search", timeout=5_000)
+        expect(authed_page).to_have_url(search_url("inception"), timeout=5_000)
 
     def test_search_page_direct_navigation_shows_prompt(self, authed_page: Page):
         mount_search_routes(authed_page)
@@ -66,7 +73,7 @@ class TestSearchResults:
         expect(page.get_by_role("article").first).to_be_visible(timeout=10_000)
         page.get_by_placeholder("Search movies, shows or people…").fill(query)
         page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(page).to_have_url("/search", timeout=5_000)
+        expect(page).to_have_url(search_url(query), timeout=5_000)
 
     def test_search_results_page_loads(self, authed_page: Page):
         self._navigate_to_search(authed_page)
@@ -90,10 +97,8 @@ class TestSearchResults:
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         authed_page.get_by_placeholder("Search movies, shows or people…").fill("zzzunknownquery")
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(authed_page).to_have_url("/search", timeout=5_000)
-        # Empty state should render (Ant Empty component)
-        authed_page.wait_for_timeout(1500)
-        expect(authed_page.locator(".ant-empty, .ant-result")).to_be_visible(timeout=5_000)
+        expect(authed_page).to_have_url(search_url("zzzunknownquery"), timeout=5_000)
+        expect(authed_page.get_by_text('No movies found for "zzzunknownquery"')).to_be_visible(timeout=8_000)
 
 
 class TestSearchEdgeCases:
@@ -104,7 +109,7 @@ class TestSearchEdgeCases:
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         authed_page.get_by_placeholder("Search movies, shows or people…").fill("C++ & Python <script>")
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(authed_page).to_have_url("/search", timeout=5_000)
+        expect(authed_page).to_have_url(search_url("C++ & Python <script>"), timeout=5_000)
         # No error boundary should be visible
         expect(authed_page.get_by_text("Something went wrong")).not_to_be_visible(timeout=3_000)
 
@@ -116,7 +121,7 @@ class TestSearchEdgeCases:
         long_query = "a" * 200
         authed_page.get_by_placeholder("Search movies, shows or people…").fill(long_query)
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(authed_page).to_have_url("/search", timeout=5_000)
+        expect(authed_page).to_have_url(search_url(long_query), timeout=5_000)
 
     def test_search_single_char_query_navigates(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
@@ -125,4 +130,4 @@ class TestSearchEdgeCases:
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         authed_page.get_by_placeholder("Search movies, shows or people…").fill("a")
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
-        expect(authed_page).to_have_url("/search", timeout=5_000)
+        expect(authed_page).to_have_url(search_url("a"), timeout=5_000)

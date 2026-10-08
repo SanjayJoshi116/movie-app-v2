@@ -1,4 +1,3 @@
-import contextlib
 import logging
 import operator
 import random
@@ -10,7 +9,7 @@ from functools import partial, reduce
 import numpy as np
 import requests
 from django.contrib.auth.models import User
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from django.db import Error as DBError
 from django.db.models import Q
 from django.utils import timezone
@@ -28,14 +27,52 @@ logger = logging.getLogger(__name__)
 
 CACHE_TTL_DAYS = 7
 RECOMMENDATIONS_TTL_HOURS = 12
+# How long a refreshing_since stamp counts as "still running". Well above a
+# normal refresh, so a killed process's stamp expires on its own.
+REFRESH_STATUS_WINDOW = timedelta(minutes=10)
 
 _computing_lock = threading.Lock()
 _computing_users = set()  # user ids currently being (re)computed, in-process only
 _rerun_users = set()  # in-flight user ids that got another trigger; get one follow-up run
 
 
+class FetchHealth:
+    """Whether any TMDB call failed during one compute, shared by its worker threads."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.failed = False
+
+    def mark_failed(self):
+        with self._lock:
+            self.failed = True
+
+
 def _spawn_refresh(user_id):
-    threading.Thread(target=_refresh_cache_by_id, args=(user_id,), daemon=True).start()
+    threading.Thread(target=_refresh_thread, args=(user_id,), daemon=True).start()
+
+
+def _refresh_thread(user_id):
+    """Thread target. The refresh runs (and releases its slot) first, then the
+    thread's own DB connection is closed so it isn't leaked."""
+    try:
+        _refresh_cache_by_id(user_id)
+    finally:
+        connection.close()
+
+
+def _set_refreshing_since(user_id, value, *, only_before=None):
+    """Record (or clear) the cross-process "refresh running" stamp. Best-effort:
+    a DB error only costs an accurate status, never the refresh itself."""
+    qs = UserRecommendationCache.objects.filter(user_id=user_id)
+    if only_before is not None:
+        # lte, not lt: a coarse clock (Windows) can stamp the start and the
+        # finish of a short run with the same instant.
+        qs = qs.filter(refreshing_since__lte=only_before)
+    try:
+        qs.update(refreshing_since=value)
+    except DBError as e:
+        logger.warning("Could not update refresh status for user %s: %s", user_id, e)
 
 
 def request_refresh(user_id, *, rerun_if_running):
@@ -51,6 +88,8 @@ def request_refresh(user_id, *, rerun_if_running):
                 _rerun_users.add(user_id)
             return
         _computing_users.add(user_id)
+    # No-op without a row yet; the endpoints already answer "pending" then.
+    _set_refreshing_since(user_id, timezone.now())
     _spawn_refresh(user_id)
 
 
@@ -60,30 +99,31 @@ def _start_refresh_if_needed(user):
     return True
 
 
-def _ensure_cached(entry, prefetched=None):
-    """Return a TMDBMediaCache row for entry, fetching from TMDB if stale/missing.
+def _is_fresh(cached):
+    return cached is not None and cached.cached_at >= timezone.now() - timedelta(days=CACHE_TTL_DAYS)
 
-    `prefetched` is an optional {(media_id, media_type): row} dict built with a
-    single bulk query, to avoid one DB lookup per entry when called from a loop.
-    """
-    cutoff = timezone.now() - timedelta(days=CACHE_TTL_DAYS)
-    key = (entry.media_id, entry.media_type)
-    if prefetched is not None:
-        cached = prefetched.get(key)
-    else:
-        cached = TMDBMediaCache.objects.filter(
-            media_id=entry.media_id, media_type=entry.media_type
-        ).first()
-    if cached and cached.cached_at >= cutoff:
-        return cached
+
+def _fetch_media_details(entry, health=None):
+    """Worker-thread half of the cache fill: TMDB HTTP only, no DB. Returns
+    the details, or None on failure."""
     try:
-        details = tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
+        return tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
     except (requests.RequestException, KeyError, TypeError, ValueError) as e:
-        # Never cache a failure: writing empty genres/cast here used to replace
-        # good data and hide the title for a whole CACHE_TTL_DAYS. Keep any
-        # existing (even stale) row; with none, store nothing so the next run
-        # retries.
         logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
+        if health is not None:
+            health.mark_failed()
+        return None
+
+
+def _store_media_cache(entry, details, cached):
+    """Calling-thread half of the cache fill: upsert `details`, else keep `cached`.
+
+    Never cache a failure: writing empty genres/cast here used to replace good
+    data and hide the title for a whole CACHE_TTL_DAYS. With no details, keep
+    any existing (even stale) row; with none, store nothing so the next run
+    retries.
+    """
+    if details is None:
         return cached
     try:
         cached, _ = TMDBMediaCache.objects.update_or_create(
@@ -92,11 +132,46 @@ def _ensure_cached(entry, prefetched=None):
             defaults={"genre_ids": details["genre_ids"], "top_cast": details["top_cast"]},
         )
     except IntegrityError:
-        # Another thread won the race — just read what it wrote
+        # Another process won the race — just read what it wrote
         cached = TMDBMediaCache.objects.filter(
             media_id=entry.media_id, media_type=entry.media_type
         ).first()
     return cached
+
+
+def _ensure_cached(entry, prefetched=None):
+    """Return a TMDBMediaCache row for entry, fetching from TMDB if stale/missing.
+
+    Single-entry, single-thread version; loops use _fill_media_cache.
+    `prefetched` is an optional {(media_id, media_type): row} dict built with a
+    single bulk query, to avoid one DB lookup per entry when called from a loop.
+    """
+    if prefetched is not None:
+        cached = prefetched.get((entry.media_id, entry.media_type))
+    else:
+        cached = TMDBMediaCache.objects.filter(
+            media_id=entry.media_id, media_type=entry.media_type
+        ).first()
+    if _is_fresh(cached):
+        return cached
+    return _store_media_cache(entry, _fetch_media_details(entry), cached)
+
+
+def _fill_media_cache(entries, health=None):
+    """{(media_id, media_type): TMDBMediaCache row or None} for entries.
+
+    Pool workers only fetch from TMDB. Every DB read and write stays on the
+    calling thread, so the workers never open (and leak) their own connections.
+    """
+    pairs_q = reduce(operator.or_, (Q(media_id=e.media_id, media_type=e.media_type) for e in entries))
+    rows = {(row.media_id, row.media_type): row for row in TMDBMediaCache.objects.filter(pairs_q)}
+    stale = [e for e in entries if not _is_fresh(rows.get((e.media_id, e.media_type)))]
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        fetched = list(ex.map(partial(_fetch_media_details, health=health), stale))
+    for entry, details in zip(stale, fetched, strict=True):
+        key = (entry.media_id, entry.media_type)
+        rows[key] = _store_media_cache(entry, details, rows.get(key))
+    return rows
 
 
 def _interleave(a, b):
@@ -119,8 +194,12 @@ def _tmdb_item(r, media_type):
     }
 
 
-def _compute_for_you(user) -> list:
-    """Compute for-you recommendation sections for a user. Returns list of sections."""
+def _compute_for_you(user, health=None) -> list:
+    """Compute for-you recommendation sections for a user. Returns list of sections.
+
+    TMDB failures that can drop content are recorded on `health`.
+    """
+    health = health or FetchHealth()
     watched = list(WatchedEntry.objects.filter(user=user))
     if not watched:
         return []
@@ -131,15 +210,9 @@ def _compute_for_you(user) -> list:
     }
 
     # ── Cache: bulk-prefetch existing rows, then parallel fetch/refresh ──────
-    pairs_q = reduce(operator.or_, (Q(media_id=w.media_id, media_type=w.media_type) for w in watched))
-    prefetched = {
-        (row.media_id, row.media_type): row for row in TMDBMediaCache.objects.filter(pairs_q)
-    }
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        cache_rows = list(ex.map(partial(_ensure_cached, prefetched=prefetched), watched))
-
     cache_by_key = {
-        f"{row.media_type}-{row.media_id}": row for row in cache_rows if row
+        f"{row.media_type}-{row.media_id}": row
+        for row in _fill_media_cache(watched, health).values() if row
     }
 
     # ── Build frequency maps ─────────────────────────────────────────────────
@@ -213,10 +286,14 @@ def _compute_for_you(user) -> list:
 
     def discover_mixed(genre_id):
         mov, tv = [], []
-        with contextlib.suppress(requests.RequestException, ValueError):
+        try:
             mov = [_tmdb_item(r, "movie") for r in tmdb_client.discover("movie", [genre_id])]
-        with contextlib.suppress(requests.RequestException, ValueError):
+        except (requests.RequestException, ValueError):
+            health.mark_failed()
+        try:
             tv = [_tmdb_item(r, "tv") for r in tmdb_client.discover("tv", [genre_id])]
+        except (requests.RequestException, ValueError):
+            health.mark_failed()
         return _interleave(mov, tv)
 
     # ── 1. More like what you love ───────────────────────────────────────────
@@ -240,7 +317,7 @@ def _compute_for_you(user) -> list:
         if trending_items:
             sections.append({"key": "trending", "label": "Trending This Week", "items": trending_items})
     except (requests.RequestException, ValueError):
-        pass
+        health.mark_failed()
 
     # ── 3. Genre sections ─────────────────────────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
@@ -264,6 +341,7 @@ def _compute_for_you(user) -> list:
                 data = tmdb_client._get(f"/tv/{w.media_id}/recommendations")
             return w, [_tmdb_item(r, w.media_type) for r in data.get("results", [])]
         except (requests.RequestException, ValueError):
+            health.mark_failed()
             return w, []
 
     with ThreadPoolExecutor(max_workers=5) as ex:
@@ -291,6 +369,7 @@ def _compute_for_you(user) -> list:
                 }
             ).get("results", [])]
         except (requests.RequestException, ValueError):
+            health.mark_failed()
             return []
 
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -312,6 +391,7 @@ def _compute_for_you(user) -> list:
             items.sort(key=lambda x: -x["voteAverage"])
             return actor_id, info["name"], items
         except (requests.RequestException, ValueError):
+            health.mark_failed()
             return actor_id, info["name"], []
 
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -340,8 +420,12 @@ def _add_or_merge_section(sections, section, limit=12):
     existing["items"] = (existing["items"] + [i for i in section["items"] if (i["id"], i["type"]) not in have])[:limit]
 
 
-def _compute_personalized(user) -> list:
-    """Compute personalized recommendation sections for a user. Returns list of sections."""
+def _compute_personalized(user, health=None) -> list:
+    """Compute personalized recommendation sections for a user. Returns list of sections.
+
+    TMDB failures that can drop content are recorded on `health`.
+    """
+    health = health or FetchHealth()
     watched = list(WatchedEntry.objects.filter(user=user))
     if len(watched) < 3:
         return []
@@ -405,6 +489,7 @@ def _compute_personalized(user) -> list:
             try:
                 results = tmdb_client.discover(media_type, top_genre_ids)
             except (requests.RequestException, ValueError):
+                health.mark_failed()
                 results = []
             for r in results:
                 mid = r.get("id")
@@ -472,6 +557,7 @@ def _refresh_cache_by_id(user_id):
 
 def _finish_refresh(user_id):
     """Release user_id's in-flight slot, or hand it to one queued follow-up run."""
+    finished_at = timezone.now()
     with _computing_lock:
         if user_id in _rerun_users:
             _rerun_users.discard(user_id)
@@ -481,18 +567,49 @@ def _finish_refresh(user_id):
             rerun = False
     if rerun:
         _spawn_refresh(user_id)
+    else:
+        # Clear only a stamp from no later than this run's end: a refresh
+        # started since (here or on another process) keeps its own.
+        _set_refreshing_since(user_id, None, only_before=finished_at)
+
+
+def _non_empty_sections(*section_lists):
+    return sum(1 for sections in section_lists for s in (sections or []) if s.get("items"))
+
+
+def save_recommendations(user, for_you, personalized, health):
+    """Store a computed result unless a TMDB outage made it lose content.
+
+    When a TMDB call failed and the result has fewer non-empty sections than
+    the stored row, or none at all, the stored row stays untouched (with no
+    row, nothing is written) and a later refresh retries. A clean compute
+    always writes. Returns whether it saved.
+    """
+    if health.failed:
+        new_count = _non_empty_sections(for_you, personalized)
+        stored = UserRecommendationCache.objects.filter(user=user).first()
+        old_count = _non_empty_sections(stored.for_you_json, stored.personalized_json) if stored else 0
+        if new_count == 0 or new_count < old_count:
+            logger.warning(
+                "Rec cache refresh for user %s kept the previous result: TMDB failed (%s -> %s sections)",
+                user.id, old_count, new_count,
+            )
+            return False
+    UserRecommendationCache.objects.update_or_create(
+        user=user,
+        defaults={"for_you_json": for_you, "personalized_json": personalized},
+    )
+    return True
 
 
 def _refresh_cache(user):
     """Recompute both recommendation types and save to DB. Safe to run in background thread."""
     try:
-        for_you = _compute_for_you(user)
-        personalized = _compute_personalized(user)
-        UserRecommendationCache.objects.update_or_create(
-            user=user,
-            defaults={"for_you_json": for_you, "personalized_json": personalized},
-        )
-        logger.info("Recommendation cache refreshed for user %s", user.id)
+        health = FetchHealth()
+        for_you = _compute_for_you(user, health)
+        personalized = _compute_personalized(user, health)
+        if save_recommendations(user, for_you, personalized, health):
+            logger.info("Recommendation cache refreshed for user %s", user.id)
     except Exception as e:
         # Broad on purpose: this spans TMDB I/O, numpy/sklearn computation,
         # and a DB write in one background thread with no caller to report
@@ -508,6 +625,14 @@ def _is_stale(cache) -> bool:
     return (timezone.now() - cache.computed_at).total_seconds() > RECOMMENDATIONS_TTL_HOURS * 3600
 
 
+def _is_refreshing(user_id, cache) -> bool:
+    """A refresh is running in this process, or recently started on any process."""
+    if user_id in _computing_users:
+        return True
+    since = cache.refreshing_since
+    return since is not None and timezone.now() - since < REFRESH_STATUS_WINDOW
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def recommendations_for_you(request):
@@ -515,7 +640,7 @@ def recommendations_for_you(request):
     if cache:
         if _is_stale(cache):
             _start_refresh_if_needed(request.user)
-        computing = request.user.id in _computing_users
+        computing = _is_refreshing(request.user.id, cache)
         return Response({"status": "pending" if computing else "ready", "sections": cache.for_you_json})
     _start_refresh_if_needed(request.user)
     return Response({"status": "pending", "sections": []})
@@ -528,7 +653,7 @@ def personalized_recommendations(request):
     if cache:
         if _is_stale(cache):
             _start_refresh_if_needed(request.user)
-        computing = request.user.id in _computing_users
+        computing = _is_refreshing(request.user.id, cache)
         return Response({"status": "pending" if computing else "ready", "sections": cache.personalized_json})
     _start_refresh_if_needed(request.user)
     return Response({"status": "pending", "sections": []})

@@ -1,4 +1,5 @@
 import { test, expect, mockAuthedBase, paginated } from "./fixtures";
+import type { WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
 
 const MOCK_MOVIE = {
   id: 550, title: "Fight Club", overview: "...", poster_path: "/poster.jpg",
@@ -10,7 +11,7 @@ const MOCK_MOVIE = {
 const FIGHT_CLUB_ENTRY = {
   id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",
   posterPath: null, voteAverage: 8.4, addedAt: new Date().toISOString(),
-};
+} satisfies WatchlistEntryDTO;
 
 test.beforeEach(async ({ page }) => {
   await mockAuthedBase(page);
@@ -77,7 +78,8 @@ test.describe("Watched page", () => {
         json: paginated([{
           id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",
           posterPath: null, voteAverage: 8.4, watchedAt: new Date().toISOString(),
-        }]),
+          watchedTz: "", originalLanguage: "en", releaseYear: 1999, runtimeMinutes: 139, platform: null,
+        } satisfies WatchedEntryDTO]),
       })
     );
 

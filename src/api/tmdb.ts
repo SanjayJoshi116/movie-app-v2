@@ -21,12 +21,39 @@ import type {
 
 const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || `http://${window.location.hostname}:8000/api/tmdb` });
 
-// Retry once on 500 after a brief pause — handles transient proxy/network blips,
-// matching the retry behavior in src/api/userApi.ts.
+/** Exported for tests only. */
+export { api as tmdbApi };
+
+declare module "axios" {
+  interface InternalAxiosRequestConfig {
+    /** Set on the one retry after a 401: the request goes out without a token. */
+    _noAuthRetry?: boolean;
+  }
+}
+
+// Send the signed-in user's token so the proxy throttles per user, not per IP
+// (users behind one NAT shared a bucket). The proxy itself is public.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("cinedb_access");
+  if (token && !config._noAuthRetry) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
+    // DRF answers an expired/invalid token with 401 even on this AllowAny
+    // view. This is public data, so retry once without the token. Never log
+    // out or refresh here: token refresh lives only in userApi's interceptor,
+    // and the next userApi call refreshes the token anyway.
+    if (error.response?.status === 401 && original && !original._noAuthRetry) {
+      original._noAuthRetry = true;
+      delete original.headers.Authorization;
+      return api(original);
+    }
+    // Retry once on 500 after a brief pause — handles transient proxy/network
+    // blips, matching the retry behavior in src/api/userApi.ts.
     if (error.response?.status === 500 && original && !original._retry500) {
       original._retry500 = true;
       await new Promise((r) => setTimeout(r, 2000));

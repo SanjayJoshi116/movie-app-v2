@@ -101,7 +101,9 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("DB_NAME", "cinedb"),
         "USER": os.environ.get("DB_USER", "postgres"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+        # Docker keeps the password only in .env.db as POSTGRES_PASSWORD (the
+        # name the postgres image reads), shared by the db and backend services.
+        "PASSWORD": os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", "localhost"),
         "PORT": os.environ.get("DB_PORT", "5432"),
         # Re-validate connections before use; helps recover after network blips
@@ -160,6 +162,7 @@ REST_FRAMEWORK = {
         "password_reset": "5/hour",
         "tmdb_proxy": "120/min",
         "notifications": "30/min",
+        "token_refresh": "60/min",
     },
     # How many reverse proxies sit in front of Django. DRF then takes the
     # client address from that position in X-Forwarded-For (counting from the

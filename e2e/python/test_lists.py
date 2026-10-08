@@ -73,7 +73,6 @@ class TestListsModal:
         expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)
         authed_page.get_by_label("List Name").fill("Test List")
         authed_page.locator(".ant-modal-footer").get_by_role("button", name="Cancel").click()
-        authed_page.wait_for_timeout(300)
         expect(authed_page.locator(".ant-modal")).not_to_be_visible()
         expect(authed_page.get_by_text("Test List")).not_to_be_visible()
 
@@ -116,7 +115,6 @@ class TestListsWithItems:
         expect(authed_page.get_by_role("heading", name="My Lists")).to_be_visible(timeout=8_000)
         # Click the list card to expand
         authed_page.get_by_text("Favorites").first.click()
-        authed_page.wait_for_timeout(500)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible(timeout=5_000)
 
     def test_zero_items_shows_zero_count(self, authed_page: Page):
@@ -166,7 +164,7 @@ class TestListsEdgeCases:
             {**MOCK_LIST, "id": i + 1, "name": f"List {i + 1}"}
             for i in range(4)
         ]
-        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, lists))
+        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated(lists)))
         authed_page.goto("/lists")
         expect(authed_page.get_by_role("heading", name="My Lists")).to_be_visible(timeout=8_000)
         for i in range(4):

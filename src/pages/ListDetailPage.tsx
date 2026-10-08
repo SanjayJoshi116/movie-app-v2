@@ -69,15 +69,19 @@ function ListDetailPage() {
     setEditOpen(true);
   };
 
+  const [saving, setSaving] = useState(false);
   const handleEditSubmit = () => {
-    if (!list) return;
+    if (!list || saving) return;
     form.validateFields().then(async (values) => {
+      setSaving(true);
       try {
         await updateList(list.id, values);
         showSuccess("List updated");
         setEditOpen(false);
       } catch (err) {
         showError(getApiError(err, "Failed to update list."));
+      } finally {
+        setSaving(false);
       }
     });
   };
@@ -272,6 +276,7 @@ function ListDetailPage() {
         onOk={handleEditSubmit}
         onCancel={() => setEditOpen(false)}
         okText="Save"
+        confirmLoading={saving}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

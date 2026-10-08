@@ -1,6 +1,8 @@
 """
 Watchlist page tests: empty state, items, sorting, search, remove, export CSV.
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from conftest import paginated, fulfill_json, MOCK_WATCHLIST_ITEM, MOCK_RATING
@@ -16,7 +18,6 @@ def make_watchlist_items(n: int):
             "posterPath": None,
             "voteAverage": 7.0 + i * 0.1,
             "addedAt": f"2024-0{(i % 9) + 1}-15T10:00:00Z",
-            "watched": False,
         }
         for i in range(n)
     ]
@@ -70,7 +71,7 @@ class TestWatchlistWithItems:
 
     def test_watchlist_multiple_items_count(self, authed_page: Page):
         items = make_watchlist_items(3)
-        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (3)")).to_be_visible(timeout=8_000)
 
@@ -85,11 +86,10 @@ class TestWatchlistWithItems:
             MOCK_WATCHLIST_ITEM,
             {**MOCK_WATCHLIST_ITEM, "id": 2, "mediaId": 551, "title": "The Shawshank Redemption"},
         ]
-        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (2)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("Fight")
-        authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
         expect(authed_page.get_by_text("The Shawshank Redemption")).not_to_be_visible()
 
@@ -98,7 +98,6 @@ class TestWatchlistWithItems:
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
         authed_page.get_by_placeholder("Search title…").fill("zzznotfound")
-        authed_page.wait_for_timeout(300)
         expect(authed_page.get_by_text('No results for "zzznotfound"')).to_be_visible()
 
     def test_watchlist_sort_controls_visible(self, authed_page: Page):
@@ -114,7 +113,7 @@ class TestWatchlistWithItems:
             {**MOCK_WATCHLIST_ITEM, "id": 1, "mediaId": 551, "title": "Zebra Film"},
             {**MOCK_WATCHLIST_ITEM, "id": 2, "mediaId": 552, "title": "Alpha Film"},
         ]
-        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, items))
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated(items)))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (2)")).to_be_visible(timeout=8_000)
         # Both titles should be visible
@@ -146,14 +145,16 @@ class TestWatchlistRemove:
         # Also seen flaking in CI as "Element is outside of the viewport" right after
         # Playwright's own auto-scroll reports "done scrolling" -- the popup's zoom-in
         # entrance animation (antd's Popconfirm motion) can still be mid-transition when
-        # the actionability recheck runs, so the settle wait below runs before the click
-        # rather than only after it.
+        # the actionability recheck runs, so wait for that motion to finish first.
         cancel_button = authed_page.get_by_role("button", name="Cancel").last
         cancel_button.wait_for(state="visible", timeout=5_000)
-        authed_page.wait_for_timeout(300)
+        expect(authed_page.locator(".ant-popconfirm").last).not_to_have_class(
+            re.compile(r"ant-zoom-big-(appear|enter)")
+        )
         cancel_button.scroll_into_view_if_needed()
         cancel_button.click(force=True)
-        authed_page.wait_for_timeout(300)
+        expect(authed_page.get_by_text("Remove from watchlist?")).not_to_be_visible()
+        expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible()
         expect(authed_page.get_by_text("Fight Club")).to_be_visible()
 
     def test_remove_confirmed_shows_success_toast(self, authed_page: Page):
@@ -184,7 +185,7 @@ class TestWatchlistRating:
         authed_page.route("**/api/ratings/**", lambda r: fulfill_json(r, paginated([MOCK_RATING])))
         authed_page.goto("/watchlist")
         expect(authed_page.get_by_text("My Watchlist (1)")).to_be_visible(timeout=8_000)
-        expect(authed_page.get_by_role("button", name="Edit")).to_be_visible()
+        expect(authed_page.get_by_role("button", name="Edit rating")).to_be_visible()
 
     def test_rated_item_shows_rating_tag(self, authed_page: Page):
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([MOCK_WATCHLIST_ITEM])))

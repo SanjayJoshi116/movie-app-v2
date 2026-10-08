@@ -11,6 +11,10 @@ import { createInflight } from "../utils/inflight";
 export interface FollowedPeopleContextType {
   followed: FollowedPersonEntry[];
   loading: boolean;
+  /** The list failed to load: `followed` isn't the truth, so don't show "not following". */
+  error: boolean;
+  /** Clears `error` and fetches the list again. */
+  retry(): void;
   isFollowing(personId: number): boolean;
   follow(personId: number, name: string, profilePath: string | null): Promise<void>;
   unfollow(personId: number): Promise<void>;
@@ -35,25 +39,36 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const [followed, setFollowed] = useState<FollowedPersonEntry[]>([]);
   const [requested, setRequested] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const inflight = useRef(createInflight());
 
   useEffect(() => {
     if (!isAuthenticated) {
       setFollowed([]);
       setLoaded(false);
+      setError(false);
       setRequested(false);
       return;
     }
     if (!requested) return;
     let cancelled = false;
     getFollowedPeople()
-      .then((data) => { if (!cancelled) setFollowed(data); })
-      .catch(() => { if (!cancelled) setFollowed([]); })
+      .then((data) => { if (!cancelled) { setFollowed(data); setError(false); } })
+      // Keep whatever we had: an empty list here used to read as "not following
+      // anyone" on the Following page and as "Follow" on every person card.
+      .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
-  }, [isAuthenticated, requested]);
+  }, [isAuthenticated, requested, retryToken]);
 
   const request = useCallback(() => setRequested(true), []);
+
+  const retry = useCallback(() => {
+    setError(false);
+    setLoaded(false);
+    setRetryToken((t) => t + 1);
+  }, []);
 
   const isFollowing = useCallback(
     (personId: number) => followed.some((f) => f.personId === personId),
@@ -82,8 +97,8 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const loading = isAuthenticated && !loaded;
 
   const value = useMemo<FollowedPeopleContextType>(
-    () => ({ followed, loading, isFollowing, follow, unfollow, request }),
-    [followed, loading, isFollowing, follow, unfollow, request]
+    () => ({ followed, loading, error, retry, isFollowing, follow, unfollow, request }),
+    [followed, loading, error, retry, isFollowing, follow, unfollow, request]
   );
 
   return <FollowedPeopleContext.Provider value={value}>{children}</FollowedPeopleContext.Provider>;

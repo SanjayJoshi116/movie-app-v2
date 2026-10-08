@@ -3,7 +3,8 @@ from unittest.mock import patch
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.settings import api_settings
-from rest_framework.test import APITestCase
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework.throttling import AnonRateThrottle
 
 # SimpleRateThrottle binds THROTTLE_RATES at class definition, so
@@ -28,11 +29,10 @@ class HealthThrottleTests(APITestCase):
     def test_health_does_not_consume_anon_allowance(self):
         for _ in range(10):
             self.client.get("/api/health/")
-        # token refresh is AllowAny with the default AnonRateThrottle; a bogus
-        # body gets 401/400, but not 429 since health used none of the budget.
-        for _ in range(2):
-            res = self.client.post("/api/auth/token/refresh/", {"refresh": "x"}, format="json")
-            self.assertNotEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        # Sanity: the tight rate really applies to that endpoint.
-        res = self.client.post("/api/auth/token/refresh/", {"refresh": "x"}, format="json")
-        self.assertEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        # No AllowAny endpoint is left on the default anon throttle (token refresh
+        # and logout moved to their own scope), so check the anon counter itself:
+        # the key the default AnonRateThrottle would use for this test client.
+        request = Request(APIRequestFactory().get("/api/health/"))
+        key = AnonRateThrottle().get_cache_key(request, view=None)
+        self.assertIsNotNone(key)
+        self.assertIsNone(cache.get(key))

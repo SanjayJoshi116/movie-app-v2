@@ -11,6 +11,7 @@ import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
 import { pageVariants } from "../constants/ui";
+import { pageableTotal } from "../utils/tmdbPages";
 
 function PeoplePage() {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ function PeoplePage() {
         : await fetchPopularPeople(page);
       return {
         results: res.data.results,
-        totalPages: Math.min(res.data.total_pages, 500),
+        totalPages: pageableTotal(res.data.total_pages),
       };
     },
     [searchTerm, includeAdult]

@@ -83,6 +83,17 @@ export interface UserList {
 // fetch them map into the frontend-normalized shapes above (id/type instead of
 // mediaId/mediaType, etc).
 
+/** The signed-in user as the API returns it (UserSerializer). */
+export interface AuthUser {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_staff: boolean;
+  avatar_url: string | null;
+}
+
 export interface WatchlistEntryDTO {
   id: number;
   mediaId: number;

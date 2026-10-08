@@ -44,12 +44,15 @@ backend/db.sqlite3
 .DS_Store
 Thumbs.db
 desktop.ini
-# Every env file is local-only except the committed templates. .env.docker holds
-# real secrets (TMDB key, mail password); .env.* also catches the copies people
-# make while editing (.env.docker.bak, .env.local, .env.old, ...).
+# Every env file is local-only except the committed templates (.env.example,
+# .env.db.example). .env.docker holds real secrets (TMDB key, mail password) and
+# .env.db the database password; .env.* also catches the copies people make
+# while editing (.env.docker.bak, .env.local, .env.old, ...). The same patterns
+# are in both .dockerignore files, so no copy ends up in an image either.
 .env
 .env.*
 !.env.example
+!.env.db.example
 *.env.bak
 
 # local setup scripts (may contain IPs or credentials)

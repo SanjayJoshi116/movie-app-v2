@@ -95,8 +95,7 @@
     display: contents;
   }
   .app-sidebar .sidebar-footer > .ant-divider,
-  .app-sidebar .sidebar-footer > .sidebar-user-row,
-  .app-sidebar .sidebar-footer > .sidebar-sign-in {
+  .app-sidebar .sidebar-footer > .sidebar-user-row {
     grid-column: 1 / -1;
   }
   /* 30px, not antd's 32: the rail's 1px border leaves 63px of content. */
@@ -155,8 +154,7 @@
     display: contents;
   }
   .app-sidebar.sidebar-collapsed .sidebar-footer > .ant-divider,
-  .app-sidebar.sidebar-collapsed .sidebar-footer > .sidebar-user-row,
-  .app-sidebar.sidebar-collapsed .sidebar-footer > .sidebar-sign-in {
+  .app-sidebar.sidebar-collapsed .sidebar-footer > .sidebar-user-row {
     grid-column: 1 / -1;
   }
   /* 30px, not antd's 32: the rail's 1px border leaves 63px of content. */
@@ -508,6 +506,24 @@ body:not(.dark-theme) .app-bottom-nav {
 }
 .card-link:focus:not(:focus-visible) {
   outline: none;
+}
+/* Sidebar avatar: a bare button around the Avatar, same 36px box. */
+.sidebar-avatar-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+body.dark-theme .sidebar-avatar-btn:focus-visible {
+  outline: 2px solid #f5c518;
+  outline-offset: 2px;
+}
+body:not(.dark-theme) .sidebar-avatar-btn:focus-visible {
+  outline: 2px solid #8a6d00;
+  outline-offset: 2px;
 }
 body.dark-theme .card-link:focus-visible {
   outline: 2px solid #f5c518;

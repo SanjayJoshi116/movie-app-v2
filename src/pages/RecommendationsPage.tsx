@@ -26,6 +26,7 @@ import { LoadError } from "../components/LoadError";
 import FilterBar from "../components/FilterBar";
 import type { LibraryTypeFilter } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
+import CardLink from "../components/CardLink";
 
 const SS_SEARCH = "foryou_search";
 const SS_TYPE_FILTER = "foryou_type_filter";
@@ -48,16 +49,20 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
         className="glass-card"
         onClick={() => navigate(path, { state: { from: "/recommendations" } })}
         cover={
-          item.posterPath ? (
-            <img
-              src={`${IMG_URL}${item.posterPath}`}
-              alt={item.title}
-              loading="lazy"
-              className="movie-poster-img"
-            />
-          ) : (
-            <PosterPlaceholder className="movie-poster-img" />
-          )
+          // Poster-only link (the card has its own buttons); the card's mouse
+          // onClick stays, so stop the click there.
+          <CardLink to={path} state={{ from: "/recommendations" }} label={item.title} stopPropagation>
+            {item.posterPath ? (
+              <img
+                src={`${IMG_URL}${item.posterPath}`}
+                alt=""
+                loading="lazy"
+                className="movie-poster-img"
+              />
+            ) : (
+              <PosterPlaceholder className="movie-poster-img" />
+            )}
+          </CardLink>
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}

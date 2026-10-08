@@ -15,7 +15,6 @@ import {
   FireOutlined,
   CalendarOutlined,
   UnorderedListOutlined,
-  LoginOutlined,
   LogoutOutlined,
   BarChartOutlined,
   UserAddOutlined,
@@ -187,23 +186,31 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
 
         <Divider style={{ margin: "2px 0" }} />
 
-        {isAuthenticated && user ? (
+        {/* App.tsx renders the Sidebar only when signed in, so there is no signed-out branch. */}
+        {isAuthenticated && user && (
           <div className="sidebar-user-row" style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 4 }}>
             <Tooltip title="Edit Profile">
-              <Avatar
-                size={36}
-                src={resolveAvatarUrl(user.avatar_url)}
-                style={{
-                  backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
-                  color: "#fff",
-                  fontWeight: 700,
-                  flexShrink: 0,
-                  cursor: "pointer",
-                }}
+              {/* A real button, so the profile dialog (password, email, account
+                  delete) is reachable from the keyboard on desktop too. */}
+              <button
+                type="button"
+                className="sidebar-avatar-btn"
+                aria-label="Edit profile"
                 onClick={() => setProfileOpen(true)}
               >
-                {!user.avatar_url && getInitials(user)}
-              </Avatar>
+                <Avatar
+                  size={36}
+                  src={resolveAvatarUrl(user.avatar_url)}
+                  style={{
+                    backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
+                    color: "#fff",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {!user.avatar_url && getInitials(user)}
+                </Avatar>
+              </button>
             </Tooltip>
             <Typography.Text className="sidebar-username-text" style={{ flex: 1, minWidth: 0, fontSize: FONT_SIZE.body, fontWeight: 600 }} ellipsis>
               {user.first_name ? `${user.first_name} ${user.last_name}`.trim() : user.username}
@@ -213,6 +220,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
                 type="text"
                 icon={<LogoutOutlined />}
                 size="small"
+                aria-label="Sign out"
                 onClick={() => {
                   logout();
                   navigate("/movies");
@@ -221,16 +229,6 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
             </Tooltip>
             <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
           </div>
-        ) : (
-          <Button
-            className="sidebar-sign-in"
-            icon={<LoginOutlined />}
-            type="default"
-            block
-            onClick={() => navigate("/login")}
-          >
-            <span className="sidebar-label">Sign In</span>
-          </Button>
         )}
       </div>
     </motion.aside>

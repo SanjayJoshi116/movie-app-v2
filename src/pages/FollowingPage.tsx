@@ -10,6 +10,7 @@ import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { SectionRow } from "./RecommendationsPage";
 import { pageVariants, RATING_GOLD } from "../constants/ui";
+import { LoadError } from "../components/LoadError";
 
 const { Title } = Typography;
 
@@ -22,8 +23,10 @@ const SORT_FNS: Record<SortKey, (a: FollowedPersonEntry, b: FollowedPersonEntry)
 
 function FollowingPage() {
   const navigate = useNavigate();
-  const { followed, loading } = useFollowedPeople();
+  const { followed, loading, error, retry } = useFollowedPeople();
   const [recSections, setRecSections] = useState<PersonalizedRecSection[]>([]);
+  const [recError, setRecError] = useState(false);
+  const [recRetry, setRecRetry] = useState(0);
 
   const {
     search, setSearch, sortKey, setSortKey, filtered: filteredFollowed, isDefault, resetFilters,
@@ -36,11 +39,19 @@ function FollowingPage() {
   });
 
   useEffect(() => {
-    if (followed.length === 0) { setRecSections([]); return; }
+    if (followed.length === 0) { setRecSections([]); setRecError(false); return; }
+    let cancelled = false;
+    setRecError(false);
     fetchFollowedPeopleRecommendations()
-      .then((res) => setRecSections(res.data))
-      .catch(() => setRecSections([]));
-  }, [followed.length]);
+      .then((res) => { if (!cancelled) setRecSections(res.data); })
+      // Say it failed rather than quietly dropping the section.
+      .catch(() => { if (!cancelled) { setRecSections([]); setRecError(true); } });
+    return () => { cancelled = true; };
+  }, [followed.length, recRetry]);
+
+  if (error) {
+    return <LoadError title="Couldn't load who you follow" onRetry={retry} />;
+  }
 
   if (loading) {
     return (
@@ -114,6 +125,14 @@ function FollowingPage() {
                 <SectionRow key={section.key} section={section} navigate={navigate} />
               ))}
             </>
+          )}
+          {recError && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: 32 }}>
+              Couldn't load recommendations from people you follow.{" "}
+              <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setRecRetry((n) => n + 1)}>
+                Retry
+              </Button>
+            </Typography.Paragraph>
           )}
         </>
       )}

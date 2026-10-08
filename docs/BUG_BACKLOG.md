@@ -25,11 +25,11 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 8 | `fix-nav-polish` | ✅ 2026-10-07 | Notification popup off-screen, no Filters button on phones, unused `web-vitals`, React-logo icons |
 | 9 | `harden-logging` | ✅ 2026-10-07 | TMDB key leaks via urllib3 retry logs; prod 500s log nothing |
 | 10 | `fix-password-revoke-race` | ✅ 2026-10-07 | Refresh racing a password change survives revoke; password-bound token claim |
-| 11 | `fix-session-sync` | ⏳ not yet proposed | Second tab writes to another account; refresh/logout on anon 300/day; rehash flips password claim |
-| 12 | `harden-backend-2` | ⏳ not yet proposed | Bad `X-Timezone` → 500; recs worker DB writes; uncapped notifications; avatar leftovers |
-| 13 | `surface-failures-2` | ⏳ not yet proposed | Following/Calendar failures look empty; Calendar race; Lists keyboard; dates; Register double-submit |
-| 14 | `harden-deploy-2` | ⏳ not yet proposed | axios/react-router advisories; stale index.html blank page; ruff pin; compose secrets/proxy count; unused deps |
-| 15 | `honest-tests` | ⏳ not yet proposed | Tests that can't fail, mock shape drift, uncovered spec scenarios, docs drift |
+| 11 | `fix-session-sync` | ✅ 2026-10-08 | Second tab writes to another account; refresh/logout on anon 300/day; rehash flips password claim |
+| 12 | `harden-backend-2` | ✅ 2026-10-08 | Bad `X-Timezone` → 500; recs worker DB writes; uncapped notifications; avatar leftovers |
+| 13 | `surface-failures-2` | ✅ 2026-10-08 | Following/Calendar failures look empty; Calendar race; Lists keyboard; dates; Register double-submit |
+| 14 | `harden-deploy-2` | ✅ 2026-10-08 | axios/react-router advisories; stale index.html blank page; ruff pin; compose secrets/proxy count; unused deps |
+| 15 | `honest-tests` | ✅ 2026-10-08 | Tests that can't fail, mock shape drift, uncovered spec scenarios, docs drift |
 
 Suggested order: **0 → commit → 1 → 2 → 3 → 4 → 6 → 7 → 5** (all done by 2026-10-07). Only 8 remains.
 
@@ -236,13 +236,15 @@ Promoted from Deferred on 2026-10-07.
 Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: **11 → 15 → 13 → 12 → 14**. 11 has the wrong-account writes. 15 makes the tests able to fail before the other fixes lean on them.
 
 **Open decisions (proposed defaults in brackets):**
-- **(13 vs 15)** `SearchPage.tsx:194`, `RecommendationsPage.tsx:49` and `FollowingPage.tsx:101` still use `onClick` cards, against CLAUDE.md's CardLink rule. [convert them in 13; don't narrow the rule]
-- **(14)** Attach the JWT to TMDB proxy calls so `TmdbProxyThrottle` keys per user. The TMDB client must then not force a logout on a 401. [yes]
-- **(14)** Bump axios 1.7.2 → ^1.20 and react-router-dom 6.24.1 → ^6.30.4, then run the full e2e suites. [yes]
+- **(13 vs 15)** `SearchPage.tsx:194`, `RecommendationsPage.tsx:49` and `FollowingPage.tsx:101` still use `onClick` cards, against CLAUDE.md's CardLink rule. **Decided 2026-10-08:** convert them in 13; the rule stays global.
+- **(14)** Attach the JWT to TMDB proxy calls so `TmdbProxyThrottle` keys per user. The TMDB client must then not force a logout on a 401. **Decided 2026-10-08:** yes, with route-id validation first. **Closed:** implemented in `harden-deploy-2` (`useValidId`, then the token plus a 401 retry without it).
+- **(14)** Bump axios 1.7.2 → ^1.20 and react-router-dom 6.24.1 → ^6.30.4, then run the full e2e suites. **Decided 2026-10-08:** yes, both. Also decided: CSV neutralization uses a `'` prefix plus an import strip; Node pinned to 22. **Closed:** implemented in `harden-deploy-2` (axios 1.20.0, react-router-dom 6.30.6). Two react-router advisories remain that are fixed only in v7, recorded as accepted in its tasks.md.
 
 **How the throttle findings connect:** TMDB calls carry no token (F6), compose pins `TRUSTED_PROXY_COUNT` (I5), and refresh falls under the anon throttle (B3). So many users can share one IP bucket. A 429 then empties the Calendar silently (F3), or forces a logout on refresh (B3). The CLAUDE.md note that Calendar's "next 7 days" list is "transiently empty" is probably F3 hiding real 429s.
 
-### 11. `fix-session-sync` (frontend + backend) (⏳ not yet proposed)
+### 11. `fix-session-sync` (frontend + backend) (✅ archived 2026-10-08)
+
+See `openspec/changes/archive/2026-10-08-fix-session-sync/`. All three items below are fixed. Tabs are bound to the account they show (storage listener + request guard), refresh/logout have their own `token_refresh` throttle and only a 400/401 refresh ends the session, and a rehash during a profile edit reissues tokens. Accepted, not fixed: a login that rehashes ends the user's other sessions once per hasher upgrade (`docs/ARCHITECTURE.md`).
 
 - **F1 [high] A second tab shows account A but writes go to account B** (`src/context/AuthContext.tsx:41-52`, `src/api/userApi.ts:18-27`):
   - `AuthContext` reads `localStorage` only on mount and has no `storage` listener, but the request interceptor reads `cinedb_access` on every call.
@@ -260,7 +262,9 @@ Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: 
   - The profile email change calls `check_password(current_password)` but reissues tokens only for `new_password`, so the session that made the change logs itself out.
   - Fix: in `profile`, snapshot the claim value and reissue tokens if it changed. Document the login-on-upgrade behaviour.
 
-### 12. `harden-backend-2` (backend) (⏳ not yet proposed)
+### 12. `harden-backend-2` (backend) (✅ archived 2026-10-08)
+
+See `openspec/changes/archive/2026-10-08-harden-backend-2/`. All items below are fixed. Deviations: the refresh thread closes its DB connection in its thread target (`_refresh_thread`), and with no stored row a failed refresh that still produced sections is saved (only an empty failed result writes nothing).
 
 - **B1 [med] Some `X-Timezone` / `watchedTz` values cause a 500** (`timezones.py:21-28`):
   - Values that are tzdata directories (`America`, `Etc`, `America/Argentina`) make `ZoneInfo()` raise an `OSError` (`PermissionError` on Windows, `IsADirectoryError` on Linux). It isn't caught. Reproduced 2026-10-07.
@@ -292,7 +296,9 @@ Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: 
   - So For You stays empty or thin for up to `RECOMMENDATIONS_TTL_HOURS` (12h). This is CLAUDE.md's "never write a placeholder on upstream failure" rule, broken at the cache level.
   - Fix: have the compute report whether its TMDB calls failed, and skip the save (keeping the old row) when the result is empty or has lost most of its sections compared to what's cached.
 
-### 13. `surface-failures-2` (frontend) (⏳ not yet proposed)
+### 13. `surface-failures-2` (frontend) (✅ archived 2026-10-08)
+
+See `openspec/changes/archive/2026-10-08-surface-failures-2/`. All items below are fixed, H1 included. The 3 `onClick` cards were converted, so the CardLink rule has no exceptions. List names stay non-unique; only the double-submit is blocked. Side find: 4 Python rating tests matched `name="Edit"` as a substring and broke on the new "Edit profile" button. They now use "Edit rating".
 
 - **F2 [med] A failed Following load looks like "not following anyone" and never retries** (`FollowedPeopleContext.tsx:48-51`):
   - The `.catch` sets `followed=[]` and `loaded=true`, so FollowingPage shows its empty state and every person card shows "Follow".
@@ -309,7 +315,7 @@ Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: 
   - `createList` (`useLists.ts:55`) has no `createInflight` slot, the create modal has no `confirmLoading` (`ListsPage.tsx:199`), and `UserList` has no unique constraint on `(user, name)`.
   - A double-click on OK, or a double Enter, creates two identical lists, and Import All (which matches lists by exact name) is then ambiguous.
   - `AddToListModal`'s inline create calls the same function.
-  - Fix: an inflight slot in the hook plus `confirmLoading`. Whether names should be unique per user is a product call.
+  - Fix: an inflight slot in the hook plus `confirmLoading`. **Decided 2026-10-08:** names stay non-unique; only the double-submit is blocked.
 - **N3 [low] The list edit modal double-submits** (`ListDetailPage.tsx:272`, `updateList` at `useLists.ts:69`): no guard, so a double-click sends two PATCHes and shows two toasts. Fix: same as N2.
 - **N4 [low] HeroBanner race** (`HeroBanner.tsx:24`): the fetch has no cancel. On `/anime` the movies/TV toggle changes `mediaType` on the same instance, so a slow earlier response can show a movie as the TV hero, and clicking it opens `/tv/<movieId>`. (`/movies` ↔ `/tv` is safe: the route remounts.) Fix: a `cancelled` flag in the effect.
 - **R1 [med] Error toasts show a single character when the server returns an HTML error page** (`src/utils/apiError.ts:14`):
@@ -331,8 +337,11 @@ Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: 
   - `FollowingPage.tsx:41` hides the "from people you follow" recommendations on failure, and that effect has no cancel either.
   - `ProfileModal.tsx:55` swallows a failed TMDB-status check, so it shows "Connect TMDB" to an already-connected user.
   - Fix: an error line with Retry, or at least an "unknown" state instead of `false`.
+- **H1 [low] The search term isn't in the URL** (found 2026-10-08 by `honest-tests`): `SearchPage.tsx` reads only `tab` from the URL, and the term lives in app state (`useAppContext().searchTerm`). So a login round trip, a reload or a shared `/search?tab=people` link lands on the empty "Type something" state with no tabs, and `SearchBox.tsx:34` navigates to bare `/search`, dropping `tab`. The `login-page` spec's "lands on `/search?tab=people` with the People tab active" can only be half met: `e2e/auth.spec.ts` asserts the URL and notes the gap. Fix: put the term in the URL (`?q=`), read it on mount, and keep `tab` when searching.
 
-### 14. `harden-deploy-2` (infra + deps) (⏳ not yet proposed)
+### 14. `harden-deploy-2` (infra + deps) (✅ archived 2026-10-08)
+
+See `openspec/changes/archive/2026-10-08-harden-deploy-2/`. All items below are fixed. Docker checks (`nginx -t`, curls, `docker compose config`) were waived: no Docker here; `test_nginx_conf.py` covers the config statically. Accepted: two react-router advisories fixed only in v7. Operator step pending on this machine: create `.env.db` and remove both password keys from `.env.docker` (README upgrade note). Side find: a `refreshing_since` clear bug from 12 (`lt` vs `lte` on a coarse clock), fixed.
 
 - **I1 [med] Vulnerable runtime deps**:
   - axios 1.7.2 has about 30 advisories (prototype-pollution gadgets, header injection, ReDoS, unbounded-size DoS).
@@ -361,7 +370,9 @@ Line numbers are from 2026-10-07; re-check them before fixing. Suggested order: 
   - CI's `npm run build` doesn't set `INLINE_RUNTIME_CHUNK=false`, so CI never builds the CSP bundle that ships.
   - The local Anaconda env drifts from `constraints.txt` in 13 indirect packages, including tzdata, PyJWT and urllib3. One command, not a code change: `pip install -r backend/requirements-test.txt -c backend/constraints.txt`.
 
-### 15. `honest-tests` (tests + docs) (⏳ not yet proposed)
+### 15. `honest-tests` (tests + docs) (✅ archived 2026-10-08)
+
+See `openspec/changes/archive/2026-10-08-honest-tests/`. All items below are fixed: the guards and sleeps are gone, the mocks match the serializers (checked by `test_e2e_mock_shapes.py`), bare-list mocks fail at teardown, and the missing scenarios have tests. Each new or changed test was shown to fail against a break of its behavior. Found along the way: the profile save/validation tests had never run (the modal has no footer, so their Save button never existed); the login submit button wasn't disabled in flight (fixed); and H1 under item 13 (the search term isn't in the URL). The CardLink rule wording still waits on item 13's decision.
 
 - **[high] Tests that pass without testing anything**:
   - Everything is wrapped in `if locator.count() > 0:` (`count()` doesn't wait):

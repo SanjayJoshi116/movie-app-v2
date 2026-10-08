@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, theme } from "antd";
+import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, Typography, theme } from "antd";
 import {
   CheckCircleOutlined,
   DownloadOutlined,
@@ -42,7 +42,9 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [importAllOpen, setImportAllOpen] = useState(false);
-  const [tmdbConnected, setTmdbConnected] = useState(false);
+  // null = the status check failed: neither "connected" nor "not connected" is known.
+  const [tmdbConnected, setTmdbConnected] = useState<boolean | null>(false);
+  const [tmdbStatusRetry, setTmdbStatusRetry] = useState(0);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -52,14 +54,16 @@ const ProfileModal = ({ open, onClose }: Props) => {
 
   useEffect(() => {
     if (open) {
-      getTMDBAuthStatus().then((res) => setTmdbConnected(res.data.connected)).catch(() => {});
+      getTMDBAuthStatus()
+        .then((res) => setTmdbConnected(res.data.connected))
+        .catch(() => setTmdbConnected(null));
     } else {
       // This component stays mounted (only the modal body is destroyed), so
       // password state would otherwise reappear on the next open.
       setDeletePassword("");
       setNewPassword("");
     }
-  }, [open]);
+  }, [open, tmdbStatusRetry]);
 
   const handleSubmit = async (values: {
     first_name: string;
@@ -328,7 +332,14 @@ const ProfileModal = ({ open, onClose }: Props) => {
       </Space>
 
       <Divider style={{ margin: "20px 0 12px" }}>TMDB Account</Divider>
-      {tmdbConnected ? (
+      {tmdbConnected === null ? (
+        <Typography.Text type="secondary">
+          Couldn't check your TMDB connection.{" "}
+          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setTmdbStatusRetry((n) => n + 1)}>
+            Retry
+          </Button>
+        </Typography.Text>
+      ) : tmdbConnected ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
             Connected

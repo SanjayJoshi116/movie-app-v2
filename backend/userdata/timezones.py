@@ -22,7 +22,9 @@ def valid_tz_name(name) -> str:
         return ""
     try:
         ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError):
+    # OSError: a tzdata directory name ("America") raises IsADirectoryError
+    # on Linux and PermissionError on Windows.
+    except (ZoneInfoNotFoundError, ValueError, OSError):
         return ""
     return name
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Row, Col, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
@@ -19,6 +19,9 @@ import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { formatDateDMY } from "../utils/formatDate";
 import { getApiError } from "../utils/apiError";
 import { settledData, isNotFound } from "../utils/settled";
+import NotFoundPage from "./NotFoundPage";
+import { useValidId } from "../hooks/useValidId";
+import { safeHttpUrl } from "../utils/safeUrl";
 import { LoadError } from "../components/LoadError";
 import type {
   TMDBPerson,
@@ -44,7 +47,7 @@ function mergeCredits(cast: TMDBPersonCombinedCredit[]): TMDBPersonCombinedCredi
 }
 
 function PersonPage() {
-  const { id } = useParams<{ id: string }>();
+  const id = useValidId();
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { from?: string; scrollY?: number; loadedPages?: number } | null;
@@ -103,6 +106,7 @@ function PersonPage() {
     return () => { cancelled = true; };
   }, [id, reloadKey]);
 
+  if (id === null) return <NotFoundPage />;
   if (loading)
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
@@ -112,6 +116,9 @@ function PersonPage() {
   if (error === "not-found") return <LoadError notFound title="Person not found" />;
   if (error || !person)
     return <LoadError title="Failed to load this person" onRetry={() => setReloadKey((k) => k + 1)} />;
+
+  // TMDB homepages are community-edited: only an http(s) URL becomes a link.
+  const homepageUrl = safeHttpUrl(person.homepage);
 
   type TabItem = { key: string; label: string; children: ReactNode };
 
@@ -255,9 +262,13 @@ function PersonPage() {
               )}
               {person.homepage && (
                 <Descriptions.Item label="Website">
-                  <a href={person.homepage} target="_blank" rel="noopener noreferrer">
-                    {person.homepage}
-                  </a>
+                  {homepageUrl ? (
+                    <a href={homepageUrl} target="_blank" rel="noopener noreferrer">
+                      {person.homepage}
+                    </a>
+                  ) : (
+                    person.homepage
+                  )}
                 </Descriptions.Item>
               )}
             </Descriptions>

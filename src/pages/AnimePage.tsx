@@ -21,6 +21,7 @@ import { genresFor, hasActiveFilters, todayLocalISO } from "../utils/browseFilte
 import { stashReturnState } from "../utils/browseReturnState";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
+import { pageableTotal } from "../utils/tmdbPages";
 
 const ANIME_KEYWORD = 210024;
 
@@ -128,7 +129,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       return {
         results: response.data.results as (TMDBMovieSummary | TMDBTVSummary)[],
-        totalPages: response.data.total_pages,
+        totalPages: pageableTotal(response.data.total_pages),
       };
     },
     [animeTab, scopeMediaType, activeCategory, searchTerm, genreString, hasFilters, externalFilters, externalSortBy, includeAdult]
