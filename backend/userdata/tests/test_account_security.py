@@ -102,6 +102,111 @@ class PasswordResetExpiryTests(APITestCase):
         self.assertEqual(res.data["detail"], "Reset link is invalid or has expired.")
 
     def test_reset_email_states_one_hour(self):
-        self.client.post("/api/auth/password-reset/", {"email": "lee@example.com"}, format="json")
+        with patch("userdata.auth_views._in_background", side_effect=lambda send: send()):
+            self.client.post("/api/auth/password-reset/", {"email": "lee@example.com"}, format="json")
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("expires in 1 hour.", mail.outbox[0].body)
+
+
+class PasswordResetTimingTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        User.objects.create_user(username="ren", email="ren@example.com", password=PASSWORD)
+
+    def test_reset_does_not_wait_for_mail_server(self):
+        import time
+
+        from userdata import auth_views
+
+        threads = []
+
+        def capture(target):
+            thread = auth_views.threading.Thread(target=target, daemon=True)
+            threads.append(thread)
+            thread.start()
+            return thread
+
+        def slow_send(*args, **kwargs):
+            time.sleep(2)
+            return 1
+
+        with patch("userdata.auth_views._in_background", side_effect=capture), \
+                patch("django.core.mail.send_mail", side_effect=slow_send) as send:
+            start = time.monotonic()
+            known = self.client.post("/api/auth/password-reset/", {"email": "ren@example.com"}, format="json")
+            elapsed = time.monotonic() - start
+            unknown = self.client.post("/api/auth/password-reset/", {"email": "nobody@example.com"}, format="json")
+            for thread in threads:
+                thread.join(5)
+        self.assertLess(elapsed, 1.5)
+        self.assertEqual(known.status_code, unknown.status_code)
+        self.assertEqual(known.data, unknown.data)
+        send.assert_called_once()
+        self.assertEqual(send.call_args.kwargs["recipient_list"], ["ren@example.com"])
+
+    def test_mail_failure_is_logged_not_raised(self):
+        with patch("userdata.auth_views._in_background", side_effect=lambda send: send()), \
+                patch("django.core.mail.send_mail", side_effect=OSError("smtp down")), \
+                self.assertLogs("userdata.auth_views", level="ERROR"):
+            res = self.client.post("/api/auth/password-reset/", {"email": "ren@example.com"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class LoginFailureLimitTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        User.objects.create_user(username="alice", password=PASSWORD)
+        User.objects.create_user(username="bob", password=PASSWORD)
+
+    def _login(self, username, password, ip):
+        # REMOTE_ADDR varies the per-IP throttle key, as distinct clients would.
+        return self.client.post(
+            "/api/auth/login/", {"username": username, "password": password}, format="json", REMOTE_ADDR=ip
+        )
+
+    def _fail(self, username, times):
+        for i in range(times):
+            self.assertEqual(self._login(username, "wrong-pass", f"10.0.{i // 250}.{i % 250 + 1}").status_code, 401)
+
+    def test_distributed_guessing_is_limited(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=5):
+            self._fail("alice", 5)
+            res = self._login("ALICE", PASSWORD, "10.9.9.9")
+        self.assertEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertIn("Retry-After", res)
+
+    def test_unknown_username_limited_the_same_way(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            self._fail("ghost", 3)
+            res = self._login("ghost", "anything", "10.9.9.9")
+        self.assertEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_other_users_unaffected(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            self._fail("alice", 3)
+            res = self._login("bob", PASSWORD, "10.0.0.1")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_limit_clears_after_window(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            self._fail("alice", 3)
+            self.assertEqual(self._login("alice", PASSWORD, "10.9.9.9").status_code, 429)
+            cache.delete(_failure_key("alice"))  # what the window's expiry does
+            res = self._login("alice", PASSWORD, "10.9.9.9")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_window_set_from_settings(self):
+        with self.settings(LOGIN_FAILURE_WINDOW_SECONDS=1234), patch("userdata.auth_views.cache.add") as add:
+            self._login("alice", "wrong-pass", "10.0.0.1")
+        add.assert_any_call(_failure_key("alice"), 0, 1234)
+
+    def test_default_limit_is_twenty(self):
+        from django.conf import settings
+        self.assertEqual((settings.LOGIN_FAILURE_LIMIT, settings.LOGIN_FAILURE_WINDOW_SECONDS), (20, 3600))
+
+
+def _failure_key(username):
+    from userdata.auth_views import _login_failure_key
+    return _login_failure_key(username)

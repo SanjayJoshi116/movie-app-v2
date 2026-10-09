@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth.models import User
 from django.test import override_settings
 from rest_framework import status
@@ -12,6 +13,7 @@ from rest_framework.test import APITestCase
 
 from userdata.logging import RedactingFormatter
 from userdata.models import TMDBProfile
+from userdata.tmdb_views import _request_token_key
 
 FAKE_KEY = "deadbeefcafe0123456789"
 TMDB_URL = f"https://api.themoviedb.org/3/authentication/session/new?api_key={FAKE_KEY}"
@@ -25,8 +27,11 @@ def _http_error(*args, **kwargs):
 @override_settings(TMDB_API_KEY=FAKE_KEY)
 class TmdbAuthDisclosureTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username="kai", password="Xk9#mQ2vTz8p")
         self.client.force_authenticate(user=self.user)
+        # The create-session failure tests need a token this user was issued.
+        cache.set(_request_token_key(self.user.id), "bad", 3600)
 
     @patch("userdata.tmdb_client.create_session", side_effect=_http_error)
     def test_create_session_failure_hides_upstream_error(self, _):
@@ -144,3 +149,100 @@ class TmdbSessionRevokeTests(APITestCase):
             res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+
+
+@override_settings(TMDB_API_KEY=FAKE_KEY)
+class TmdbConnectBindingTests(APITestCase):
+    """A session is created only from the token issued to the requesting user, once."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="mia", password="Xk9#mQ2vTz8p")
+        self.other = User.objects.create_user(username="eve", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def _issue(self, user, token):
+        self.client.force_authenticate(user=user)
+        with patch("userdata.tmdb_client.get_request_token", return_value={"request_token": token}):
+            res = self.client.get("/api/tmdb-auth/request-token/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.client.force_authenticate(user=self.user)
+
+    def _create(self, token):
+        return self.client.post("/api/tmdb-auth/create-session/", {"request_token": token}, format="json")
+
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_normal_connect(self, create):
+        self._issue(self.user, "tok-mine")
+        res = self._create("tok-mine")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        create.assert_called_once_with("tok-mine")
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
+
+    @patch("userdata.tmdb_client.create_session")
+    def test_token_issued_to_another_user_is_refused(self, create):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-own")
+        self._issue(self.other, "tok-attacker")
+        res = self._create("tok-attacker")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Connect again", res.data["error"])
+        create.assert_not_called()
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-own")
+
+    @patch("userdata.tmdb_client.create_session")
+    def test_token_never_issued_is_refused(self, create):
+        res = self._create("tok-forged")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        create.assert_not_called()
+        self.assertFalse(TMDBProfile.objects.filter(user=self.user).exists())
+
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_replay_is_refused(self, create):
+        self._issue(self.user, "tok-mine")
+        self.assertEqual(self._create("tok-mine").status_code, status.HTTP_200_OK)
+        self.assertEqual(self._create("tok-mine").status_code, status.HTTP_400_BAD_REQUEST)
+        create.assert_called_once()
+
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_only_latest_issued_token_counts(self, create):
+        self._issue(self.user, "tok-old")
+        self._issue(self.user, "tok-new")
+        self.assertEqual(self._create("tok-old").status_code, status.HTTP_400_BAD_REQUEST)
+        create.assert_not_called()
+
+    @patch("userdata.tmdb_client.create_session")
+    def test_expired_token_is_refused(self, create):
+        self._issue(self.user, "tok-mine")
+        cache.delete(_request_token_key(self.user.id))  # what the 60-minute TTL does
+        self.assertEqual(self._create("tok-mine").status_code, status.HTTP_400_BAD_REQUEST)
+        create.assert_not_called()
+
+    def test_token_ttl_matches_tmdb(self):
+        with (
+            patch("userdata.tmdb_client.get_request_token", return_value={"request_token": "t"}),
+            patch("userdata.tmdb_views.cache.set") as cache_set,
+        ):
+            self.client.get("/api/tmdb-auth/request-token/")
+        cache_set.assert_any_call(_request_token_key(self.user.id), "t", 3600)
+
+    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_reconnect_revokes_previous_session(self, _, delete):
+        delete.return_value.json.return_value = {"success": True}
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        self._issue(self.user, "tok-mine")
+        self.assertEqual(self._create("tok-mine").status_code, status.HTTP_200_OK)
+        delete.assert_called_once()
+        self.assertEqual(delete.call_args.kwargs["json"], {"session_id": "sess-old"})
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
+
+    @patch("userdata.tmdb_client.requests.delete", side_effect=requests.ConnectionError("down"))
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_failed_revoke_does_not_block_reconnect(self, *_):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        self._issue(self.user, "tok-mine")
+        with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm:
+            res = self._create("tok-mine")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
+        self.assertNotIn("sess-old", "\n".join(cm.output))

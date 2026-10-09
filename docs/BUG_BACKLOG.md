@@ -4,6 +4,8 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 - the 2026-10-03 full audit (against 0.15.8)
 - a 2026-10-05 re-check of that audit, plus a review of the uncommitted diff and fresh frontend and backend bug hunts
 - a 2026-10-07 second full audit (items 11–15). It had four read-only passes (backend, frontend, infra, tests+docs), and every finding was re-checked against the code. Follow-up "sibling hunts" searched the code for more instances of each bug's pattern. Their findings are tagged N (round 1), R (round 2: leaks, DB, error text, transactions), S (round 3: untrusted data, route params, pagination, a11y) and T (round 4: multi-worker state, account/credential lifecycle, endpoint fuzz).
+- a 2026-10-09 third full audit (items 16–21) against 0.20.0 (`b3a5930`). Five read-only passes (backend API, backend upstream/background, frontend state, frontend pages, infra/CI/tests/docs). Items marked ✔ were re-checked against the code by hand; the rest rest on each pass's code trace or repro.
+- a 2026-10-09 fourth round (items 22–25, plus additions to 17, 20 and 21), same day, cross-cutting instead of per-layer: a sibling hunt for the third audit's patterns, cross-feature data flows, an adversarial security pass, and a spec-vs-code conformance check of all 29 `openspec/specs`. A live Playwright run of the app was the fifth pass.
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
 
@@ -30,6 +32,16 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 13 | `surface-failures-2` | ✅ 2026-10-08 | Following/Calendar failures look empty; Calendar race; Lists keyboard; dates; Register double-submit |
 | 14 | `harden-deploy-2` | ✅ 2026-10-08 | axios/react-router advisories; stale index.html blank page; ruff pin; compose secrets/proxy count; unused deps |
 | 15 | `honest-tests` | ✅ 2026-10-08 | Tests that can't fail, mock shape drift, uncovered spec scenarios, docs drift |
+| 16 | `fix-ci-lint` | ✅ 2026-10-09 | `main` fails CI lint (`no-script-url` in `safeUrl.test.ts`) |
+| 17 | `fix-upstream-resilience` | ⏳ | Infinite-scroll retry loop; TMDB 404 freezes recs; missing time budgets; `session_id` in logs |
+| 18 | `fix-account-edges` | ⏳ | Blank-email profile 400; year-1 date breaks Stats; logout response race; Profile stale fields/partial export |
+| 19 | `fix-detail-and-nav` | ⏳ | Stray `0`; browse cards not links; Following Back target; crew credits; providers/runtime |
+| 20 | `fix-stats-math` | ⏳ | Banker's rounding buckets, skipped months, 0-score average, tooltip labels |
+| 21 | `harden-ci-2` + polish | ⏳ | Pagination test gap, Playwright retries, gzip/cache, Docker build job, hex sweep, docs drift |
+| 22 | `harden-security-3` | ✅ 2026-10-09 | Forgeable TMDB connect; import-driven TMDB amplification; unbounded review/description; reset token in nginx logs |
+| 23 | `fix-recs-correctness` | ⏳ | Movie/TV genre ids mixed in For You; ratings never refresh recs; gave-up poll cached as complete |
+| 24 | `fix-import-export-2` | ⏳ | Backup omits follows/episode progress; same-name lists merge; Watched CSV loses dates; import posters throttled |
+| 25 | `fix-write-guards-2` | ⏳ | Episode progress load error → overwrite; review-only edit syncs TMDB; dialogs closable mid-save; stale panels |
 
 Suggested order: **0 → commit → 1 → 2 → 3 → 4 → 6 → 7 → 5** (all done by 2026-10-07). Only 8 remains.
 
@@ -402,6 +414,203 @@ See `openspec/changes/archive/2026-10-08-honest-tests/`. All items below are fix
   - The CardLink rule is stated as global but has 3 exceptions in code.
   - `PersonCard` users are missing `FollowingPage`.
   - The FilterPanel path is `src/components/layout/`.
+
+## Third audit (2026-10-09): items 16–21
+
+Line numbers are from 2026-10-09 (`b3a5930`); re-check them before fixing. ✔ = re-checked by hand against the code. Suggested order: **16 → 17 → 18 → 19 → 20 → 21**. 16 unblocks CI, so the later changes get a real Jest/build run.
+
+At audit time, typecheck, Jest (220), backend pytest (270), ruff, `manage.py check` and `makemigrations --check` all passed. Only `npm run lint` failed (item 16).
+
+**Open decisions:**
+- **(19)** TV runtime in `MarkWatchedModal` is one episode's length (`episode_run_time[0]`), and the input is disabled. Should a whole-series watch count episodes × runtime, let the user edit it, or stay as is (documented)?
+- **(19)** Browse grids (`HomePage.tsx:160`, `AnimePage.tsx:167`) hide watched titles, so a card disappears right after it's marked watched. Is that intended? If so, document it.
+- **(19)** Person pages: add crew credits (Directing/Writing) as their own tab, or merge them into Movies/TV?
+
+### 16. `fix-ci-lint` (✅ archived 2026-10-09)
+
+See `openspec/changes/archive/2026-10-09-fix-ci-lint/`. Fixed with a line-scoped `eslint-disable-next-line no-script-url` on the test input; the rule stays on for app code.
+
+
+- **[high] ✔ `main` fails CI.** `src/utils/__tests__/safeUrl.test.ts:10`: the literal `"javascript:alert(1)"` trips `no-script-url`, and `npm run lint` runs with `--max-warnings=0`. The CI `frontend` job stops at lint, so its Jest and build steps never run. Fix: `// eslint-disable-next-line no-script-url`, or build the string.
+
+### 17. `fix-upstream-resilience` (frontend + backend) (⏳)
+
+Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak and the rating-sync ERROR traceback for users with no TMDB link. The rest stays here.
+
+- **[med] ✔ A failed infinite-scroll page retries in a loop.** `usePaginatedFetch.ts:137-158` + `useInfiniteScroll.ts:26-41`.
+  - `loadMore` depends on `loadingMore`, so its identity changes in `finally`. The observer effect then re-`observe()`s the sentinel, and IntersectionObserver always fires once on `observe()`.
+  - After a failure no items were added, so the sentinel is still in view and `loadMore` runs again at once. PeoplePage/SearchPage also have `!loadingMore` in `enabled`.
+  - Scenario: Movies/TV/Anime/People/Search, next page fails (offline, 429 from `TmdbProxyThrottle`, 502 while TMDB is down). The page re-requests continuously, and while TMDB is down each try holds a gunicorn worker for up to `WORST_CASE_SECONDS`. The comment at `:153` ("the next scroll can try again") is wrong.
+  - Fix: stop auto-loading after an error until a user action (a "Load more / Retry" button), or back off.
+- **[med] A permanent TMDB 404 counts as a failure, which can freeze a user's recommendations.** `recommendations.py:111-114` (`_fetch_media_details`) and `:343-345` (`fetch_similar`) call `health.mark_failed()` on any `RequestException`, 404 included.
+  - `_store_media_cache` stores nothing, so the 404 repeats every run. `metadata_backfill.fetch_entry_metadata` (`:196-198`) already treats a 404 as settled, so the two paths disagree.
+  - Scenario: one deleted/merged TMDB title in Watched. Every refresh is then "failed", and `save_recommendations` (`:588-597`) discards any result with fewer non-empty sections, e.g. after the user deletes history or KMeans merges clusters. `computed_at` never advances, so every For You visit starts a full recompute and polls 20×3s.
+  - Fix: treat a 404 as settled, not failed.
+- **[med] ✔ The TMDB `session_id` is written to logs.** `ratings_views.py:28,72` `logger.exception` around `tmdb_client.post_rating`/`delete_rating`, which pass `session_id` as a query param (`tmdb_client.py:123-137`). `raise_for_status` puts the full URL in the message, and `RedactingFormatter` (`logging.py`) only strips `TMDB_API_KEY`.
+  - A client-sent `session_id` on `/api/tmdb/...` also reaches `tmdb_proxy`'s `logger.exception` (`tmdb_proxy_views.py:68`).
+  - Fix: redact `session_id=` values in `RedactingFormatter`.
+- **[low-med] Two endpoints have no time budget and can outlive gunicorn's 30s.** Found independently by two passes.
+  - `social_views.py:326` `followed_people_recommendations` calls `_fetch_followed_people_credits(user, limit=10)` without `budget_seconds`. 10 cold fetches on 5 workers with `timeout=10` (connect + read) gives about 40s worst case.
+  - `stats_views.py:22-30` makes two sequential `get_genre_names` calls when the per-process genre cache is cold, also about 40s.
+  - Notifications got a budget in item 12 (B4); these siblings didn't.
+- **[low] Every rating by a user without a TMDB link logs an ERROR traceback.** `ratings_views.py:24-28,68-72`: `user.tmdb_profile` raises `RelatedObjectDoesNotExist` and hits the same `logger.exception`. Floods logs and hides real sync failures.
+- **[low] A finishing refresh clears another worker's "refreshing" stamp.** `recommendations.py:560,573`: `_set_refreshing_since(None, only_before=finished_at)` also clears a stamp another gunicorn worker set during this run, against its own comment. The next poll then gets `"ready"` with the older result. Fix: clear only stamps `<=` the one this run set.
+- **[low] A metadata-backfill failure inside `_compute_personalized` doesn't mark `FetchHealth`.** `recommendations.py:439` → `backfill_entries` swallows failures, so genre-less entries are clustered and the result is saved as good for 12h.
+- **[low] A followed person who always 404s is refetched on every notifications poll.** `social_views.py:131-143`: failures aren't cached, and `to_fetch[:max_fetch]` is in followed order, so enough of them starve the people after them.
+
+### 18. `fix-account-edges` (frontend + backend) (⏳)
+
+- **[med] ✔ Users without an email can't save any profile edit.** `serializers.py:63`: `UserProfileUpdateSerializer.email` is an `EmailField` with the default `allow_blank=False`, but registration allows a blank email and `ProfileModal.tsx` always sends `email: user?.email ?? ""`. Every save, password change included, is a 400 `"This field may not be blank."`. No user can clear their email either. Repro'd against the test DB.
+- **[low-med] One imported `watchedAt` near year 1 makes `/api/stats/` 500 permanently.** `BulkWatchedEntrySerializer` (`serializers.py:230,250`) accepts any past timestamp; `entry_local` (`timezones.py:388`) raises `OverflowError` in `astimezone`. Repro: bulk-import `"0001-01-01T00:00:00Z"` with a zone behind UTC → `stats 500`. Fix: a lower bound in `_past_timestamp`, or guard `entry_local`.
+- **[low-med] A response that lands after logout puts the previous account's data back.** `useNotifications.ts:14-40` and the library hooks' `reload`/`fetchLists` (`useWatched.ts:20-50`, `useWatchlist.ts:20-47`, `useRatings.ts:18-47`, `useLists.ts:142-156`) have no generation/cancel guard.
+  - Scenario: A logs out during the slow first notifications poll, B signs in in the same tab, and B's bell shows A's badge and items (which reveal whom A follows). If B's own library load fails, the hooks keep A's data. `hasError` is also never reset on logout.
+  - Fix: a per-auth generation checked before every `set*`, as `FollowedPeopleProvider` does.
+- **[med] ProfileModal keeps typed passwords and unsaved edits between openings.** `ProfileModal.tsx:53,214-222`: the `useForm` instance outlives the destroyed modal body, and rc-field-form's `setInitialValues` merges the store over the initial values. Only `deletePassword`/`newPassword` state is reset.
+- **[med] "Export All Data (ZIP)" can save an incomplete backup.** `ProfileModal.tsx:326` exports whatever the contexts hold without checking their `error`/`isLoading`, and `downloadAllAsZip` isn't awaited or caught. A failed watched load gives a backup with no watched history and no warning.
+- **[low] Smaller items:**
+  - `ProfileModal.tsx:120,133`: TMDB connect/disconnect errors use fixed strings instead of `getApiError`.
+  - `userApi.ts:97`: `forceLogout`'s hard redirect to `/login` loses the page the user was on.
+
+### 19. `fix-detail-and-nav` (frontend) (⏳)
+
+- **[med] ✔ A stray `0` renders on detail pages.** `MovieDetails.tsx:193` `{runtime && …}`, `TVShowDetails.tsx:192,197` `{number_of_seasons && …}`/`{number_of_episodes && …}`. TMDB returns `runtime: 0` for many unreleased films.
+- **[med] ✔ Browse cards aren't links.** `Movie.tsx:38`, `TVShowCard.tsx:37` are `motion.div onClick` with no poster `CardLink`, on the main grids of /movies, /tv and /anime: no href, no Ctrl/middle-click, no Tab stop. CLAUDE.md says no CardLink exceptions are left. Also `HeroBanner.tsx:98` "View Details" (a `navigate` button) and `NotificationBell.tsx:83` items (`role="button"` divs).
+- **[med] Following → detail → Back lands on For You.** `RecommendationsPage.tsx:50,54` (`RecCard`) hardcodes `{ from: "/recommendations" }`, and `FollowingPage.tsx:126` reuses `SectionRow`/`RecCard`.
+- **[med] Person pages show only acting credits.** `PersonPage.tsx:126-161` uses only `.cast`, ignoring `.crew`, and keeps TMDB's raw order. A director's page shows cameos or "No credits available". (Open decision above.)
+- **[med] TV Hours Watched counts one episode per series.** `MarkWatchedModal.tsx:51-53` uses `episode_run_time?.[0]` (often empty on newer shows), and the runtime input is disabled (`:100`). (Open decision above.)
+- **[low-med] A providers failure throws away the runtime.** `MarkWatchedModal.tsx:58-71`: both requests share one `Promise.all` with `.catch(() => {})`.
+- **[low-med] "Where to Watch" can be empty or misleading.** `WatchProviders.tsx:12,44-45`: `buy` is never rendered, so a buy-only entry shows a header over nothing. A failed fetch becomes `{}` and says "No watch provider info for your region", but the region is hardcoded to US.
+- **[low] Smaller items:**
+  - `FollowingPage.tsx:50`: the recs effect depends on `followed.length`, so follow one + unfollow another never refetches.
+  - `PersonPage.tsx:222-240`: the Follow button ignores `useFollowedPeople().error`, unlike `PersonCard` (CLAUDE.md requires it).
+  - `AddToListModal.tsx:23-24`: search and new-name text survive closing; while lists load or fail it says "No lists yet".
+  - `CSVUploadModal.tsx:19-31`: templates advertise `runtime`/`language`/`release_year` columns that the import ignores.
+  - `usePaginatedFetch.ts:99`: multi-page Back-restore `flatMap`s pages without the id dedupe `loadMore` does, so a title that moved between pages renders twice (duplicate React keys).
+  - `useNotifications.ts:42-50`: a poll already in flight lands after `markSeen` and brings the badge back for up to 3 min.
+  - `useRecentSearches`: the Sidebar and BottomNav `SearchBox` copies keep separate in-memory lists (`storage` events don't fire in the writing tab), so one overwrites the other's recents.
+  - `WatchlistPage.tsx:62-71,197`: the saved scroll position is restored on any later visit, not only on Back. (Plausible.)
+  - `HeroBanner.tsx:36-38`: Anime hero filters on genre 16 (Animation), so a Pixar film can show, and it falls back to `results[0]`. The hero `<img>` is `loading="lazy"`.
+  - `TMDBCallbackPage.tsx:39`: antd 5 ignores `<Spin tip>` unless nested/fullscreen, so the text never shows.
+  - `export.ts:240-249`: CSVs have no UTF-8 BOM, so Excel on Windows garbles non-ASCII titles. `parseCSV` already strips a BOM, so adding one round-trips safely.
+
+### 20. `fix-stats-math` (backend + frontend) (⏳)
+
+- **[low] Half-step ratings fall into uneven buckets.** `stats_views.py:50-52` uses `round(r)` (banker's rounding): 6.5 → 6 but 7.5 → 8, and 1.5 and 2.5 both → 2.
+- **[low] The monthly chart skips months with no watches.** `stats_views.py:55-64` emits only months with entries, and `StatsPage.tsx:515` plots them on a category axis, so Jan and Jun look adjacent.
+- **[low] Average TMDB rating counts unknown scores as 0.** `stats_views.py:77-79` averages every `vote_average`, including the `0` stored for a null CSV value or an unreleased title.
+- **[low] Followed-people sections drop a TV show that shares an id with a movie.** `social_views.py:343-347` dedupes on the bare id, while notifications key on `(id, type)`.
+- **[low] Stats page labels:** the Rating-by-Genre tooltip reads "7.3 avgRating" (`StatsPage.tsx:571`, raw dataKey); the heatmap tooltip shows raw `yyyy-mm-dd` instead of `formatDateDMY` (`:225`); heatmap cells are mouse-only; the Top Genres empty text (`:556-557`) still says to visit For You, though `stats_views.py` backfills itself.
+- **[low] A backup restore loses list dates and order.** `UserListItem.added_at`/`UserList.created_at` are `auto_now_add` (`models.py:71,84`), and `CSVImportAllModal.tsx:115-118` restores items one POST at a time in parallel batches of 20, so items get restore-time dates and a scrambled newest-first order. With one request per item, a few thousand list items in a day also use up the `5000/day` user throttle for the whole app.
+
+### 21. `harden-ci-2` + polish (⏳)
+
+- **[low-med] Nothing tests `fetchAllPages` past page 1.** `src/utils/fetchAllPages.ts` has no unit test, and every `paginated()` mock hardcodes `next: null` (`e2e/fixtures.ts:24`, `e2e/python/conftest.py:275-281`). A page-following regression would silently cut every library over 100 items.
+- **[low-med] CI Playwright retries hide flaky tests.** `playwright.config.ts:9` `retries: process.env.CI ? 2 : 0`, against `openspec/specs/ci-pipeline` ("CI SHALL fail when any test … fails"). The Python e2e job has none.
+- **[low] nginx sends uncompressed responses.** `nginx.conf` has no `gzip`, so the 1.5MB `main.*.js` goes raw. Hashed `/static/` assets also get no long-lived `Cache-Control`.
+- **[low] CI gaps:** no job builds the Docker images; `eslint src` skips `e2e/*.ts`; Jest runs with `--passWithNoTests`; Playwright browsers aren't cached; no `concurrency` cancel group; ruff `target-version = "py311"` while everything runs 3.12.
+- **[low] Flaky wait:** `e2e/responsive.spec.ts:113` asserts the popup position after a fixed `waitForTimeout(200)`.
+- **[low] Hardcoded colors** (CLAUDE.md "Shared UI constants"):
+  - `"#000000"` light-theme icons: `Movie.tsx:73,95`, `TVShowCard.tsx:72,94`, `MovieDetails.tsx:167`, `TVShowDetails.tsx:166`, `SearchPage.tsx:233,358`, `WatchlistPage.tsx:226`, `RecommendationsPage.tsx:84,106`.
+  - `"#1677ff"` in Movie/TVShowCard/RecommendationsPage.
+  - `"#aaa"` in Movies.tsx, TVShows.tsx, `CalendarPage:286`, `RecommendationsPage:402,420`, `SearchPage:481`, `WatchlistPage.tsx:283` (low contrast in light mode).
+  - `PosterPlaceholder.tsx:19-20` uses the same dark colors in both themes; `StatsPage.tsx:179-182` `heatColor` greens.
+  - Also `BottomNav.tsx:264` `fontSize: 10` on avatar initials.
+- **[low] Docs drift:**
+  - `docs/ARCHITECTURE.md:62` says RecommendationsPage persists sort (it has none) and ListsPage persists the selected list id (it persists `useLibraryFilters` filters under `keyPrefix: "lists"`).
+  - CLAUDE.md says `playwright-core` is a devDependency; it's only transitive via `@playwright/test`.
+  - `CORS_ALLOWED_ORIGINS` (`settings.py:140`) is missing from `backend/.env.example` and README's env table.
+  - `start.py:19` reads only `DB_PASSWORD`, while `settings.py:106` also falls back to `POSTGRES_PASSWORD`.
+  - Mojibake (`â€”`) in `settings.py:21,170` comments.
+- **[info] Dependencies:** `npm audit --omit=dev` shows 72 advisories, almost all `react-scripts` build tooling. The only runtime one (react-router 6.30.6 backslash open redirect) isn't reachable: `navigate()` targets come only from `location.state`. The local Anaconda env again drifts from `constraints.txt` (pyjwt, urllib3, tzdata, …); `test_dependency_versions.py` checks only Django and ruff.
+
+## Fourth round (2026-10-09): items 22–25 and additions to 17/20/21
+
+Same-day follow-up to the third audit, cross-cutting rather than per-layer (see Sources). ✔ = re-checked by hand. "2×" = found independently by two passes. Suggested order: **22 → 23 → 24 → 25**, slotting 22 right after 16. The live-run pass's findings are under "Live run" below (they belong with 25).
+
+**Open decisions:**
+- **(22)** Hide whether an email has an account? Registration says "An account with this email already exists", while password reset deliberately doesn't. Either accept the leak (document it) or give a generic signup error / email confirmation.
+- **(24)** Backup format v3: add `followed.csv` and `episode_progress.csv` (needs a list endpoint for progress), or keep v2 and say in the export UI what's not included. The `data-backup` spec ("A backup contains the whole library") must match whichever is chosen.
+- **(23)** Should a rating change trigger a recommendations refresh (it weights seeds, loved genres and KMeans), or is the 12h TTL acceptable?
+
+### 22. `harden-security-3` (backend + nginx) (✅ archived 2026-10-09)
+
+See `openspec/changes/archive/2026-10-09-harden-security-3/`. All items below are fixed (specs synced into account-security, api-hardening, title-metadata, input-validation, avatar-upload, container-deployment and data-backup). Adds migration 0022 (`WatchedEntry.metadata_settled`). Unverified until the first Docker deploy: `nginx -t` on the new `log_format`/`map`s. Proposed 2026-10-09. Also takes two bullets from 17: `session_id` in logs and the rating-sync ERROR traceback for users with no TMDB link. Decided: keep the registration "email exists" message (accepted, documented); add a per-username login failure limit; no library-size caps, cap backfill runs only.
+
+- **[med] ✔ The TMDB connect callback can be forged (login CSRF).** `tmdb_views.py:18-53`, `TMDBCallbackPage.tsx:17-26`. `tmdb_request_token` doesn't record which user asked for the token, and `tmdb_create_session` accepts any `request_token` from any signed-in user; there is no state/nonce.
+  - Attack: the attacker gets a token from `/api/tmdb-auth/request-token/`, approves it on themoviedb.org in their own TMDB account, and sends a signed-in victim `/tmdb-callback?request_token=<T>&approved=true`. The victim's profile now holds the attacker's TMDB session, and `_sync_rating_to_tmdb` sends every later rating to an account the attacker reads.
+  - `create_session` also overwrites an existing `session_id` without revoking it (sibling of T2), so the victim's real session stays live on TMDB.
+  - Fix: store the issued token per user with a short TTL, accept it only once, and revoke the previous session before replacing it.
+- **[med] Bulk imports of fake ids amplify into TMDB calls and unbounded memory.** `bulk_watched` (500 entries/request, any `mediaId` up to 2³¹) → `stats_views.py:88` `request_backfill` → `metadata_backfill.py:98-132` fetches every genre-less entry with no per-user cap, on the server's API key and outside `TmdbProxyThrottle`. Every 404 adds a pk to the module-level `_settled` set and every failure to `_failed_at` (`:33-37`); neither is ever trimmed.
+  - Scenario: one account imports random ids and opens Stats; each 500-row request costs about 500 TMDB calls, pushing the server's single IP toward TMDB's rate limit (then every user's proxy calls 429), and each worker's sets grow without bound. `stats_views.py:38` also loads all rows into memory.
+  - The `title-metadata` spec says an unfillable title "SHALL NOT be fetched again", but `_settled` is per process, so every worker and every restart refetches it. Persisting a settled marker fixes both.
+  - Fix: cap entries per backfill run and per user; bound or persist `_settled`/`_failed_at`.
+- **[low-med] Reviews and list descriptions have no length limit.** `RatingEntry.review` and `UserList.description` are `TextField` (`models.py:57,70`), and `RatingEntrySerializer` (`serializers.py:197`), `BulkRatingEntrySerializer.review` (`:265`) and `UserListSerializer` restate no `max_length`; only nginx's 8 MB body cap applies. About 100 reviews of 8 MB make one `GET /ratings/` page load ~800 MB into a sync worker; `GET /lists/` nests every item. A crafted backup ZIP can do this to the victim's own account. Fix: e.g. 10k for reviews, 2k for descriptions, on the models or serializers and the bulk serializer.
+- **[low-med] The password-reset token ends up in nginx access logs.** The link is the GET path `/reset-password/<uid>/<token>` (`auth_views.py:153`), and `nginx.conf` sets no `access_log`, so the `nginx:alpine` default logs the full URI to `docker logs`; the token stays valid for an hour. Same for `/tmdb-callback?request_token=…` (lower risk). Related: `EMAIL_BACKEND` defaults to the console backend (`settings.py:212`), so a deploy that forgets it prints live reset links to stdout. Fix: a `log_format` without the path for `/reset-password/` (no `add_header` in that location), or move the token into the URL fragment.
+- **[low] Avatars keep their EXIF data (GPS, camera serial).** `auth_views.py:370-400` only `verify()`s and saves the original bytes, and `/media/` is public. Fix: re-encode or strip EXIF.
+- **[low] Registration reveals whether an email has an account** (`RegisterSerializer.validate_email`), which undoes the care in password reset. `password_reset_request` also calls `send_mail` synchronously only for registered emails, a timing oracle. (Open decision above.)
+- **[low] Login is limited per IP only.** `LoginThrottle` is 10/min by IP, with no per-username failure counter, so distributed guessing against one account is unlimited.
+- **[info] The client-side backup import has no ZIP size cap** (`CSVImportAllModal.tsx:84`, `backup.ts:110-112`). A zip bomb only crashes the importing tab.
+- **Design note (not a defect):** `/api/tmdb/<path>` is `AllowAny` with 3 sync gunicorn workers, so a few anonymous IPs at 120/min each can keep every worker busy and use up the server's TMDB per-IP limit. It's the accepted public-proxy design, but it's the main unauthenticated availability risk.
+
+### 23. `fix-recs-correctness` (backend + frontend) (⏳)
+
+- **[med] ✔ For You mixes movie and TV genre ids.** `recommendations.py:287-297` (`discover_mixed`) sends one genre id to both `/discover/movie` and `/discover/tv`, and `genre_count`, `loved_genre_count` and the KMeans vocabulary (`:437-491`) pool movie and TV genres in one id space. TMDB genre ids are type-specific (Action 28 is movie-only; Action & Adventure 10759 is TV-only).
+  - "More like what you love" / "Based on your taste" lose half of each mixed section.
+  - `tmdb_client.discover` joins ids with `,` (`tmdb_client.py:46`), which TMDB treats as AND, so a KMeans cluster like `[28, 10759]` returns nothing from either endpoint and the section is dropped.
+  - Stats (`stats_views.py:66-75`) shows "Action" and "Action & Adventure" as separate top genres.
+  - This is the backend version of item 4's frontend fix. Fix: map ids per media type (as `genresFor()` does) or keep separate vocabularies.
+- **[med] ✔ A For You poll that gives up is cached as complete.** `RecommendationsPage.tsx:271-292`: after `MAX_POLLS = 20` with status still `"pending"`, the `else` branch calls `setComputingFlag(false)`, so the unmount save stores `complete: true`, and `hasFetched` (`:234`) skips fetching on return. Partial groups are shown as final, against `view-state-restore` "Incomplete recommendations are not cached as final". Also when returning to an incomplete snapshot and leaving before the first response.
+- **[low-med] Ratings never trigger a recommendations refresh.** `signals.py:130-141` covers only `WatchedEntry`, and `ratings_views.py` doesn't call `schedule_refresh`. Ratings drive "More like what you love" (≥7), the "Because you watched" seed order and KMeans weights, so a change waits up to 12h. On a backup restore, watched is imported first and its refresh reads `RatingEntry` (`recommendations.py:207`) before the ratings bulk request commits, so a restored account has no "loved" section for 12h. `by_recency` (`:256-261`) can also seed "Because you watched X" from a title rated 1/10. (Open decision above.)
+- **[low-med] Every watched toggle on For You re-runs the whole fetch and poll.** `RecommendationsPage.tsx:261-310` depends on `watchedList.length`, and its cleanup resets `hasFetched.current`. Marking a card refetches all three groups (including the TMDB-heavy followed-people call) and restarts polling; sections reshuffle. On a cache-hit mount the effect returns early, so the same action does nothing there.
+
+### 24. `fix-import-export-2` (frontend + backend) (⏳)
+
+- **[med] 2× "Export All Data" omits followed people and episode progress.** `backup.ts:44-102` writes only watchlist, watched, ratings and lists. There's no list endpoint for episode progress (`social_views.py:22` is per show). Export → delete account → re-register → import loses every follow (so all notifications and followed-people sections) and every SxxEyy position, with no notice. (Open decision above.)
+- **[med] ✔ CSV imports hit `TmdbProxyThrottle` and silently drop posters.** `CSVUploadModal.tsx:79-93` and `CSVListImportModal.tsx:72-86` fetch a poster for every row, 20 at a time; `CSVImportAllModal.tsx:25-40` does the same for rows with no poster. The proxy allows `120/min` per user (`settings.py:163`), `tmdb.ts` doesn't retry a 429, and `catch {}` swallows it. A 300-row import saves ~180 rows with `posterPath: null` and `voteAverage` 0 (also dragging the Stats average down), the toast says "Import complete", and other browsing 429s for a minute. Fix: pace to the throttle, or treat a 429 as retry-later.
+- **[low-med] 2× Re-importing the Watched page's own CSV loses every date and zone.** `WatchedPage.tsx:84-93` exports `watched_at`/`watched_tz`, but `CSVUploadModal.tsx:94-104` reads it with `parseCSVForImport` (`csvParse.ts:120-162`), which keeps only id, title and type. Every row becomes "now", so Monthly, heatmap, Recently watched and the Watched sort all show the history as watched today. Breaks `data-backup` "Watched exports keep the logged time zone". Fix: read `watched_at`/`watched_tz` when present, as `parseBackupCSV` does.
+- **[low-med] Lists that share a name merge on restore.** `CSVImportAllModal.tsx:98-109`: `idByName` finds the first list (already created in this run), so the second "Favorites" list's items go into it and its description is dropped. Duplicate React key at `:270` (`key={l.name}`). Fix: match by name only against lists that existed before the import.
+- **[low-med] A reload failure after a successful import is reported as an import failure.** `CSVUploadModal.tsx:105` awaits `reloadWatched()` inside the same `try` as `bulkImport`, so the user sees "Failed to import" without the added/skipped counts, though the rows were saved. `CSVImportAllModal.tsx:190` instead discards its reload `allSettled` result and says "Import complete". (`load-states` "Background refresh fails after a successful load" is silent app-wide.)
+- **[low] `bulk_import` counts rows lost to a concurrent create as added** (`bulk_import.py:74-76`, `added = len(to_create)` under `ignore_conflicts=True`). Known race, acknowledged in a comment; the `data-backup` spec says counts match what was created.
+
+### 25. `fix-write-guards-2` (frontend + backend) (⏳)
+
+- **[low-med] A failed episode-progress load looks like "no progress", and saving then overwrites the real progress.** `useEpisodeProgress.ts:18-20` (`.catch(() => setProgress(null))`) → `TVShowDetails.tsx:322-335` shows "Track episode progress", the editor starts at S1E1, and Save `update_or_create`s over the stored position. Breaks the `surface-failures` rule. Fix: an `error` state with Retry, and hide "Track" while it's set.
+- **[low-med] Episode progress has no in-flight guard.** `useEpisodeProgress.ts:27-38` has no `createInflight` slot, and "Next Episode →" (`TVShowDetails.tsx:258-266`) and Save (`:309-321`) stay enabled, so a double-click sends two PUTs (`write-feedback` "At most one in-flight write per item", CLAUDE.md).
+- **[low-med] A review-only edit still pushes the rating to TMDB.** `useRatings.set` always POSTs `/ratings/` (`useRatings.ts:68`), which runs `update_or_create` plus `_sync_rating_to_tmdb` unconditionally (`ratings_views.py:41-53`) and re-stamps `rated_at`. The backend PATCH conforms to `ratings` "Edit only the review", but the frontend never uses it.
+- **[low-med] Detail-page Back does nothing in a tab opened from a card link.** `MovieDetails.tsx:113`, `TVShowDetails.tsx:112` and `PersonPage.tsx` use `from ? navigate(from) : navigate(-1)`; in a new tab (`CardLink` Ctrl/middle-click, no `from`) `history.go(-1)` is a no-op, and from an external referrer Back leaves the app. Fix: fall back to a default route when `window.history.state?.idx === 0`.
+- **[low] The rating dialog can be closed mid-save.** `RatingModal.tsx:45` `onCancel={onClose}` ignores `busy`, so Cancel/X/mask click closes it and the save result is never shown (`write-feedback` "dialog stays open while saving").
+- **[low] FilterPanel shows unapplied edits as active.** `FilterPanel.tsx:72-73` seeds the draft `filters`/`sortBy` only on mount or scope change, so change year/sort, close with X, reopen: the drawer shows the unapplied values while the grid uses the old ones. Genre chips apply immediately while other fields wait for Apply.
+- **[low] Follow/unfollow doesn't refresh notifications, and notifications include watched titles.** `useNotifications.ts:31-40` polls every 3 min, and `FollowedPeopleContext.follow`/`unfollow` don't trigger it. `notifications_views.py:44-71` doesn't exclude watched titles, while followed-people recommendations do (`social_views.py:175-188`).
+- **[low] Local order disagrees with the server after a create/follow.** `useLists.ts:62` appends a new list (API: `-created_at`), and `FollowedPeopleContext.tsx:84` appends a new follow (API: `-followed_at`), so the new item lands last until a reload.
+- **[low] Email uniqueness is only a serializer check** (`serializers.py:72-81`), with no DB constraint, and `update_profile` catches `IntegrityError` only for usernames, so two concurrent email changes can race (same pattern item 1 fixed for usernames). Medium confidence, not reproduced.
+- **[low] Smaller items:**
+  - `WatchProviders.tsx:16,25`: TMDB's `us.link` is used as an `href` without `safeHttpUrl` (`untrusted-content`). Low real risk: TMDB-generated, and the CSP blocks script URLs.
+  - `BottomNav.tsx:236-278`: the phone drawer's profile button has no `aria-label`, so it's announced as the initials plus the name, not "Edit profile" (`accessibility`).
+  - `LoginPage.tsx:34`: the password refocus runs in `setTimeout(0)` while the field may still be `disabled={loading}`. Low confidence, not reproduced.
+
+### Live run (fourth round, fifth pass)
+
+First live check of the app in this audit series: `npm run dev` + headless Chromium via Python Playwright, two throwaway accounts (both deleted afterwards). It confirmed in the running app several items already listed (18 blank-email profile 400, 18 ProfileModal stale edits, 18 re-login lands on /movies, 17 rating-sync traceback, 24 backup omits follows/progress, 19 TV runtime empty, 19 browse cards not links). New:
+
+- **[med] ✔ People page: browser Back loses the loaded pages and scroll.** `PeoplePage.tsx:46-55` `handlePersonClick` calls `navigate(...)` with restore state but never `stashReturnState(...)` first (only `HomePage.tsx:148` and `AnimePage.tsx:158` do), against CLAUDE.md's browse-filters rule. Observed: 80 cards at `scrollY` 1200 → person → browser Back → 20 cards at `scrollY` 0; the in-app Back button restores correctly. Also affects phone swipe-back and Alt+Left. Belongs with 25.
+- **[low] Applying a genre filter fetches the same discover page twice**, about 340 ms apart (not StrictMode, whose replays are synchronous). The chip applies at once, then Apply sets a new `activeFilters` object, which changes `HomePage`'s `fetchPage` identity and makes `usePaginatedFetch` reload an unchanged query: one wasted TMDB call against `TmdbProxyThrottle` and a second grid clear. Fold into 25's FilterPanel bullet.
+- **[low] An open Tooltip covers the Popconfirm's OK button on library cards.** `WatchedPage.tsx:217-240` (and likely `ListDetailPage.tsx:243-265`, `WatchlistPage.tsx:255-278`): while the pointer stays on the "Mark unwatched" icon, its Tooltip sits over the Popconfirm's "Mark Unwatched" button and intercepts clicks. Mostly visual for a mouse, but it can block touch flows. Fix: hide the tooltip while the Popconfirm is open. Belongs with 25.
+
+Checked clean in the live run: no horizontal overflow on 18 routes at 375/820/1366 in both themes, including the phone drawers and modals; sidebar `scrollHeight == clientHeight` at 1366×768 and in the 820 rail; no app console errors; Movies/TV/Anime/Search/Calendar restore on both kinds of Back; every detail-page write, list, follow, notifications, Stats, iCal and ZIP export flow works; token-refresh recovery and auth redirects behave; every other duplicate request was a StrictMode dev-only pair.
+
+### Additions to earlier items (fourth round)
+
+- **17 (`fix-upstream-resilience`):**
+  - **[low-med] A person-credits 404 also freezes recommendations.** `recommendations.py:382-394` (`fetch_actor_credits`) calls `health.mark_failed()` on any `RequestException`. Actor ids come from `TMDBMediaCache.top_cast` (up to 7 days old), so a merged/deleted person keeps 404ing. The item-17 404 fix must cover this site too.
+  - **[low-med, plausible] urllib3 applies the connect timeout per resolved IP**, and `api.tmdb.org` resolves to 4 addresses. If TMDB drops SYNs, one proxy attempt is about 4×3.05s and three attempts about 37s, above gunicorn's 30s, while `WORST_CASE_SECONDS` (21.65s, `tmdb_proxy_views.py:31-45`) doesn't model it. One `tmdb_client` call (`timeout=10`) can take ~50s, so the rating views (`ratings_views.py:26,70`), `tmdb_views.py:25,45,75` and `delete_account` (`auth_views.py:269`) can be killed. With no `ATOMIC_REQUESTS`, a rating is saved but the client gets a 502; `delete_account` revokes the TMDB session before `user.delete()`, so the account isn't deleted. Fix: a wall-clock deadline around the whole call, and move rating sync and session revoke out of the request path.
+- **20 (`fix-stats-math`):**
+  - **[low] More banker's rounding.** `stats_views.py:47` (`avgUserRating`) and `:136` (`avgRating`) use `round(x, 1)` on half-step averages (7.25 → 7.2). Fixing with `Decimal`/`ROUND_HALF_UP` covers all three sites.
+  - **[low-med] `CSVListImportModal` also adds list items one POST each** (`CSVListImportModal.tsx:89-101`, 20 in parallel), with the same `auto_now_add` order scrambling and `5000/day` throttle use as the backup restore.
+- **21 (`harden-ci-2` + polish):**
+  - **Test gaps from the spec conformance check:** no import modal has a UI test (nothing in `e2e/` calls `setInputFiles`; add `e2e/import.spec.ts` with a ZIP fixture for "One section fails", "New list in backup", "Import twice", "Re-select same file", the mixed-file preview); "Leave mid-computation" (`view-state-restore`); rating remove / "Unrated title has no remove"; "Mark as watched fails"; episode-progress save fails; a background-reload failure notice; library-filters "Two lists" and "Unmark the last item on the last page"; password focus after failed login; phone-drawer account controls; fail-closed on the default `SECRET_KEY`; key redaction with DEBUG on; Anime "Airing Today" date params; media-type switch drops `with_genres`; all four `theme-readability` scenarios; `service-health` warm-up hang/non-zero exit; `container-deployment` static checks (HSTS only over HTTPS, db gets only `.env.db`, `backend/.dockerignore`); `app-identity` manifest/meta; a signed-out unknown path that lands on not-found after sign-in.
+  - **`e2e/python/test_ratings.py:115,124`** still branch on `rate_btn.count() == 0` (non-waiting); the assertion still runs, but it violates the `e2e-fixtures` rule.
+  - **`api-hardening` says the proxy forwards params "in the same order"**, but `tmdb_proxy_views.py:62` iterates `request.GET.lists()` (grouped by key). TMDB doesn't care: relax the wording or forward the raw query string.
+  - **Docs drift:** ~~CLAUDE.md says `TRUSTED_PROXY_COUNT` "defaults to 1", but `settings.py:173` defaults to 0 and only `docker-compose.yml:36` sets 1.~~ (fixed in 0.21.0) The `browseFilters.ts:37-40` comment says genres reset "in an effect" as the general reset; `App.tsx:46-63` resets filters and sort during render. `public/index.html:14` `<title>CineDB</title>` vs "CINE DB" in the manifest and `app-identity`.
 
 ## Deferred / out of scope (noted, not planned)
 

@@ -6,7 +6,11 @@ from pathlib import Path
 from unittest import TestCase
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-PROD = {"SECRET_KEY": "test-only-not-the-default-key", "ALLOWED_HOSTS": "testserver"}
+PROD = {
+    "SECRET_KEY": "test-only-not-the-default-key",
+    "ALLOWED_HOSTS": "testserver",
+    "EMAIL_BACKEND": "django.core.mail.backends.locmem.EmailBackend",
+}
 # Same isolation as test_settings_fail_closed: dotenv off, so a developer's
 # backend/.env with DEBUG=True can't turn the production cases into DEBUG ones.
 NO_DOTENV = "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "

@@ -80,6 +80,8 @@ export function RatingModal({ title, existing, onSave, onRemove, onClose }: Prop
           <Input.TextArea
             rows={4}
             placeholder="Write a review (optional)…"
+            maxLength={5000}
+            showCount
             value={review}
             onChange={(e) => setReview(e.target.value)}
             aria-label="Review text"

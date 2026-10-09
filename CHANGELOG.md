@@ -3,6 +3,39 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.21.0] - 2026-10-09
+
+Bug-audit release, part 6. A third and fourth audit (2026-10-09) logged backlog items 16–25 in `docs/BUG_BACKLOG.md`. This release implements two OpenSpec changes from them, `fix-ci-lint` (item 16) and `harden-security-3` (item 22, plus two log fixes from item 17), both archived under `openspec/changes/archive/`. Items 17–21 and 23–25 are still open.
+
+### ⚠️ Notes for deploy
+- **`EMAIL_BACKEND` is now required when `DEBUG` is off.** Without it the backend refuses to start and names the setting, so a deploy can't silently print live password-reset links to the log. `.env.docker` already sets it. To send no mail, set it explicitly to `django.core.mail.backends.console.EmailBackend`.
+- **New migration `0022_watchedentry_metadata_settled`.** It's additive: one boolean column, plus a data step that marks titles the backfill had already found missing on TMDB.
+- **A TMDB connection in progress during the deploy fails once.** The user clicks Connect again.
+- **Unverified on the dev machine (no Docker):** `nginx -t` on the new `log_format`/`map` lines. `test_nginx_conf.py` checks the config statically. If nginx rejects it, the frontend container won't start and the old image keeps serving.
+
+### Security (`harden-security-3`)
+- **Connecting TMDB completes only for the account that started it.** The server remembers the request token it issued to each user and accepts only that token, once, within 60 minutes. Before this, a link like `/tmdb-callback?request_token=<T>&approved=true` for a token the sender had approved in their own TMDB account would connect the victim's account to it, and every later rating would sync to the sender. A refused link says to connect again from your profile. Reconnecting also revokes the previous TMDB session.
+- **TMDB credentials never reach the logs.** Log redaction now also strips `session_id` and `request_token` values, which `requests` puts in every HTTP error message. Rating sync logs only the error type. A user who never connected TMDB no longer writes an ERROR traceback on every rating.
+- **Imports can't flood TMDB.** A metadata backfill run fetches at most 100 titles, newest watches first. A title TMDB doesn't know is now marked in the database, so other server processes and restarts never refetch it. It used to be held per process, so the same missing titles were fetched again by every worker after every restart. The in-memory failure backoff is capped at 10,000 entries.
+- **Reviews (5000 characters) and list descriptions (200) are capped**, on single and bulk writes. They had no limit, so one account could store multi-megabyte values that every load of its ratings or lists pulled into a server worker. Text already stored above the caps still loads. The rating dialog shows a character count.
+- **Repeated failed logins for one username are limited.** After 20 failures within an hour, from any number of IPs, sign-in for that username returns `429` until the hour passes, whether or not the password is right. This is on top of the per-IP limit. Password reset still works.
+- **Password-reset email is sent in the background**, so the response time no longer shows whether an email is registered. Registration still says when an email is taken; that's accepted and documented in `docs/ARCHITECTURE.md`.
+- **Profile photos are re-encoded on upload.** Location, camera serial and other embedded details are removed, the photo stays upright, and a truncated image is rejected.
+- **The nginx access log never records password-reset links or TMDB callback tokens**, in either the request line or the referer. The reset page's own API call carries the reset link as its referer.
+- **Oversized backups are refused before unpacking.** The importer rejects files over 50 MB, or ZIPs whose entries would expand past 50 MB each or 200 MB in total, so a crafted ZIP can't freeze the tab.
+
+### Fixed
+- `main`'s CI was failing at lint: a test's `"javascript:alert(1)"` input tripped `no-script-url`, so Jest and the build never ran in CI (`fix-ci-lint`). The rule stays on for app code.
+
+### Docs
+- `docs/BUG_BACKLOG.md`: items 16–25 from the third and fourth audits. The fourth round added cross-cutting passes (sibling hunt, cross-feature flows, adversarial security, spec conformance) and the first live Playwright run of the app.
+- `docs/ARCHITECTURE.md`: rationale for each security change above, and the accepted trade-offs (signup reveals taken emails; a known username can be kept out of password login for up to an hour).
+- CLAUDE.md: `TRUSTED_PROXY_COUNT`'s settings default is 0 (compose sets 1), and the new log, backfill, avatar and nginx conventions.
+
+### Tests
+- The backend suite grew from 270 to 318 tests. New cases cover TMDB connect binding, replay, expiry and revocation, credential redaction, rating-sync logging, the backfill cap and the persisted settled state (including the migration's data step), length caps, the per-username login limit, background reset mail, email fail-closed, avatar EXIF and orientation, and nginx log redaction.
+- Jest grew from 220 to 224 tests (backup size guard, read against the installed JSZip).
+
 ## [0.20.0] - 2026-10-08
 
 Bug-audit release, part 5. Implements the five OpenSpec changes from the second audit (`docs/BUG_BACKLOG.md` items 11–15): `fix-session-sync`, `honest-tests`, `surface-failures-2`, `harden-backend-2` and `harden-deploy-2`, all archived under `openspec/changes/archive/`. Every backlog item is now closed.

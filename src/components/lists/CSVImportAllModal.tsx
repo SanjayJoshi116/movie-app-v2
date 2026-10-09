@@ -6,7 +6,14 @@ import { useAppContext } from "../../context/useAppContext";
 import { useListsContext } from "../../context/useListsContext";
 import userApi, { bulkImport, type BulkImportResult } from "../../api/userApi";
 import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
-import { readBackupZip, BACKUP_VERSION, type BackupContents } from "../../utils/backup";
+import {
+  readBackupZip,
+  checkBackupFileSize,
+  checkBackupZipSize,
+  BackupTooLargeError,
+  BACKUP_VERSION,
+  type BackupContents,
+} from "../../utils/backup";
 import type { BackupRow } from "../../utils/csvParse";
 import { fetchAllPages } from "../../utils/fetchAllPages";
 import type { UserListDTO } from "../../types";
@@ -81,10 +88,14 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     setParseError(null);
     setResults(null);
     try {
-      setContents(await readBackupZip(await JSZip.loadAsync(file)));
+      // Size checks come before anything is decompressed (loadAsync only reads the directory).
+      checkBackupFileSize(file.size);
+      const zip = await JSZip.loadAsync(file);
+      checkBackupZipSize(zip);
+      setContents(await readBackupZip(zip));
     } catch (err) {
       setParseError(
-        err instanceof Error && err.message.startsWith("No recognizable")
+        err instanceof BackupTooLargeError || (err instanceof Error && err.message.startsWith("No recognizable"))
           ? err.message
           : "Could not read ZIP file. Make sure it's a valid CINE DB backup.",
       );

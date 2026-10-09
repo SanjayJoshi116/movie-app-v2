@@ -358,3 +358,59 @@ class ProfileUsernameTests(AuthedTestCase):
         self.assertEqual(res.data["username"], ["This username is already taken."])
         self.user.refresh_from_db()
         self.assertEqual(self.user.username, "vic")
+
+
+class TextLengthLimitTests(AuthedTestCase):
+    def _rating(self, review):
+        return self.client.post("/api/ratings/", {
+            "mediaId": 550, "mediaType": "movie", "title": "Fight Club", "userRating": 8, "review": review,
+        }, format="json")
+
+    def test_review_at_limit_accepted(self):
+        res = self._rating("x" * 5000)
+        self.assertIn(res.status_code, (status.HTTP_200_OK, status.HTTP_201_CREATED), res.data)
+
+    def test_over_long_review_rejected(self):
+        res = self._rating("x" * 5001)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("review", res.data)
+        self.assertFalse(RatingEntry.objects.filter(user=self.user).exists())
+
+    def test_over_long_review_patch_rejected(self):
+        entry = RatingEntry.objects.create(
+            user=self.user, media_id=550, media_type="movie", title="Fight Club", user_rating=8
+        )
+        res = self.client.patch(f"/api/ratings/{entry.pk}/", {"review": "x" * 5001}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("review", res.data)
+
+    def test_over_long_review_in_bulk_rejected(self):
+        res = self.client.post("/api/ratings/bulk/", {
+            "mediaType": "movie",
+            "entries": [{"mediaId": 77, "title": "A", "userRating": 7, "review": "x" * 5001}],
+        }, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("review", str(res.data))
+        self.assertFalse(RatingEntry.objects.filter(user=self.user).exists())
+
+    def test_list_description_limits(self):
+        ok = self.client.post("/api/lists/", {"name": "L", "description": "d" * 200}, format="json")
+        self.assertEqual(ok.status_code, status.HTTP_201_CREATED, ok.data)
+        bad = self.client.post("/api/lists/", {"name": "M", "description": "d" * 201}, format="json")
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", bad.data)
+        edit = self.client.patch(f"/api/lists/{ok.data['id']}/", {"description": "d" * 201}, format="json")
+        self.assertEqual(edit.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", edit.data)
+
+    def test_existing_over_long_text_still_reads(self):
+        RatingEntry.objects.create(
+            user=self.user, media_id=550, media_type="movie", title="Fight Club", user_rating=8, review="x" * 9000
+        )
+        UserList.objects.create(user=self.user, name="Old", description="d" * 900)
+        ratings = self.client.get("/api/ratings/")
+        lists = self.client.get("/api/lists/")
+        self.assertEqual(ratings.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(ratings.data["results"][0]["review"]), 9000)
+        self.assertEqual(lists.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(lists.data["results"][0]["description"]), 900)

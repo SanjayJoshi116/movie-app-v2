@@ -453,7 +453,8 @@ DB_PASSWORD=your_db_password
 DB_HOST=localhost
 DB_PORT=5432
 
-# Email password reset (leave blank to use console backend for development)
+# Email password reset. Optional in development (unset = console backend);
+# required when DEBUG is off, or the backend refuses to start.
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
@@ -573,7 +574,7 @@ Nginx proxies `/api/*` straight to the `backend` service (which itself proxies T
 
 The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice.
 
-> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY` or an empty/wildcard `ALLOWED_HOSTS`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` defaults `TRUSTED_PROXY_COUNT` to 1 for the bundled nginx. If you put another proxy/TLS terminator in front, raise it to match: `TRUSTED_PROXY_COUNT=2 docker compose up -d`, or set it in the root `.env` (compose reads that file for `${...}` values).
+> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY`, an empty/wildcard `ALLOWED_HOSTS`, or no `EMAIL_BACKEND`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` defaults `TRUSTED_PROXY_COUNT` to 1 for the bundled nginx. If you put another proxy/TLS terminator in front, raise it to match: `TRUSTED_PROXY_COUNT=2 docker compose up -d`, or set it in the root `.env` (compose reads that file for `${...}` values).
 
 > **HTTPS and security headers:** nginx sends a Content-Security-Policy on every response, and sends `Strict-Transport-Security` only when the request carries `X-Forwarded-Proto: https`. Make sure your TLS terminator sets that header (most do by default); a plain-HTTP LAN deployment never gets HSTS. If you add a new external origin to the app (an image host, an embed, a font), add it to the CSP in `nginx.conf` too, or browsers will block it.
 
@@ -635,19 +636,24 @@ npm test
 
 ### Unit tests — pytest (Django)
 
-Covers auth, sessions and account security (including password-bound tokens), log redaction, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
+Covers auth, sessions and account security (including password-bound tokens, TMDB connect binding and the per-username login limit), log redaction, avatar upload safety, settings fail-closed behavior, throttling, the TMDB proxy and OAuth endpoints, recommendation refresh coalescing and endpoints, notifications, watched-title metadata backfill, data correctness, lists/follows/episode progress/profile CRUD and ownership, input validation (400-never-500), bulk import, pagination, and the pinned Django version. Runs against a real Postgres DB (test DB is created/torn down automatically).
 
 ```
 backend/userdata/tests/
 ├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
-├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry
+├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry,
+│                                   #   reset mail off the request thread, per-username login failure limit
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
 ├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
-├── test_logging.py                 # TMDB key redacted from every logger; prod 500s logged, 4xx quiet
+├── test_logging.py                 # TMDB key, session_id and request_token redacted from every logger;
+│                                   #   prod 500s logged, 4xx quiet
 ├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images),
-│                                   #   versioned names, old file deleted on commit, failed replace keeps the old photo
-├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS refused, DB password fallback
-├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache
+│                                   #   versioned names, old file deleted on commit, failed replace keeps the old photo,
+│                                   #   re-encoded with EXIF stripped and orientation applied
+├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS and implicit EMAIL_BACKEND
+│                                   #   refused, DB password fallback
+├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache,
+│                                   #   access log redacts reset links and TMDB callback tokens
 ├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
 ├── test_local_dates.py            # X-Timezone parsing/fallback (incl. tzdata directory names), CORS preflight,
 │                                  #   watched_tz storage, local stats/notification days
@@ -655,13 +661,15 @@ backend/userdata/tests/
 ├── test_session_throttle.py        # Refresh/logout on their own token_refresh scope, not anon 300/day
 ├── test_health.py                  # Health check never throttled
 ├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout, per-user throttle
-├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke
+├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
+│                                   #   connect bound to the requesting user (single-use token), reconnect revokes
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
 │                                   #   cache DB access off worker threads, outage guard, cross-process status
 ├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
 ├── test_notifications.py           # New-release notifications (every followed person, credits cache),
 │                                   #   40-person/15s poll budget pinned under gunicorn's timeout
-├── test_metadata_backfill.py       # One backfill per user, 404 settled, failures back off
+├── test_metadata_backfill.py       # One backfill per user, 100 titles per run, 404 settled in the DB
+│                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
 ├── test_followed_people.py         # Follow/unfollow, ownership
@@ -672,8 +680,9 @@ backend/userdata/tests/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings: create-only, timestamps, all-or-nothing
-├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity
-└── test_ratings.py                 # Pagination shape
+├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
+│                                   #   review (5000) and list description (200) caps
+└── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
 ```
 
 ```bash

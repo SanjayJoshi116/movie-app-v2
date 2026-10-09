@@ -101,6 +101,46 @@ export function buildBackupZip(
   return zip;
 }
 
+// A real backup is a few MB at most. These caps stop a crafted ZIP (a "zip
+// bomb") from being decompressed into memory and freezing the tab.
+export const MAX_BACKUP_FILE_BYTES = 50 * 1024 * 1024;
+export const MAX_BACKUP_ENTRY_BYTES = 50 * 1024 * 1024;
+export const MAX_BACKUP_TOTAL_BYTES = 200 * 1024 * 1024;
+export const BACKUP_TOO_LARGE = "This file is too large to be a CINE DB backup.";
+
+export class BackupTooLargeError extends Error {
+  constructor() {
+    super(BACKUP_TOO_LARGE);
+    this.name = "BackupTooLargeError";
+  }
+}
+
+/**
+ * An entry's uncompressed size as declared in the ZIP's central directory,
+ * read without decompressing. JSZip keeps it on an internal field that its
+ * types don't declare; a missing value counts as 0 (the file-size cap still holds).
+ */
+export function declaredUncompressedSize(entry: JSZip.JSZipObject): number {
+  const size = (entry as unknown as { _data?: { uncompressedSize?: unknown } })._data?.uncompressedSize;
+  return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : 0;
+}
+
+/** Throws BackupTooLargeError before anything is read from an oversized file. */
+export function checkBackupFileSize(bytes: number): void {
+  if (bytes > MAX_BACKUP_FILE_BYTES) throw new BackupTooLargeError();
+}
+
+/** Throws BackupTooLargeError if any entry, or all of them together, would expand past the caps. */
+export function checkBackupZipSize(zip: JSZip): void {
+  let total = 0;
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir) continue;
+    const size = declaredUncompressedSize(entry);
+    total += size;
+    if (size > MAX_BACKUP_ENTRY_BYTES || total > MAX_BACKUP_TOTAL_BYTES) throw new BackupTooLargeError();
+  }
+}
+
 function listCSVFiles(zip: JSZip): string[] {
   return Object.keys(zip.files).filter(
     (name) => name.startsWith("lists/") && name.endsWith(".csv") && !zip.files[name]!.dir,

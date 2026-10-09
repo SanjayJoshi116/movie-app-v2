@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.20.0)
+CINE DB — Feature List (v0.21.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -31,8 +31,8 @@ LIBRARY
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Watchlist's watched status is shared live with the Watched list (mark watched from any page, the Watchlist card reflects it immediately); marking watched opens the same runtime/platform-capture modal used everywhere else
 - Search/sort/CSV export on Watchlist and Watched; exported CSVs are spreadsheet-safe (formula-looking titles open as text) and re-import exactly
-- Full backup (ZIP) and restore: watchlist, watched (runtime/platform/time zone), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import
-- Ratings (0.5-10) + written reviews; remove a rating from the rating dialog; a failed save keeps your stars and review
+- Full backup (ZIP) and restore: watchlist, watched (runtime/platform/time zone), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import; a file too large to be a backup is refused before it's unpacked
+- Ratings (0.5-10) + written reviews (up to 5000 characters, with a live count); remove a rating from the rating dialog; a failed save keeps your stars and review
 - User Lists: create, rename, add/remove items, CSV export, CSV import; create/edit can't double-submit; list cards open from the keyboard; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
 - Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap; genre charts fill in for any library size; readable in both light and dark theme
 - Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card; a failed load retries in place; the "updating" state is accurate across server processes, and a refresh during a TMDB outage keeps your previous recommendations
@@ -47,10 +47,11 @@ AUTH
 - Changing your account email asks for your current password, rejects an email already used by another account, and notifies your old address
 - Email-based password reset; reset links expire after 1 hour
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
-- Profile photo upload/remove (JPEG/PNG/WebP, 5MB max, checked by the image's actual content rather than its file name), shown wherever the avatar appears; a new photo shows at once, old or removed photos stop being served (also on account deletion), and a failed replace keeps the current photo
-- Disconnecting TMDB (or deleting your account) also revokes the TMDB session on TMDB's side
+- Profile photo upload/remove (JPEG/PNG/WebP, 5MB max, checked by the image's actual content rather than its file name, and re-saved so location and camera details embedded in a photo are removed), shown wherever the avatar appears; a new photo shows at once, old or removed photos stop being served (also on account deletion), and a failed replace keeps the current photo
+- Connecting TMDB completes only for the account that started it (a connect link sent by someone else is refused); reconnecting, disconnecting or deleting your account revokes the old TMDB session on TMDB's side
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB, Danger Zone
 - Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors
+- Repeated wrong passwords for one account, from any number of devices, pause sign-in for that account for up to an hour (password reset still works)
 - Signed-in users who open the login, register or forgot-password page go straight on to where they were headed (no login-form flash); password-reset links still work while signed in
 
 UI/UX
@@ -69,7 +70,9 @@ UI/UX
 SECURITY & OPERATIONS
 - Production Docker stack runs the backend as an unprivileged user from the image only (no host-mounted code or migrations)
 - Content-Security-Policy, HSTS (behind HTTPS) and other security headers on every response
-- The TMDB API key is redacted from every server log line, and unexpected server errors are logged with a traceback in production
+- The TMDB API key, TMDB session ids and request tokens are redacted from every server log line, and unexpected server errors are logged with a traceback in production
+- Password-reset links and TMDB callback tokens never appear in the web server's access log; production refuses to start without a configured email backend, so reset links are never printed to the log
+- Imports of unknown titles can't flood TMDB: missing title details are filled at most 100 at a time, and titles TMDB doesn't know are remembered permanently
 - A redeploy never leaves an open tab on a blank page (the entry page is revalidated; a missing old file is a clean 404)
 - The database container gets only the database password (kept in its own .env.db), none of the app's other secrets
 - TMDB browsing limits apply per signed-in user, so people sharing one network don't share a limit; a malformed time zone never causes an error

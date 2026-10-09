@@ -59,3 +59,38 @@ class NginxConfTests(SimpleTestCase):
         for header in SECURITY_HEADERS:
             with self.subTest(header=header):
                 self.assertRegex(outside_locations, rf"add_header\s+{header}\s")
+
+
+class AccessLogRedactionTests(SimpleTestCase):
+    """Reset tokens and TMDB request tokens never reach the access log."""
+
+    def setUp(self):
+        self.conf = _strip_comments(NGINX_CONF.read_text())
+        self.maps = _blocks(self.conf, "map")
+
+    def test_server_logs_through_redacted_format(self):
+        server = _blocks(self.conf, "server")[""]
+        self.assertRegex(server, r"access_log\s+\S+\s+redacted\s*;")
+
+    def test_log_format_uses_only_redacted_uri_and_referer(self):
+        fmt = re.search(r"log_format\s+redacted\s+(.*?);", self.conf, re.S)
+        self.assertIsNotNone(fmt)
+        body = fmt.group(1)
+        self.assertIn("$log_request_uri", body)
+        self.assertIn("$log_referer", body)
+        for raw in ("$request_uri", "$http_referer", '"$request"', "$args", "$query_string"):
+            with self.subTest(raw=raw):
+                self.assertNotIn(raw, body)
+
+    def test_uri_map_redacts_reset_and_callback(self):
+        uri_map = self.maps["$request_uri $log_request_uri"]
+        self.assertRegex(uri_map, r"~\^/reset-password/\s+\"/reset-password/\[redacted\]\"\s*;")
+        self.assertRegex(uri_map, r"~\^/tmdb-callback\s+\"[^\"$]*\[redacted\]\"\s*;")
+        self.assertRegex(uri_map, r"default\s+\$request_uri\s*;")
+
+    def test_referer_map_redacts_reset_and_callback(self):
+        ref_map = self.maps["$http_referer $log_referer"]
+        for path in ("reset-password/", "tmdb-callback"):
+            with self.subTest(path=path):
+                self.assertRegex(ref_map, rf"~\^https\?://\[\^/\]\+/{path}\s+\"[^\"$]*redacted[^\"$]*\"\s*;")
+        self.assertRegex(ref_map, r"default\s+\$http_referer\s*;")

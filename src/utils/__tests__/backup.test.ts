@@ -1,5 +1,14 @@
 import JSZip from "jszip";
-import { buildBackupZip, readBackupZip } from "../backup";
+import {
+  buildBackupZip,
+  readBackupZip,
+  checkBackupFileSize,
+  checkBackupZipSize,
+  declaredUncompressedSize,
+  BackupTooLargeError,
+  MAX_BACKUP_ENTRY_BYTES,
+  MAX_BACKUP_FILE_BYTES,
+} from "../backup";
 import type { RatingEntry, UserList, WatchedEntry, WatchlistEntry } from "../../types";
 
 async function roundTrip(zip: JSZip) {
@@ -67,5 +76,41 @@ describe("backup v2 round trip", () => {
     const zip = new JSZip();
     zip.file("notes.txt", "hi");
     await expect(roundTrip(zip)).rejects.toThrow(/No recognizable CSV files/);
+  });
+});
+
+describe("backup size guard", () => {
+  async function reload(zip: JSZip) {
+    return JSZip.loadAsync(await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" }));
+  }
+
+  it("reads declared sizes from the installed JSZip without decompressing", async () => {
+    const zip = new JSZip();
+    zip.file("watched.csv", "x".repeat(12345));
+    const loaded = await reload(zip);
+    const entry = loaded.file("watched.csv")!;
+    const read = jest.spyOn(entry, "async");
+    expect(declaredUncompressedSize(entry)).toBe(12345);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("rejects a zip bomb before any entry is read", async () => {
+    const zip = new JSZip();
+    zip.file("watched.csv", "a".repeat(MAX_BACKUP_ENTRY_BYTES + 1));
+    const loaded = await reload(zip);
+    const read = jest.spyOn(loaded.file("watched.csv")!, "async");
+    expect(() => checkBackupZipSize(loaded)).toThrow(BackupTooLargeError);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized file before it is opened", () => {
+    expect(() => checkBackupFileSize(MAX_BACKUP_FILE_BYTES + 1)).toThrow(BackupTooLargeError);
+    expect(() => checkBackupFileSize(MAX_BACKUP_FILE_BYTES)).not.toThrow();
+  });
+
+  it("lets a normal backup through", async () => {
+    const loaded = await reload(buildBackupZip(watchlist, watched, ratings, lists));
+    expect(() => checkBackupZipSize(loaded)).not.toThrow();
+    expect((await readBackupZip(loaded)).watched).toHaveLength(2);
   });
 });

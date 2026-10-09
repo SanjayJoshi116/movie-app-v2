@@ -1,10 +1,15 @@
+import hashlib
+import io
 import logging
+import threading
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.utils import timezone
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -39,8 +44,32 @@ AVATAR_EXT_BY_FORMAT = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 logger = logging.getLogger(__name__)
 
 
+def _in_background(target):
+    """Run `target` on a daemon thread. It must not touch the DB or the cache."""
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
 class LoginThrottle(AnonRateThrottle):
     scope = "login"
+
+
+def _login_failure_key(username):
+    # Hashed so raw usernames never sit in the cache table.
+    return "login_fail:" + hashlib.sha256(username.strip().lower().encode()).hexdigest()
+
+
+def _login_failures(key):
+    return cache.get(key, 0)
+
+
+def _record_login_failure(key):
+    cache.add(key, 0, settings.LOGIN_FAILURE_WINDOW_SECONDS)  # the window starts at the first failure
+    try:
+        cache.incr(key)
+    except ValueError:  # expired between add() and incr()
+        cache.add(key, 1, settings.LOGIN_FAILURE_WINDOW_SECONDS)
 
 
 class RegisterThrottle(AnonRateThrottle):
@@ -152,28 +181,35 @@ def password_reset_request(request):
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"
-        try:
-            send_mail(
-                subject="Reset your CINE DB password",
-                message=(
-                    f"Hi {user.username},\n\n"
-                    f"Click the link below to reset your password:\n{reset_url}\n\n"
-                    f"This link expires in {_reset_link_lifetime()}.\n\n"
-                    f"If you didn't request this, you can ignore this email."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                fail_silently=False,
-            )
-        except Exception:
-            # Broad on purpose: the configured EMAIL_BACKEND varies by deploy
-            # (console/SMTP/a 3rd-party API), each with its own exception
-            # types (smtplib.SMTPException, socket/OSError, SDK-specific
-            # errors) — narrowing would mean missing whichever backend isn't
-            # anticipated. Also: log but don't surface a distinct response —
-            # a different status here vs. the unregistered-email path would
-            # leak account existence.
-            logger.exception("Failed to send password reset email to user %s", user.pk)
+        user_pk, username, address = user.pk, user.username, user.email
+        message = (
+            f"Hi {username},\n\n"
+            f"Click the link below to reset your password:\n{reset_url}\n\n"
+            f"This link expires in {_reset_link_lifetime()}.\n\n"
+            f"If you didn't request this, you can ignore this email."
+        )
+
+        def send():
+            # Everything is computed above: no DB or cache access on this thread.
+            try:
+                send_mail(
+                    subject="Reset your CINE DB password",
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[address],
+                    fail_silently=False,
+                )
+            except Exception:
+                # Broad on purpose: the configured EMAIL_BACKEND varies by deploy
+                # (console/SMTP/a 3rd-party API), each with its own exception
+                # types (smtplib.SMTPException, socket/OSError, SDK-specific
+                # errors) — narrowing would mean missing whichever backend isn't
+                # anticipated.
+                logger.exception("Failed to send password reset email to user %s", user_pk)
+
+        # Off the request thread: waiting for the mail server only on the
+        # registered-email path would make response time reveal account existence.
+        _in_background(send)
     except User.DoesNotExist:
         pass  # Don't reveal whether the email is registered
 
@@ -248,8 +284,19 @@ def login(request):
     body.is_valid(raise_exception=True)
     username = body.validated_data["username"]
     password = body.validated_data["password"]
+    # Per-username limit across all IPs, checked before the password so a
+    # distributed guesser learns nothing once it trips (existing or not).
+    failure_key = _login_failure_key(username)
+    if _login_failures(failure_key) >= settings.LOGIN_FAILURE_LIMIT:
+        response = Response(
+            {"detail": "Too many failed login attempts for this account. Try again later."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+        response["Retry-After"] = str(settings.LOGIN_FAILURE_WINDOW_SECONDS)
+        return response
     user = authenticate(username=username, password=password)
     if user is None:
+        _record_login_failure(failure_key)
         return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
     tokens = _tokens_for_user(user)
     return Response({"user": UserSerializer(user).data, **tokens})
@@ -341,6 +388,27 @@ def _notify_email_changed(user, old_email):
         logger.exception("Failed to send email-change notice for user %s", user.pk)
 
 
+def _reencode_avatar(file, image_format):
+    """Decode and re-save the upload in its own format, so EXIF (GPS, camera
+    serial, timestamps) and anything else embedded is dropped. The EXIF
+    orientation is applied to the pixels first, so the photo still displays
+    upright. Animated images keep their first frame."""
+    file.seek(0)
+    with Image.open(file) as img:
+        icc_profile = img.info.get("icc_profile")
+        img = ImageOps.exif_transpose(img)
+        if image_format == "JPEG" and img.mode not in ("RGB", "L", "CMYK"):
+            img = img.convert("RGB")
+        elif image_format == "WEBP" and img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA")
+        out = io.BytesIO()
+        options = {"quality": 90} if image_format in ("JPEG", "WEBP") else {}
+        if icc_profile:
+            options["icc_profile"] = icc_profile
+        img.save(out, format=image_format, **options)
+    return out.getvalue()
+
+
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
@@ -392,7 +460,12 @@ def avatar(request):
             {"detail": "Unsupported image type. Use JPEG, PNG, or WebP."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    file.name = f"avatar.{ext}"
+    try:
+        data = _reencode_avatar(file, image_format)
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, SyntaxError, ValueError, IndexError):
+        # verify() doesn't decode pixels; a truncated or corrupt body fails here.
+        return invalid
+    file = ContentFile(data, name=f"avatar.{ext}")
 
     # The old file goes only after the new one is stored and the row committed,
     # so a failed replace leaves the current photo in place and served.

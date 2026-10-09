@@ -17,15 +17,25 @@ from . import tmdb_client
 logger = logging.getLogger(__name__)
 
 
+def _tmdb_session_id(user):
+    """The user's TMDB session id, or "" when they never connected (not an error)."""
+    try:
+        return user.tmdb_profile.session_id
+    except TMDBProfile.DoesNotExist:
+        return ""
+
+
 def _sync_rating_to_tmdb(user, entry):
     """Mirror a rating to the user's connected TMDB account, if any. Best-effort:
     a TMDB failure is logged and never fails the local write."""
+    session_id = _tmdb_session_id(user)
+    if not session_id:
+        return
     try:
-        tmdb_profile = user.tmdb_profile
-        if tmdb_profile.session_id:
-            tmdb_client.post_rating(entry.media_type, entry.media_id, tmdb_profile.session_id, entry.user_rating)
-    except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
-        logger.exception("Failed to sync rating to TMDB for user %s", user.pk)
+        tmdb_client.post_rating(entry.media_type, entry.media_id, session_id, entry.user_rating)
+    except (requests.RequestException, ValueError) as e:
+        # Type only: str(e) carries the request URL, session_id included.
+        logger.warning("TMDB rating sync failed for user %s (%s)", user.pk, type(e).__name__)
 
 
 @api_view(["GET", "POST"])
@@ -64,12 +74,12 @@ def ratings_list(request):
 def ratings_detail(request, pk):
     entry = get_object_or_404(RatingEntry, pk=pk, user=request.user)
     if request.method == "DELETE":
-        try:
-            tmdb_profile = request.user.tmdb_profile
-            if tmdb_profile.session_id:
-                tmdb_client.delete_rating(entry.media_type, entry.media_id, tmdb_profile.session_id)
-        except (TMDBProfile.DoesNotExist, requests.RequestException, ValueError):
-            logger.exception("Failed to delete rating on TMDB for user %s", request.user.pk)
+        session_id = _tmdb_session_id(request.user)
+        if session_id:
+            try:
+                tmdb_client.delete_rating(entry.media_type, entry.media_id, session_id)
+            except (requests.RequestException, ValueError) as e:
+                logger.warning("TMDB rating delete failed for user %s (%s)", request.user.pk, type(e).__name__)
         entry.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     old_rating, old_review = entry.user_rating, entry.review

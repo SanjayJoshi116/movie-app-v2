@@ -7,6 +7,7 @@ describe("safeHttpUrl", () => {
   });
 
   it.each([
+    // eslint-disable-next-line no-script-url -- hostile input under test
     "javascript:alert(1)",
     "  JavaScript:alert(1)",
     "data:text/html,<script>alert(1)</script>",

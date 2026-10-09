@@ -29,7 +29,7 @@ The system SHALL reject `NaN`, `Infinity` and `-Infinity`, sent as JSON strings 
 - **THEN** the response is `400` naming `userRating`
 
 ### Requirement: Inputs fit their storage limits
-The system SHALL reject any string input longer than the column that stores it, and any integer input outside the range its column can hold. Media, person and show identifiers SHALL be positive integers no larger than 2147483647. Runtime minutes SHALL be non-negative. Season and episode numbers SHALL be between 1 and 2147483647.
+The system SHALL reject any string input longer than the column that stores it, and any integer input outside the range its column can hold. Media, person and show identifiers SHALL be positive integers no larger than 2147483647. Runtime minutes SHALL be non-negative. Season and episode numbers SHALL be between 1 and 2147483647. A rating's review SHALL be at most 5000 characters and a list's description at most 200 characters, on single and bulk writes alike. Text already stored above these limits SHALL still be readable.
 
 #### Scenario: Over-long poster path
 - **WHEN** a signed-in user adds a watchlist item whose `posterPath` is 501 characters long
@@ -54,6 +54,18 @@ The system SHALL reject any string input longer than the column that stores it, 
 #### Scenario: Over-long email on profile update
 - **WHEN** a signed-in user updates their profile email to an address longer than 254 characters
 - **THEN** the response is `400` naming `email`
+
+#### Scenario: Over-long review
+- **WHEN** a signed-in user saves a rating, or bulk-imports ratings, with a review of 5001 characters
+- **THEN** the response is `400` naming `review`, and nothing is stored
+
+#### Scenario: Over-long list description
+- **WHEN** a signed-in user creates or edits a list with a description of 201 characters
+- **THEN** the response is `400` naming `description`
+
+#### Scenario: Review length shown while typing
+- **WHEN** a user types a review in the rating dialog
+- **THEN** the dialog shows the character count and stops input at 5000 characters
 
 ### Requirement: Media type is restricted to movie or tv
 Every endpoint that accepts a media type SHALL accept only `movie` or `tv`, and SHALL reject any other value with `400`.

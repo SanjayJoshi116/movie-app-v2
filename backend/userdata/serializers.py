@@ -194,12 +194,20 @@ class WatchedEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
         read_only_fields = ("id", "watchedAt", "watchedTz")
 
 
+# The model columns are TextFields; these caps bound writes only, so rows
+# already stored above them still read.
+REVIEW_MAX_LENGTH = 5000
+LIST_DESCRIPTION_MAX_LENGTH = 200
+
+
 class RatingEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
     # Half steps only: TMDB silently rejects anything else on sync.
     userRating = FiniteFloatField(
         source="user_rating", min_value=0.5, max_value=10, validators=[_validate_half_step]
     )
     ratedAt = serializers.DateTimeField(source="rated_at", read_only=True)
+    # What ModelSerializer derives for the blank TextField, plus the cap.
+    review = serializers.CharField(allow_blank=True, required=False, max_length=REVIEW_MAX_LENGTH)
 
     class Meta:
         model = RatingEntry
@@ -262,7 +270,9 @@ class BulkWatchlistEntrySerializer(BulkMediaEntrySerializer):
 
 class BulkRatingEntrySerializer(BulkEntrySerializer):
     userRating = FiniteFloatField(min_value=0.5, max_value=10, validators=[_validate_half_step])
-    review = serializers.CharField(allow_blank=True, default="", trim_whitespace=False)
+    review = serializers.CharField(
+        allow_blank=True, default="", trim_whitespace=False, max_length=REVIEW_MAX_LENGTH
+    )
     ratedAt = _past_timestamp()
 
 
@@ -317,6 +327,7 @@ class EpisodeProgressInputSerializer(serializers.Serializer):
 class UserListSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    description = serializers.CharField(allow_blank=True, required=False, max_length=LIST_DESCRIPTION_MAX_LENGTH)
 
     class Meta:
         model = UserList

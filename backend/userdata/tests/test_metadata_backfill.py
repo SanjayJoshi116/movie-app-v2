@@ -26,7 +26,6 @@ class _Base(APITestCase):
     def setUp(self):
         metadata_backfill._running.clear()
         metadata_backfill._failed_at.clear()
-        metadata_backfill._settled.clear()
         self.user = User.objects.create_user(username="meta", password="Xk9#mQ2vTz8p")
         self.client.force_authenticate(user=self.user)
 
@@ -141,3 +140,63 @@ class WatchedPostMetadataTests(_Base):
         self.assertEqual(res.status_code, 201)
         entry = WatchedEntry.objects.get(user=self.user, media_id=129)
         self.assertEqual((entry.original_language, entry.release_year), ("ja", 2001))
+
+
+class BackfillBoundsTests(_Base):
+    def _entries(self, n, start=1):
+        WatchedEntry.objects.bulk_create([
+            WatchedEntry(user=self.user, media_id=i, media_type="movie", title=f"T{i}")
+            for i in range(start, start + n)
+        ])
+        return list(WatchedEntry.objects.filter(user=self.user))
+
+    @patch("userdata.tmdb_client._get", side_effect=_http_error(404))
+    def test_unknown_ids_import_is_capped_per_run(self, get):
+        backfill_entries(self._entries(500))
+        self.assertEqual(get.call_count, metadata_backfill.MAX_PER_RUN)
+
+    @patch("userdata.tmdb_client._get", return_value=_details())
+    def test_large_library_fills_over_successive_runs(self, get):
+        self._entries(250)
+        for _ in range(3):
+            backfill_entries(list(WatchedEntry.objects.filter(user=self.user)))
+        self.assertEqual(get.call_count, 250)
+        self.assertFalse(WatchedEntry.objects.filter(user=self.user, genre_ids=[]).exists())
+
+    @patch("userdata.tmdb_client._get", return_value=_details())
+    def test_newest_watches_fill_first(self, get):
+        old = self._entry(1, watched_at=timezone.now() - timedelta(days=30))
+        new = self._entry(2)
+        with patch.object(metadata_backfill, "MAX_PER_RUN", 1):
+            backfill_entries([old, new])
+        self.assertEqual(get.call_args.args[0], "/movie/2")
+
+    @patch("userdata.tmdb_client._get", side_effect=_http_error(404))
+    def test_settled_entry_is_not_refetched_after_restart(self, get):
+        entry = self._entry()
+        backfill_entries([entry])
+        metadata_backfill._failed_at.clear()  # a restart forgets all in-process state
+        backfill_entries([WatchedEntry.objects.get(pk=entry.pk)])
+        self.assertEqual(get.call_count, 1)
+        self.assertTrue(WatchedEntry.objects.get(pk=entry.pk).metadata_settled)
+
+    def test_failed_map_stays_bounded(self):
+        with patch.object(metadata_backfill, "MAX_FAILED_TRACKED", 50):
+            for pk in range(200):
+                metadata_backfill._mark_failed(pk)
+            self.assertLessEqual(len(metadata_backfill._failed_at), 50)
+            self.assertIn(199, metadata_backfill._failed_at)  # the newest is kept
+
+    def test_migration_settles_not_found_sentinel_rows(self):
+        import importlib
+
+        from django.apps import apps
+        migration = importlib.import_module("userdata.migrations.0022_watchedentry_metadata_settled")
+        sentinel = self._entry(1, genre_ids=[], original_language="??", release_year=-1)
+        no_genres = self._entry(2, genre_ids=[], original_language="en", release_year=1999)
+        filled = self._entry(3, genre_ids=[18], original_language="en", release_year=1999)
+        migration.settle_not_found_rows(apps, None)
+        settled = set(WatchedEntry.objects.filter(metadata_settled=True).values_list("pk", flat=True))
+        self.assertEqual(settled, {sentinel.pk})
+        self.assertTrue(entry_needs_metadata(WatchedEntry.objects.get(pk=no_genres.pk)))
+        self.assertFalse(entry_needs_metadata(WatchedEntry.objects.get(pk=filled.pk)))

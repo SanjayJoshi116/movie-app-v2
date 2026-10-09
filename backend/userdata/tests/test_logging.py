@@ -74,3 +74,35 @@ class LoggingRedactionTests(APITestCase):
                     formatters[handler["formatter"]]["()"], "userdata.logging.RedactingFormatter"
                 )
         self.assertEqual(settings.LOGGING["root"]["handlers"], ["console"])
+
+
+class CredentialRedactionTests(APITestCase):
+    def _format(self, msg):
+        record = logging.getLogger("x").makeRecord("x", logging.WARNING, __file__, 0, msg, None, None)
+        return RedactingFormatter().format(record)
+
+    def test_session_id_query_param(self):
+        out = self._format("401 for url: https://api.tmdb.org/3/movie/1/rating?session_id=SECRET123&x=1")
+        self.assertNotIn("SECRET123", out)
+        self.assertIn("session_id=***&x=1", out)
+
+    def test_request_token_query_param(self):
+        out = self._format("GET /tmdb-callback?request_token=TOKEN456&approved=true")
+        self.assertNotIn("TOKEN456", out)
+
+    def test_json_body_value(self):
+        out = self._format('payload {"session_id": "SECRET789"}')
+        self.assertNotIn("SECRET789", out)
+
+    def test_unrelated_text_unchanged(self):
+        self.assertEqual(self._format("a_session_idea=1 is fine"), "a_session_idea=1 is fine")
+
+    @patch("userdata.tmdb_proxy_views._session.get", side_effect=__import__("requests").ConnectionError(
+        "Max retries exceeded with url: /3/account?session_id=PROXYSECRET"
+    ))
+    def test_proxy_failure_with_session_param_is_redacted(self, _):
+        with captured_console() as buf:
+            self.client.get("/api/tmdb/account", {"session_id": "PROXYSECRET"})
+        logged = buf.getvalue()
+        self.assertIn("tmdb_proxy request failed", logged)
+        self.assertNotIn("PROXYSECRET", logged)

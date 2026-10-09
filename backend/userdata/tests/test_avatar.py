@@ -281,3 +281,63 @@ class LegacyAvatarCleanupMigrationTests(APITestCase):
         Profile.objects.filter(pk=self.profile.pk).update(avatar=name)
         self._run()
         self.assertEqual(self.profile.avatar.name, name)
+
+
+class AvatarMetadataTests(APITestCase):
+    """Uploads are re-encoded: no EXIF survives, orientation is baked in."""
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.user = User.objects.create_user(username="exa", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def _upload_jpeg(self, exif, size=(40, 20)):
+        buf = io.BytesIO()
+        Image.new("RGB", size, color="blue").save(buf, format="JPEG", exif=exif)
+        f = SimpleUploadedFile("photo.jpg", buf.getvalue(), content_type="image/jpeg")
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        stored = Profile.objects.get(user=self.user).avatar
+        with default_storage.open(stored.name, "rb") as fh:
+            return Image.open(io.BytesIO(fh.read()))
+
+    def test_gps_exif_is_stripped(self):
+        exif = Image.Exif()
+        exif[0x010F] = "PhoneMaker"  # Make
+        exif[0xA431] = "SERIAL-12345"  # BodySerialNumber
+        exif[0x8825] = {2: (51.0, 30.0, 0.0), 1: "N"}  # GPS IFD
+        img = self._upload_jpeg(exif)
+        self.assertEqual(dict(img.getexif()), {})
+        self.assertNotIn("exif", img.info)
+
+    def test_orientation_is_applied_then_dropped(self):
+        exif = Image.Exif()
+        exif[0x0112] = 6  # rotate 90° clockwise to display
+        img = self._upload_jpeg(exif, size=(40, 20))
+        self.assertEqual(img.size, (20, 40))
+        self.assertNotIn(0x0112, img.getexif())
+
+    def test_png_and_webp_still_upload(self):
+        for fmt, ext, ctype in (("PNG", "png", "image/png"), ("WEBP", "webp", "image/webp")):
+            with self.subTest(fmt=fmt):
+                buf = io.BytesIO()
+                Image.new("RGBA", (20, 20), color=(0, 255, 0, 128)).save(buf, format=fmt)
+                f = SimpleUploadedFile(f"a.{ext}", buf.getvalue(), content_type=ctype)
+                with self.captureOnCommitCallbacks(execute=True):
+                    res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+                self.user.refresh_from_db()  # drop the cached profile on the shared force_authenticate user
+                self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+                self.assertTrue(Profile.objects.get(user=self.user).avatar.name.endswith(f".{ext}"))
+
+    def test_truncated_image_rejected(self):
+        buf = io.BytesIO()
+        Image.new("RGB", (200, 200), color="red").save(buf, format="JPEG")
+        data = buf.getvalue()[:400]  # header intact, pixel data cut off
+        f = SimpleUploadedFile("cut.jpg", data, content_type="image/jpeg")
+        res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

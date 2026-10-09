@@ -209,7 +209,16 @@ SIMPLE_JWT = {
     "ALGORITHM": "HS256",
 }
 
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+# Console mail is the dev default only. In production the backend must be
+# chosen explicitly: a forgotten setting would print every live password-reset
+# link to the container log. An explicit console value is still allowed.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "")
+if not EMAIL_BACKEND:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "Set EMAIL_BACKEND when DEBUG is off (e.g. django.core.mail.backends.smtp.EmailBackend)."
+        )
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
@@ -221,3 +230,9 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 # Reset links expire after 1 hour (Django default is 3 days); the reset
 # email builds its "expires in" sentence from this value.
 PASSWORD_RESET_TIMEOUT = 3600
+
+# Per-username login failures (across all IPs and workers, in the shared cache)
+# before that username gets 429 until the window, counted from the first
+# failure, passes. On top of the per-IP `login` throttle.
+LOGIN_FAILURE_LIMIT = 20
+LOGIN_FAILURE_WINDOW_SECONDS = 3600

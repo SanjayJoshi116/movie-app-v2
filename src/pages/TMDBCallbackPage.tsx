@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Spin } from "antd";
 import { createTMDBSession } from "../api/userApi";
 import { useToast } from "../hooks/useToast";
+import { getApiError } from "../utils/apiError";
 
 function TMDBCallbackPage() {
   const navigate = useNavigate();
@@ -28,8 +29,8 @@ function TMDBCallbackPage() {
         showSuccess("TMDB account connected! Your ratings will now sync.");
         navigate("/movies", { replace: true });
       })
-      .catch(() => {
-        showError("Failed to complete TMDB connection. Please try again.");
+      .catch((err) => {
+        showError(getApiError(err, "Failed to complete TMDB connection. Please try again."));
         navigate("/movies", { replace: true });
       });
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps

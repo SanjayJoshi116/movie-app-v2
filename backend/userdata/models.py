@@ -34,6 +34,9 @@ class WatchedEntry(models.Model):
     genre_ids = models.JSONField(default=list)
     original_language = models.CharField(max_length=10, null=True, blank=True)
     release_year = models.IntegerField(null=True, blank=True)
+    # TMDB answered with no genres (a 404, or a title it lists none for), so the
+    # metadata backfill never fetches this entry again. See metadata_backfill.py.
+    metadata_settled = models.BooleanField(default=False)
     watched_at = models.DateTimeField(default=timezone.now, db_index=True)
     # IANA zone the watch was logged in (decides its day on every device);
     # blank for entries logged before zones were recorded. See timezones.py.
