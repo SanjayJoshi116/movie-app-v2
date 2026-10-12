@@ -125,6 +125,26 @@ class NotificationCoverageAndCacheTests(APITestCase):
         self.assertEqual(mock_get.call_count, 1)  # only person 2; person 1 was cached
         self.assertEqual([i["title"] for i in res.data["items"]], ["Now Works"])
 
+    @patch("userdata.tmdb_client._get")
+    def test_person_tmdb_no_longer_has_is_cached_as_no_credits(self, mock_get):
+        self._follow(2)
+        gone = requests.Response()
+        gone.status_code = 404
+
+        def person_2_gone(path, *args, **kwargs):
+            if path == "/person/2/combined_credits":
+                raise requests.HTTPError("404", response=gone)
+            return _cast("Still Here", 1)
+        mock_get.side_effect = person_2_gone
+        with self.assertNoLogs("userdata.social_views", level="ERROR"):
+            res = self.client.get("/api/notifications/new-releases/")
+        self.assertEqual([i["title"] for i in res.data["items"]], ["Still Here"])
+        self.assertEqual(cache.get("tmdb:person_credits:2"), [])
+
+        mock_get.reset_mock()
+        self.client.get("/api/notifications/new-releases/")
+        mock_get.assert_not_called()
+
 
 def _person_id(path):
     return int(re.fullmatch(r"/person/(\d+)/combined_credits", path).group(1))

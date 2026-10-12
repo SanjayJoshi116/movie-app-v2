@@ -46,6 +46,11 @@ class TimezoneHelperTests(SimpleTestCase):
         self.assertEqual(str(entry_day(legacy, _request(LONDON))), "2026-10-06")
         self.assertEqual(str(entry_day(legacy, _request(KOLKATA))), "2026-10-07")
 
+    def test_entry_day_near_year_one_falls_back_to_utc(self):
+        # In New York this instant would be in year 0: astimezone raises OverflowError.
+        entry = SimpleNamespace(watched_at=datetime(1, 1, 1, tzinfo=UTC), watched_tz=NEW_YORK)
+        self.assertEqual(str(entry_day(entry, _request(NEW_YORK))), "0001-01-01")
+
     def test_local_today_follows_request_zone(self):
         fixed = datetime(2026, 10, 6, 19, 0, tzinfo=UTC)  # 00:30 on the 7th in Kolkata
         with patch("django.utils.timezone.now", return_value=fixed):
@@ -141,6 +146,12 @@ class StatsLocalDayTests(APITestCase):
         data = self._stats(LONDON)
         self.assertEqual([d["date"] for d in data["dailyActivity"]], [expected])
         self.assertEqual(data["recentItems"][0]["watchedAt"], expected)
+
+    def test_entry_near_year_one_doesnt_break_stats(self, *_):
+        # Stored before imports were bounded (fix-account-edges): a 500 on every request.
+        self._watch(1, datetime(1, 1, 1, tzinfo=UTC), NEW_YORK)
+        res = self.client.get("/api/stats/", HTTP_X_TIMEZONE=NEW_YORK)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
 
     def test_legacy_entry_uses_viewing_device_day(self, *_):
         at = datetime(self.day.year, self.day.month, self.day.day, 23, 30, tzinfo=UTC)

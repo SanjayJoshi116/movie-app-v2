@@ -12,7 +12,7 @@ import { LoadError } from "../components/LoadError";
 import { buildIcs } from "../utils/ics";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
-import { pageVariants, IMG_URL, RATING_GOLD } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { localISODate } from "../utils/formatDate";
 
@@ -320,7 +320,7 @@ function CalendarPage() {
                       cover={
                         item.posterPath ? (
                           <img
-                            src={`${IMG_URL}${item.posterPath}`}
+                            src={`${POSTER_URL}${item.posterPath}`}
                             alt={item.title}
                             loading="lazy"
                             className="movie-poster-img"

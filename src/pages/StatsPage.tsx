@@ -32,7 +32,7 @@ import {
   Area,
 } from "recharts";
 import { fetchStats, type StatsData } from "../api/userApi";
-import { pageVariants, RATING_GOLD, WATCHED_GREEN, IMG_URL } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { LoadError } from "../components/LoadError";
 import { formatDateDMY } from "../utils/formatDate";
@@ -282,7 +282,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
       <div style={{ position: "relative", borderRadius: 6, overflow: "hidden" }}>
         {posterPath ? (
           <img
-            src={`${IMG_URL}${posterPath}`}
+            src={`${POSTER_URL}${posterPath}`}
             alt={title}
             loading="lazy"
             style={{ width: "100%", display: "block" }}

@@ -463,6 +463,37 @@ body:not(.dark-theme) .app-bottom-nav {
   display: block;
 }
 
+/* TrailerEmbed's thumbnail button, same box as the player it turns into. */
+.trailer-facade {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+.trailer-facade-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.trailer-facade-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  transition: opacity 0.2s, transform 0.2s;
+}
+.trailer-facade:hover .trailer-facade-icon,
+.trailer-facade:focus-visible .trailer-facade-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.08);
+}
+.trailer-facade:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* ── Cast / credit cards ────────────────────────────────────── */
 .cast-card-img {
   width: 100%;
@@ -525,12 +556,14 @@ body:not(.dark-theme) .sidebar-avatar-btn:focus-visible {
   outline: 2px solid #8a6d00;
   outline-offset: 2px;
 }
-body.dark-theme .card-link:focus-visible {
+body.dark-theme .card-link:focus-visible,
+body.dark-theme .trailer-facade:focus-visible {
   outline: 2px solid #f5c518;
   outline-offset: 3px;
 }
 /* Darker gold: brand hue with >=3:1 contrast on light backgrounds. */
-body:not(.dark-theme) .card-link:focus-visible {
+body:not(.dark-theme) .card-link:focus-visible,
+body:not(.dark-theme) .trailer-facade:focus-visible {
   outline: 2px solid #8a6d00;
   outline-offset: 3px;
 }

@@ -1,7 +1,15 @@
+import re
+import threading
+import time
+from pathlib import Path
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from userdata import social_views
 from userdata.models import FollowedPerson
 
 
@@ -41,3 +49,42 @@ class FollowedPeopleTests(APITestCase):
         FollowedPerson.objects.create(user=other, person_id=287, name="Brad Pitt")
         self.client.delete("/api/followed-people/287/")
         self.assertTrue(FollowedPerson.objects.filter(user=other).exists())
+
+
+class FollowedPeopleRecommendationsBudgetTests(APITestCase):
+    def setUp(self):
+        cache.clear()  # per-person credits are cached across requests
+        self.user = User.objects.create_user(username="fenn", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.bulk_create([
+            FollowedPerson(user=self.user, person_id=i, name=f"P{i}") for i in range(1, 7)
+        ])
+
+    @patch("userdata.social_views.FOLLOWED_RECS_BUDGET_SECONDS", 0.5)
+    @patch("userdata.tmdb_client._get")
+    def test_slow_tmdb_returns_within_budget_with_what_arrived(self, mock_get):
+        release = threading.Event()
+        self.addCleanup(release.set)  # let abandoned worker threads finish
+
+        def get(path, *args, **kwargs):
+            person_id = int(re.fullmatch(r"/person/(\d+)/combined_credits", path).group(1))
+            if person_id != 6:
+                release.wait(10)  # far past the budget
+            return {"cast": [{"id": 100 + person_id, "media_type": "movie", "title": f"T{person_id}",
+                              "vote_average": 7, "popularity": 10}]}
+        mock_get.side_effect = get
+
+        started = time.monotonic()
+        res = self.client.get("/api/recommendations/followed-people/")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertLess(elapsed, 0.5 + 2)
+        self.assertIsNotNone(cache.get("tmdb:person_credits:6"))  # arrived in time: cached
+        self.assertIsNone(cache.get("tmdb:person_credits:5"))
+
+    def test_budget_fits_under_gunicorn_timeout(self):
+        entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
+        match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
+        self.assertIsNotNone(match, "docker-entrypoint.sh must set gunicorn --timeout explicitly")
+        self.assertLessEqual(social_views.FOLLOWED_RECS_BUDGET_SECONDS, int(match.group(1)) - 10)

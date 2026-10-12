@@ -17,7 +17,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { FONT_SIZE } from "../constants/typography";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
 import FilterBar from "../components/FilterBar";
-import { pageVariants, RATING_GOLD, IMG_URL } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD } from "../constants/ui";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
@@ -148,7 +148,7 @@ function ListsPage() {
                   <CardLink to={`/lists/${list.id}`} label={list.name} stopPropagation>
                     {list.items[0]?.posterPath ? (
                       <img
-                        src={`${IMG_URL}${list.items[0].posterPath}`}
+                        src={`${POSTER_URL}${list.items[0].posterPath}`}
                         alt=""
                         loading="lazy"
                         className="movie-poster-img"

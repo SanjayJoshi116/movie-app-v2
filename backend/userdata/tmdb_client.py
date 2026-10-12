@@ -27,9 +27,17 @@ STATIC_GENRE_NAMES = {
 }
 
 
-def _get(path, params=None):
+def is_not_found(exc):
+    """True when TMDB answered 404: the title or person doesn't exist (any
+    more). That's a settled answer, not an outage, so callers store or return
+    "nothing" for it instead of treating it as a failed fetch."""
+    response = getattr(exc, "response", None)
+    return isinstance(exc, requests.HTTPError) and response is not None and response.status_code == 404
+
+
+def _get(path, params=None, timeout=10):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.get(f"{TMDB_BASE}{path}", params=p, timeout=10)
+    r = requests.get(f"{TMDB_BASE}{path}", params=p, timeout=timeout)
     r.raise_for_status()
     return r.json()
 
@@ -72,13 +80,17 @@ def get_details_with_cast(media_id, media_type):
     }
 
 
-def get_genre_names(media_type):
+def get_genre_names(media_type, timeout=10, *, fallback=True):
     """Return {genre_id: name} map for movie or tv. Falls back to a static
-    map on request failure so callers never get an empty result."""
+    map on request failure so callers never get an empty result, unless
+    `fallback` is off: then the failure is raised, for a caller that needs to
+    know it got the static names (e.g. to cache them only briefly)."""
     try:
-        data = _get(f"/genre/{media_type}/list")
+        data = _get(f"/genre/{media_type}/list", timeout=timeout)
         return {g["id"]: g["name"] for g in data.get("genres", [])}
     except (requests.RequestException, ValueError, KeyError):
+        if not fallback:
+            raise
         return dict(STATIC_GENRE_NAMES)
 
 

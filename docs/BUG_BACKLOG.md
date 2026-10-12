@@ -33,8 +33,8 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 14 | `harden-deploy-2` | ✅ 2026-10-08 | axios/react-router advisories; stale index.html blank page; ruff pin; compose secrets/proxy count; unused deps |
 | 15 | `honest-tests` | ✅ 2026-10-08 | Tests that can't fail, mock shape drift, uncovered spec scenarios, docs drift |
 | 16 | `fix-ci-lint` | ✅ 2026-10-09 | `main` fails CI lint (`no-script-url` in `safeUrl.test.ts`) |
-| 17 | `fix-upstream-resilience` | ⏳ | Infinite-scroll retry loop; TMDB 404 freezes recs; missing time budgets; `session_id` in logs |
-| 18 | `fix-account-edges` | ⏳ | Blank-email profile 400; year-1 date breaks Stats; logout response race; Profile stale fields/partial export |
+| 17 | `fix-upstream-resilience` | ✅ 2026-10-12 | Infinite-scroll retry loop; TMDB 404 freezes recs; missing time budgets; refresh stamp race; unmarked backfill failures |
+| 18 | `fix-account-edges` | ✅ 2026-10-12 | Blank-email profile 400; year-1 date breaks Stats; logout response race; Profile stale fields/partial export |
 | 19 | `fix-detail-and-nav` | ⏳ | Stray `0`; browse cards not links; Following Back target; crew credits; providers/runtime |
 | 20 | `fix-stats-math` | ⏳ | Banker's rounding buckets, skipped months, 0-score average, tooltip labels |
 | 21 | `harden-ci-2` + polish | ⏳ | Pagination test gap, Playwright retries, gzip/cache, Docker build job, hex sweep, docs drift |
@@ -42,6 +42,7 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 23 | `fix-recs-correctness` | ⏳ | Movie/TV genre ids mixed in For You; ratings never refresh recs; gave-up poll cached as complete |
 | 24 | `fix-import-export-2` | ⏳ | Backup omits follows/episode progress; same-name lists merge; Watched CSV loses dates; import posters throttled |
 | 25 | `fix-write-guards-2` | ⏳ | Episode progress load error → overwrite; review-only edit syncs TMDB; dialogs closable mid-save; stale panels |
+| 26 | `speed-up-pages` | ✅ 2026-10-10 | Every page slow: `localhost` IPv6 fallback (~300 ms/connection in dev), preflight on every call, sequential library pages, per-request DB connect, uncached TMDB proxy, 5–6 calls per detail page, `original` backdrops, eager trailers |
 
 Suggested order: **0 → commit → 1 → 2 → 3 → 4 → 6 → 7 → 5** (all done by 2026-10-07). Only 8 remains.
 
@@ -433,7 +434,7 @@ See `openspec/changes/archive/2026-10-09-fix-ci-lint/`. Fixed with a line-scoped
 
 - **[high] ✔ `main` fails CI.** `src/utils/__tests__/safeUrl.test.ts:10`: the literal `"javascript:alert(1)"` trips `no-script-url`, and `npm run lint` runs with `--max-warnings=0`. The CI `frontend` job stops at lint, so its Jest and build steps never run. Fix: `// eslint-disable-next-line no-script-url`, or build the string.
 
-### 17. `fix-upstream-resilience` (frontend + backend) (⏳)
+### 17. `fix-upstream-resilience` (frontend + backend) (✅ archived 2026-10-12, `openspec/changes/archive/2026-10-12-fix-upstream-resilience`)
 
 Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak and the rating-sync ERROR traceback for users with no TMDB link. The rest stays here.
 
@@ -458,7 +459,7 @@ Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak a
 - **[low] A metadata-backfill failure inside `_compute_personalized` doesn't mark `FetchHealth`.** `recommendations.py:439` → `backfill_entries` swallows failures, so genre-less entries are clustered and the result is saved as good for 12h.
 - **[low] A followed person who always 404s is refetched on every notifications poll.** `social_views.py:131-143`: failures aren't cached, and `to_fetch[:max_fetch]` is in followed order, so enough of them starve the people after them.
 
-### 18. `fix-account-edges` (frontend + backend) (⏳)
+### 18. `fix-account-edges` (frontend + backend) (✅ archived 2026-10-12, `openspec/changes/archive/2026-10-12-fix-account-edges`)
 
 - **[med] ✔ Users without an email can't save any profile edit.** `serializers.py:63`: `UserProfileUpdateSerializer.email` is an `EmailField` with the default `allow_blank=False`, but registration allows a blank email and `ProfileModal.tsx` always sends `email: user?.email ?? ""`. Every save, password change included, is a 400 `"This field may not be blank."`. No user can clear their email either. Repro'd against the test DB.
 - **[low-med] One imported `watchedAt` near year 1 makes `/api/stats/` 500 permanently.** `BulkWatchedEntrySerializer` (`serializers.py:230,250`) accepts any past timestamp; `entry_local` (`timezones.py:388`) raises `OverflowError` in `astimezone`. Repro: bulk-import `"0001-01-01T00:00:00Z"` with a zone behind UTC → `stats 500`. Fix: a lower bound in `_past_timestamp`, or guard `entry_local`.
@@ -611,6 +612,74 @@ Checked clean in the live run: no horizontal overflow on 18 routes at 375/820/13
   - **`e2e/python/test_ratings.py:115,124`** still branch on `rate_btn.count() == 0` (non-waiting); the assertion still runs, but it violates the `e2e-fixtures` rule.
   - **`api-hardening` says the proxy forwards params "in the same order"**, but `tmdb_proxy_views.py:62` iterates `request.GET.lists()` (grouped by key). TMDB doesn't care: relax the wording or forward the raw query string.
   - **Docs drift:** ~~CLAUDE.md says `TRUSTED_PROXY_COUNT` "defaults to 1", but `settings.py:173` defaults to 0 and only `docker-compose.yml:36` sets 1.~~ (fixed in 0.21.0) The `browseFilters.ts:37-40` comment says genres reset "in an effect" as the general reset; `App.tsx:46-63` resets filters and sort during render. `public/index.html:14` `<title>CineDB</title>` vs "CINE DB" in the manifest and `app-identity`.
+
+## Performance (2026-10-10): item 26
+
+The user reported that every page had become very slow under `npm start` (dev), on every page, starting recently. There were two read-only passes over the code, plus the user's DevTools Network capture of a Home load (XHR filter only). No timings were taken on the server side. ✔ = seen in the capture.
+
+**Capture, Home after a reload:** `watched/?page=1…13` ran one after another at 92–330 ms each (one 1.28 s outlier on page 6), about 3.3 s in total for about 1,300 entries. lists/ratings/watchlist/new-releases took 205–292 ms. TMDB proxy calls took 355 ms–1.14 s. `trending/movie/week` was fetched twice per mount. There were 212 requests and 28 MB of resources (3.6 MB transferred), plus YouTube `atr` beacons from trailer iframes.
+
+**Open questions:**
+- Do the TMDB proxy calls get CORS preflights? 0.20.0 (`harden-deploy-2`, F6) added `Authorization` to them, and dev is cross-origin (:3000 → :8000), so each new URL would need an `OPTIONS` first. The capture was XHR-filtered, which hides preflight rows. Re-check with the **All** filter. If so, this is the "started recently" regression.
+- What caused the 1.28 s spike on watched page 6? Possibly a recommendations refresh or metadata backfill in the same `runserver` process.
+
+### 26. `speed-up-pages` (frontend + backend) (✅ archived 2026-10-10, `openspec/changes/archive/2026-10-10-speed-up-pages`)
+
+**Round 1 (from the capture):**
+- **[high] ✔ Library loads are sequential pages of 100.** `fetchAllPages.ts:8` awaits each page before asking for the next (`PAGE_SIZE`/`page_size` 100, `max_page_size` 200; `settings.py:175`, `pagination.py:5-6`). A 1,300-title watched history costs 13 round trips (about 3.3 s) on every full reload, before Home's Recently Watched strip and the watched badges are right. Fix: a larger page size for library lists, or page 1 then the rest in parallel from `count`. Keep the `-id` tiebreaker. This touches item 21's `fetchAllPages` test gap.
+- **[high] ✔ Each Django API call takes 100–330 ms on localhost.** That's high for 28 kB of JSON from the same machine. `CONN_MAX_AGE` is unset (`settings.py:99-114`), so every request opens a new Postgres connection. On Windows, Postgres starts a new backend *process* per connection, plus SCRAM auth, and `DB_HOST=localhost` may try `::1` first. **Correction from round 2:** `CONN_MAX_AGE` doesn't help under `runserver`, which starts a new thread per request (Django docs: persistent connections are negated in dev). It only helps gunicorn in Docker. For dev, this needs Django 5.1+'s connection pool (`OPTIONS: {"pool": True}`), which requires psycopg 3. The project pins `psycopg2-binary==2.9.9`, so that's a dependency swap (requirements + constraints). Measure first: time one request with `connection.queries` / `django.db.backends` logging, connect vs query.
+- **[med] ✔ The TMDB proxy caches nothing.** `tmdb_proxy_views.py:65` forwards every GET. Trending, genres, details and credits are refetched on every visit, at 0.35–1.1 s each. Fix: a server cache keyed by path + params, with a short TTL for lists and trending and a long one for details, genres and credits. Cache only 2xx, on the request thread (the CLAUDE.md worker-thread rule), and mind `DatabaseCache`'s `MAX_ENTRIES` cull (item 0) in Docker.
+- **[med] ✔ HeroBanner fetches trending twice under StrictMode.** `HeroBanner.tsx:24-47` has a `cancelled` flag but no replay guard, so dev sends 2 calls for its slowest request. Dev-only (also logged under item 7). It doubles proxy throttle use in dev.
+- **[med] ✔ Trailers load eagerly.** `MovieDetails.tsx:336-354`, `TVShowDetails.tsx:~486`: every trailer is a live `youtube-nocookie` `<iframe>` on render, with no `loading="lazy"`. Each loads the YouTube player (about 1 MB of JS plus its own main-thread work) and beacons, even off screen. Fix: a thumbnail (`i.ytimg.com`, which needs a CSP `img-src` entry) that swaps in the iframe on click, or at least `loading="lazy"`.
+- **[info] `npm start` is the CRA dev build** (unminified, StrictMode double render and effects). Judge final numbers against `npm run build`.
+
+**Round 2 (code read):**
+- **[high] Detail pages make 5–6 TMDB calls and render only after the slowest.** `MovieDetailPage.tsx:39-46` uses `Promise.allSettled` over details, reviews, similar, providers and release_dates. `TVDetailPage.tsx:41-46` does details, credits, aggregate_credits, images, providers and reviews (credits and aggregate_credits overlap). The skeleton stays up until the slowest one, even a non-essential review call, and StrictMode doubles it in dev (10–12 proxy calls). TMDB's `append_to_response` takes up to 20 sub-requests, so `reviews,similar,watch/providers,release_dates` (TV: `aggregate_credits,images,reviews,watch/providers,content_ratings`) can fold into the one details call: 1 round trip, 1 throttle tick, and one cache key once the proxy caches. Fix it together with the proxy cache.
+- **[med] Backdrops load at `original` size.** `BACKDROP_URL = .../t/p/original` (`constants/ui.ts:15`) is used for the Home/Anime hero (`HeroBanner.tsx:79`) and the detail hero (`MovieDetails.tsx:99`, `TVShowDetails.tsx:98`). Originals are often 3840×2160 at 1–5 MB, for a box at most about 1400 px wide. The hero `<img>` is also `loading="lazy"` though it's above the fold (also logged under item 19), which delays LCP. Fix: `w1280` for heroes; keep `original` only for the gallery preview (`preview.src`).
+- **[low-med] Grid posters use `w500`.** `IMG_URL` is used by every card grid (`Movie.tsx:46`, `TVShowCard.tsx:45`, `MediaCardGrid.tsx:38`, `LibraryItemCard.tsx:39`, `PersonCard.tsx:48`, …) for posters shown about 150–220 px wide. `w342` is about half the bytes and still sharp at 1.5× DPR. Keep `w500` for the detail poster.
+- **[low-med] `App` subscribes to all four data contexts.** `App.tsx:40` reads only `theme`/`clearGenres` through `useAppContext()` (`context/useAppContext.ts:13-18`), which `useContext`s UI, Watchlist, Watched and Ratings. Each library load (4 × `isLoading`/data updates at boot) and every later toggle re-renders `App` and its whole route tree, with framer-motion and antd inside. Fix: read `UIContext` directly in `App` (and in other components that need only UI state).
+- **[low] Watched list ordering has no matching index.** `watched_views.py:19` `filter(user).order_by("-watched_at", "-id")` with OFFSET pagination plus a `COUNT(*)` per page; the only index is `unique_together(user, media_id, media_type)`. That's negligible at about 1,300 rows but grows per page. An index on `(user, -watched_at, -id)` would fix it. Same pattern on watchlist and ratings.
+- **Checked, fine:** routes are `lazy()`-split (`App.tsx:17-36`); `WatchedPage` paginates at 48 per page; `isWatched` is a linear scan, but cheap at this size.
+
+**Round 3 (measured 2026-10-10).** A throwaway `verify_perf.py` (now deleted) ran against the running `npm start`. It used a throwaway account (deleted afterwards) with an empty library, Python `requests`, and headless Chromium with CDP network timing.
+
+| What | Result |
+|---|---|
+| Postgres connect + `SELECT 1` (psycopg2), `localhost` / `127.0.0.1` | 52 / 49 ms median: no IPv6 penalty on the DB side, but ~50 ms per Django request (no pooling) |
+| `GET /api/health/` via `localhost:8000` / `127.0.0.1:8000` | **2,038 ms / 5 ms** |
+| Empty `watchlist/?page=1` with JWT via `localhost` | 2,104 ms (≈ 65 ms server, ~50 of it the DB connect) |
+| Preflight `OPTIONS` (warm) | 10–30 ms, `max-age=86400`, but one per new URL |
+| `/movies` in browser (skeleton gone + idle) | 4.5 s |
+| `/movie/550` title visible / network idle | 3.1 s / 5.6 s |
+
+- **[high] ✔ `localhost` costs every new connection a fallback from IPv6 to IPv4.** `localhost` resolves to `::1` first here (`ping localhost` → `[::1]`). `start.py:50` binds `runserver 0.0.0.0:8000`, which is IPv4 only (bound since 2347399, 2026-04-11). Both API clients use `http://${window.location.hostname}:8000` (`userApi.ts:6-7`, `tmdb.ts:22`).
+  - Python waits about 2 s on the refused `::1` before falling back.
+  - Chromium races the two (Happy Eyeballs), so it costs about **300 ms per new connection**: the first 5 boot connections showed `connect` 312–315 ms. Later requests reuse keep-alive connections.
+  - Fix options: point the dev client at `127.0.0.1` (env or a `localhost` → `127.0.0.1` mapping); bind dual-stack; or use **CRA's dev `proxy`** to `http://127.0.0.1:8000`. The proxy also makes calls same-origin, which removes every preflight (next bullet). Any of these must keep LAN access (`ALLOWED_HOSTS` `*` under DEBUG) and Docker (nginx, same-origin) unchanged.
+- **[med] ✔ Every API call is preflighted in dev.** 18 `OPTIONS` came from 2 page loads, covering `userApi` calls as well as TMDB calls. `Authorization` already forced a preflight for `userApi`, and since 0.20 (F6) it does for TMDB too. Chrome caches a preflight per URL, so every new movie id, page number or filter pays one. Each is cheap once the connection is warm (10–30 ms), but each takes a slot under the 6-connections-per-host limit. The dev proxy removes them; prod is same-origin behind nginx and has none.
+- **[med] ✔ StrictMode doubles every detail call, and the copies queue.** `/movie/550` sent each of its 5 TMDB calls twice. The second batch waited 590–1,330 ms in the browser queue (`sendStart`) behind Chrome's 6-connections-per-host limit (HTTP/1.1, `runserver`). The `cancelled` flag in `MovieDetailPage.tsx:34` drops the first result but doesn't stop the request. Dev-only, but it is most of the 3.1 s to first paint there. `append_to_response` (round 2) shrinks it to 2 calls.
+- **[med] ✔ TMDB latency through the proxy is 400–1,330 ms per call** under that concurrency (`wait` = time to first byte). It's about 320 ms alone when sequential. The page renders only after the slowest call (round 2).
+- **[info]** The library endpoints answer an empty list in 130–220 ms of server time in the browser (concurrent), about 65 ms when sequential. So the 92–330 ms per watched page in the user's capture is mostly the ~50 ms DB connect plus the 300 ms connect penalty on cold connections, and serialization of the 100 rows.
+
+**Suggested order:** fix `localhost`/proxy (dev; largest, cheapest) → measure the DB-connect share → fold detail-page calls into `append_to_response` → proxy cache → library page size / parallel → image sizes + lazy trailers → `App` context split → (dev) psycopg 3 pool.
+
+**Proposed 2026-10-10 as `speed-up-pages`:**
+- **Covers:** the dev same-origin proxy, one-request detail pages, in-flight TMDB sharing (which also removes the HeroBanner StrictMode double), the proxy cache, page size 500, image sizes, on-demand trailers, the `App` context split, and prod `CONN_MAX_AGE`.
+- **Left here, not in that change:** a psycopg 3 connection pool for dev (~50 ms DB connect per request under `runserver`), a `(user, -watched_at, -id)` index, and parallel library page fetching.
+- **Manual step:** a local root `.env` with `HOST=0.0.0.0` keeps CRA IPv4-only (~200 ms per new connection to `localhost:3000`). Set `HOST=::` (`.env.example`).
+
+**After `speed-up-pages` (re-measured 2026-10-10, same method).** The throwaway account (deleted afterwards) had 1,300 seeded watched entries this time.
+
+| What | Before | After |
+|---|---|---|
+| `OPTIONS` preflights per page | 18 over 2 loads | 0 |
+| Home: watched requests for 1,300 entries | 13 (sequential, ~3.3 s) | 3 (`page_size=500`) |
+| `/movies` skeleton gone / network idle | 4.5 s | 0.6 s / 2.0 s |
+| `/movie/550` TMDB calls | 10 (5 × StrictMode) | 1 |
+| `/movie/550` title / network idle, first visit | 3.1 s / 5.6 s | 1.8 s / 3.6 s (`X-Cache: MISS`) |
+| `/movie/550` title / network idle, repeat visit | n/a | 1.8 s / 2.2 s (`X-Cache: HIT`) |
+
+Python hitting `localhost:8000` directly still pays the ~2 s IPv6 fallback, but the app no longer does (it calls same-origin through the CRA proxy). The repeat visit's title time is mostly the dev bundle, not the network.
 
 ## Deferred / out of scope (noted, not planned)
 

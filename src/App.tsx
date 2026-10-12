@@ -6,7 +6,7 @@ import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
 import { FilterPanel } from "./components/layout/FilterPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { useAppContext } from "./context/useAppContext";
+import { useUIContext } from "./context/UIContext";
 import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
@@ -37,7 +37,9 @@ const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 function AppInner() {
   const location = useLocation();
-  const { theme, clearGenres } = useAppContext();
+  // UI context only: useAppContext() also subscribes to the watched/watchlist/
+  // ratings contexts, which re-rendered the whole route tree on every change.
+  const { theme, clearGenres } = useUIContext();
   const { isAuthenticated, isLoading } = useAuth();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterValues | null>(null);

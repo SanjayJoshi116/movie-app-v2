@@ -1,5 +1,5 @@
 import { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import { fetchMovieDetails, tmdbApi } from "../tmdb";
+import { fetchMovieDetails, fetchPopularPeople, tmdbApi } from "../tmdb";
 
 type Call = { url?: string; authorization?: string };
 
@@ -66,5 +66,34 @@ describe("a 401 (expired token on a public endpoint)", () => {
     expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-1");
     expect(localStorage.getItem("cinedb_user")).not.toBeNull();
     expect(window.location.pathname).toBe(path);
+  });
+});
+
+describe("identical requests in flight", () => {
+  test("share one request and both resolve", async () => {
+    const [a, b] = await Promise.all([fetchPopularPeople(1), fetchPopularPeople(1)]);
+    expect(calls).toHaveLength(1);
+    expect(a.data).toEqual({ id: 550 });
+    expect(b).toBe(a);
+  });
+
+  test("a request after the first settled is sent again", async () => {
+    await fetchPopularPeople(1);
+    await fetchPopularPeople(1);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("different params are separate requests", async () => {
+    await Promise.all([fetchPopularPeople(1), fetchPopularPeople(2)]);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("a failure reaches every waiter and is not kept", async () => {
+    statuses = [404, 200];
+    const results = await Promise.allSettled([fetchPopularPeople(1), fetchPopularPeople(1)]);
+    expect(results.map((r) => r.status)).toEqual(["rejected", "rejected"]);
+    expect(calls).toHaveLength(1);
+    await expect(fetchPopularPeople(1)).resolves.toMatchObject({ status: 200 });
+    expect(calls).toHaveLength(2);
   });
 });

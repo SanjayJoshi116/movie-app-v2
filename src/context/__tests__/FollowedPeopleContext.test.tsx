@@ -6,6 +6,9 @@ import { AuthContext } from "../AuthContext";
 import { getFollowedPeople, followPerson, unfollowPerson } from "../../api/userApi";
 
 jest.mock("../../api/userApi", () => ({
+  // One session throughout: the stale-session guard is covered in sessionGeneration.test.tsx.
+  currentSessionGeneration: () => 0,
+  isCurrentSession: () => true,
   __esModule: true,
   getFollowedPeople: jest.fn(),
   followPerson: jest.fn(),

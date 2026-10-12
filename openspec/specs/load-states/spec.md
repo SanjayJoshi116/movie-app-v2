@@ -64,10 +64,10 @@ The Stats page SHALL show an error with Retry when its data request fails. The "
 - **THEN** the page shows the "start watching" empty state
 
 ### Requirement: Detail pages degrade per section
-Movie and TV detail pages SHALL treat only the title's main details as essential. When a secondary request fails (reviews, similar titles, watch providers, release dates, credits, images), only that section SHALL render empty or hidden, and the rest of the page SHALL render normally. When the main details request returns 404, the page SHALL show a "not found" state. Any other failure of the main request SHALL show an error with a Retry control that refetches without reloading the browser page.
+Movie and TV detail pages SHALL treat only the title's main details as essential. When the data for a secondary section is missing, empty or malformed (reviews, similar titles, watch providers, release dates or content ratings, credits, images, videos, recommendations), whether it failed separately or is absent from a combined response, only that section SHALL render empty or hidden, and the rest of the page SHALL render normally. When the main details request returns 404, the page SHALL show a "not found" state. Any other failure of the main request SHALL show an error with a Retry control that refetches without reloading the browser page.
 
-#### Scenario: Reviews request fails
-- **WHEN** the movie details request succeeds and the reviews request fails
+#### Scenario: Reviews data missing
+- **WHEN** the movie details load but the reviews part is absent or malformed in the response
 - **THEN** the page renders the movie with its other sections, and the reviews section is empty
 
 #### Scenario: Unknown title id
@@ -165,3 +165,18 @@ Infinite-scrolling browse pages SHALL stop requesting more pages at the last pag
 #### Scenario: Very long browse scroll
 - **WHEN** TMDB reports more than 500 pages for a browse category and the user scrolls to page 500
 - **THEN** no request for page 501 is sent, and the list ends without an error
+
+### Requirement: A failed next page stops auto-loading until the user retries
+When an infinite-scrolling grid's request for its next page fails, the grid SHALL keep the results already shown, SHALL show an inline message with a Retry control at the end of the results, and SHALL NOT request that page again until the user activates Retry, however long the end of the grid stays in view. Activating Retry SHALL request the same page again. Changing the category or query SHALL clear the message.
+
+#### Scenario: Next page fails while the end of the grid is visible
+- **WHEN** the user scrolls to the end of a browse, people or search grid and the next-page request fails
+- **THEN** exactly one request for that page is sent, the earlier results stay, and a "couldn't load more" message with Retry shows below them
+
+#### Scenario: Retry after a failure
+- **WHEN** the user activates Retry and the request succeeds
+- **THEN** the next page's results are appended, the message disappears, and scrolling loads further pages again
+
+#### Scenario: Query change after a failure
+- **WHEN** a next-page request has failed and the user switches category or search query
+- **THEN** the message is gone and the new results load normally

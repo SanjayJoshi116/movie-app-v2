@@ -7,6 +7,9 @@ import { useAppContext } from "../useAppContext";
 import type { WatchlistInput } from "../../types";
 
 jest.mock("../../api/userApi", () => ({
+  // One session throughout: the stale-session guard is covered in sessionGeneration.test.tsx.
+  currentSessionGeneration: () => 0,
+  isCurrentSession: () => true,
   __esModule: true,
   default: {
     get: jest.fn(),

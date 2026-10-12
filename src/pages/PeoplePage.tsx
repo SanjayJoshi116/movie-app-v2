@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Row, Col, Typography, Input } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
@@ -37,12 +38,12 @@ function PeoplePage() {
     [searchTerm, includeAdult]
   );
 
-  const { items: allPeople, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<TMDBPersonSummary>({
+  const { items: allPeople, currentPage, hasMore, loading, loadingMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedFetch<TMDBPersonSummary>({
     fetchPage,
     restore: { isReturning, savedLoadedPages, savedScrollY },
   });
 
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
   const handlePersonClick = (person: TMDBPersonSummary) => {
     navigate(`/person/${person.id}`, {
@@ -105,6 +106,7 @@ function PeoplePage() {
               <SkeletonCard count={6} />
             </Row>
           )}
+          {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
 
           <div ref={sentinelRef} style={{ height: 1 }} />
         </>

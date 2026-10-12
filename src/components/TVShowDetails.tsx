@@ -24,9 +24,10 @@ import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
 import CardLink from "./CardLink";
 import { ReviewsSection } from "./ReviewsSection";
+import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import type { TMDBTVDetail, TMDBProviderRegion } from "../types";
-import { IMG_URL, BACKDROP_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import type { TMDBTVDetail, TMDBProviderRegion, TMDBAggregateCreditsFull } from "../types";
+import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
@@ -35,7 +36,7 @@ export type TVShowDetailData = TMDBTVDetail & {
   external_ids?: { imdb_id?: string };
   last_air_date?: string;
   next_episode_to_air?: { air_date: string };
-  aggregate_credits?: TMDBTVDetail["aggregateCredits"];
+  aggregate_credits?: TMDBAggregateCreditsFull;
   similar?: { results: TMDBTVDetail["recommendations"] };
   reviews: Array<{ id: string; author: string; content: string }>;
 };
@@ -74,10 +75,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
 
   const hasBackdrop = !!backdrop_path;
   const similarFiltered = filterByGenreOverlap(similar?.results ?? [], (genres ?? []).map((g) => g.id));
-  const recommendationsFiltered = filterByGenreOverlap(
-    (recommendations as unknown as { results?: TMDBTVDetail["recommendations"] })?.results ?? [],
-    (genres ?? []).map((g) => g.id),
-  );
+  const recommendationsFiltered = filterByGenreOverlap(recommendations ?? [], (genres ?? []).map((g) => g.id));
   const castList = aggregate_credits?.cast ?? [];
   const creators = (tvShow.created_by ?? [])
     .map((c) => c.name)
@@ -483,13 +481,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
             <Row gutter={[16, 16]}>
               {videos!.results.filter((v) => v.type === "Trailer").map((video) => (
                 <Col key={video.id} xs={24} md={12}>
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${video.key}`}
-                    title={video.name}
-                    className="embed-frame"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+                  <TrailerEmbed videoKey={video.key} name={video.name} />
                   <Typography.Text style={{ display: "block", marginTop: 4, fontSize: FONT_SIZE.caption }}>{video.name}</Typography.Text>
                 </Col>
               ))}
@@ -507,7 +499,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   <Col key={image.file_path} xs={12} sm={8} md={6}>
                     <Image
                       src={`${IMG_URL}${image.file_path}`}
-                      preview={{ src: `${BACKDROP_URL}${image.file_path}` }}
+                      preview={{ src: `${BACKDROP_ORIGINAL_URL}${image.file_path}` }}
                       alt="Backdrop"
                       className="backdrop-img"
                       style={{ borderRadius: 8 }}

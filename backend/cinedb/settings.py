@@ -108,6 +108,10 @@ DATABASES = {
         "PORT": os.environ.get("DB_PORT", "5432"),
         # Re-validate connections before use; helps recover after network blips
         "CONN_HEALTH_CHECKS": True,
+        # Reuse a worker's connection instead of opening one per request (~50 ms
+        # each). Off under DEBUG: runserver handles every request on a new
+        # thread, so a kept connection is never reused, only left open.
+        "CONN_MAX_AGE": 0 if DEBUG else int(os.environ.get("CONN_MAX_AGE", "60")),
         "OPTIONS": {
             "connect_timeout": 5,
         },
@@ -191,10 +195,27 @@ PRODUCTION_CACHE = {
     "LOCATION": "cinedb_cache",
     "OPTIONS": {"MAX_ENTRIES": 50_000},
 }
+# TMDB proxy responses (tmdb_proxy_views) get their own alias, so filling or
+# culling it can never evict throttle counters from `default`. Bounded by entry
+# count; bodies are mostly 10-50 kB, combined detail responses up to ~300 kB.
+# The LocMem LOCATION must differ from default's, or the two share one store.
+TMDB_CACHE_DEV = {
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    "LOCATION": "tmdb-proxy",
+    "OPTIONS": {"MAX_ENTRIES": 1000},
+}
+TMDB_CACHE_PRODUCTION = {
+    "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+    "LOCATION": "tmdb_proxy_cache",
+    "OPTIONS": {"MAX_ENTRIES": 2000},
+}
 if DEBUG:
-    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    CACHES = {
+        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+        "tmdb": TMDB_CACHE_DEV,
+    }
 else:
-    CACHES = {"default": PRODUCTION_CACHE}
+    CACHES = {"default": PRODUCTION_CACHE, "tmdb": TMDB_CACHE_PRODUCTION}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),

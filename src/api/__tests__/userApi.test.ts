@@ -67,8 +67,11 @@ beforeEach(() => {
   realGlobalAdapter = axios.defaults.adapter;
   userApi.defaults.adapter = fakeAdapter;
   axios.defaults.adapter = fakeAdapter; // the interceptor refreshes via bare axios.post
-  // jsdom can't navigate; capture the forced-logout redirect instead.
-  Object.defineProperty(window, "location", { configurable: true, value: { href: "http://localhost/movies" } });
+  // jsdom can't navigate or reload; capture the forced-logout redirect instead.
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { href: "http://localhost/lists/7?sort=title#top", pathname: "/lists/7", search: "?sort=title", hash: "#top", reload: jest.fn() },
+  });
 });
 
 afterEach(() => {
@@ -95,7 +98,7 @@ describe("token refresh", () => {
       await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
     }
     expect(server.refreshCalls).toBe(3);
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 
   it("forces logout and clears the session when the refresh itself is rejected", async () => {
@@ -103,8 +106,13 @@ describe("token refresh", () => {
     sessionStorage.setItem("cinedb_recommendations", "[]");
     server.refreshTokens.clear(); // stored refresh token is revoked
     expireAccess();
+    const replaceState = jest.spyOn(window.history, "replaceState");
     await expect(userApi.get("/thing/")).rejects.toBeTruthy();
-    expect(window.location.href).toBe("/login");
+    // Lands on /login carrying the page it was on (React Router's state lives in usr).
+    expect(replaceState).toHaveBeenCalledWith(
+      { usr: { from: { pathname: "/lists/7", search: "?sort=title", hash: "#top" } } }, "", "/login"
+    );
+    expect(window.location.reload).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("cinedb_access")).toBeNull();
     expect(localStorage.getItem("cinedb_user")).toBeNull();
     expect(sessionStorage.length).toBe(0);
@@ -117,7 +125,7 @@ describe("transient refresh failures", () => {
     server.refreshFailure = failure;
     expireAccess();
     await expect(userApi.get("/thing/")).rejects.toBeTruthy();
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
     expect(localStorage.getItem("cinedb_access")).toBe("access-0");
     expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-0");
     expect(localStorage.getItem("cinedb_user")).not.toBeNull();
@@ -171,7 +179,7 @@ describe("concurrent 401s", () => {
     release(); // old-token response now arrives: 401, after the refresh finished
     await expect(slow).resolves.toMatchObject({ status: 200 });
     expect(server.refreshCalls).toBe(1);
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 });
 
@@ -209,7 +217,7 @@ describe("refresh across tabs", () => {
     const [a, b] = await Promise.all([userApi.get("/a/"), tabB.get("/b/")]);
     expect([a.status, b.status]).toEqual([200, 200]);
     expect(server.refreshCalls).toBe(1);
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 
   it("without Web Locks, a rejected refresh adopts tokens another tab just rotated", async () => {
@@ -222,7 +230,7 @@ describe("refresh across tabs", () => {
       localStorage.setItem("cinedb_refresh", "refresh-other");
     };
     await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
     expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-other");
   });
 
@@ -240,7 +248,7 @@ describe("refresh across tabs", () => {
       }, 200);
     };
     await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 
   it("does not adopt tokens that belong to a different user", async () => {
@@ -255,7 +263,7 @@ describe("refresh across tabs", () => {
     await expect(userApi.get("/thing/")).rejects.toBeTruthy();
     expect(server.hits["/thing/"]).toBe(1); // never replayed with user 2's token
     expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-user2"); // their session untouched
-    expect(window.location.href).not.toContain("/login");
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 });
 
@@ -267,7 +275,7 @@ describe("logout during an in-flight refresh", () => {
     expect(server.refreshCalls).toBe(1);
     expect(localStorage.getItem("cinedb_access")).toBeNull();
     expect(localStorage.getItem("cinedb_refresh")).toBeNull();
-    expect(window.location.href).not.toContain("/login"); // already logged out locally
+    expect(window.location.reload).not.toHaveBeenCalled(); // already logged out locally
   });
 });
 

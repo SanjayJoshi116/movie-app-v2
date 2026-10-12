@@ -1,5 +1,10 @@
 import { createContext, createElement, useContext, useMemo, useState, useEffect, useCallback, ReactNode } from "react";
-import { fetchNewReleaseNotifications, markNotificationsSeen } from "../api/userApi";
+import {
+  currentSessionGeneration,
+  fetchNewReleaseNotifications,
+  isCurrentSession,
+  markNotificationsSeen,
+} from "../api/userApi";
 import type { NewReleaseNotification } from "../api/userApi";
 import { useAuth } from "../context/AuthContext";
 
@@ -12,8 +17,12 @@ function useNotificationsState() {
   const [hasError, setHasError] = useState(false);
 
   const refresh = useCallback(async () => {
+    // A poll still in flight at sign-out answers for the previous account:
+    // its items reveal whom that account follows.
+    const gen = currentSessionGeneration();
     try {
       const { data } = await fetchNewReleaseNotifications();
+      if (!isCurrentSession(gen)) return;
       // Defensive: an unmocked/misconfigured route or unexpected backend
       // response could return something other than {items, unreadCount} —
       // fall back rather than let a downstream .map() throw on undefined.
@@ -21,6 +30,7 @@ function useNotificationsState() {
       setUnreadCount(data.unreadCount ?? 0);
       setHasError(false);
     } catch {
+      if (!isCurrentSession(gen)) return;
       // Background poll — no toast (would be noisy every 3 min if TMDB is
       // rate-limited), but surface it in the dropdown so it's not silently
       // invisible forever.
@@ -32,6 +42,7 @@ function useNotificationsState() {
     if (!isAuthenticated) {
       setItems([]);
       setUnreadCount(0);
+      setHasError(false);
       return;
     }
     refresh();

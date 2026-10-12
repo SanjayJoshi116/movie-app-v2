@@ -102,3 +102,32 @@ class FailClosedSettingsTests(TestCase):
         )
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(res.stdout.strip(), "django.core.mail.backends.console.EmailBackend")
+
+
+CONN_PROBE = (
+    "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "
+    "import cinedb.settings as s; print(s.DATABASES['default']['CONN_MAX_AGE'])"
+)
+
+
+class PersistentConnectionSettingsTests(TestCase):
+    """Production reuses DB connections; runserver (DEBUG) can't, so it doesn't."""
+
+    def _conn_max_age(self, **env):
+        full_env = {k: v for k, v in os.environ.items()
+                    if k not in ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "CONN_MAX_AGE")}
+        full_env.update(env)
+        res = subprocess.run(
+            [sys.executable, "-c", CONN_PROBE], cwd=BACKEND_DIR, env=full_env,
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        return res.stdout.strip()
+
+    def test_off_under_debug(self):
+        self.assertEqual(self._conn_max_age(DEBUG="True"), "0")
+
+    def test_production_defaults_to_60_and_is_overridable(self):
+        prod = {**PROD, "ALLOWED_HOSTS": "localhost"}
+        self.assertEqual(self._conn_max_age(**prod), "60")
+        self.assertEqual(self._conn_max_age(**prod, CONN_MAX_AGE="0"), "0")

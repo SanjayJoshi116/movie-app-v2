@@ -92,6 +92,10 @@ def followed_people_detail(request, person_id: int):
 
 
 PERSON_CREDITS_TTL = 6 * 60 * 60
+# Wall-clock cap on the followed-people recommendations' TMDB fetches (up to 10
+# cold people). Must stay well under gunicorn's --timeout
+# (docker-entrypoint.sh); test_followed_people pins the margin.
+FOLLOWED_RECS_BUDGET_SECONDS = 15
 # Only what notifications / followed-people recommendations read — keeps the
 # DB-cache rows small (a full combined_credits payload can be hundreds of KB).
 _CREDIT_FIELDS = (
@@ -120,7 +124,7 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
 
     Credits are cached per person (shared by every follower) for
     PERSON_CREDITS_TTL, each as soon as it arrives. Failures are never cached,
-    so the next call retries. `max_fetch` caps how many uncached people one
+    so the next call retries; a TMDB 404 is cached as no credits. `max_fetch` caps how many uncached people one
     call fetches (in followed order, so the next call's first uncached ones are
     new people), and `budget_seconds` caps how long it waits for them. Fetches
     still running at the deadline are abandoned: they only do HTTP."""
@@ -137,7 +141,12 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     def fetch(person_id):
         try:
             return person_id, _fetch_person_credits(person_id)
-        except (requests.RequestException, ValueError):
+        except (requests.RequestException, ValueError) as e:
+            if tmdb_client.is_not_found(e):
+                # Settled: cached as "no credits", so a merged or deleted
+                # person isn't refetched (and doesn't starve others) every poll.
+                logger.warning("TMDB has no person %s; caching no credits", person_id)
+                return person_id, []
             logger.exception("Failed to fetch combined credits for person %s", person_id)
             return person_id, None
 
@@ -168,7 +177,7 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
 @permission_classes([IsAuthenticated])
 def followed_people_recommendations(request):
     # One section per person in the UI, so only the most recent follows.
-    results = _fetch_followed_people_credits(request.user, limit=10)
+    results = _fetch_followed_people_credits(request.user, limit=10, budget_seconds=FOLLOWED_RECS_BUDGET_SECONDS)
     if not results:
         return Response([])
 

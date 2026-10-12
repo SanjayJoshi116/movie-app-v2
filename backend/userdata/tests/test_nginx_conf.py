@@ -94,3 +94,26 @@ class AccessLogRedactionTests(SimpleTestCase):
             with self.subTest(path=path):
                 self.assertRegex(ref_map, rf"~\^https\?://\[\^/\]\+/{path}\s+\"[^\"$]*redacted[^\"$]*\"\s*;")
         self.assertRegex(ref_map, r"default\s+\$http_referer\s*;")
+
+
+class ContentSecurityPolicyTests(SimpleTestCase):
+    """container-deployment: images only from self, data:, TMDB and the trailer thumbnail host."""
+
+    def setUp(self):
+        conf = _strip_comments(NGINX_CONF.read_text())
+        m = re.search(r'add_header\s+Content-Security-Policy\s+"([^"]+)"', conf)
+        self.assertIsNotNone(m, "nginx.conf must send a Content-Security-Policy")
+        self.directives = {
+            d.split()[0]: d.split()[1:] for d in (p.strip() for p in m.group(1).split(";")) if d
+        }
+
+    def test_img_src_allows_exactly_the_app_image_hosts(self):
+        self.assertEqual(
+            sorted(self.directives["img-src"]),
+            sorted(["'self'", "data:", "https://image.tmdb.org", "https://i.ytimg.com"]),
+        )
+
+    def test_scripts_and_frames_stay_locked_down(self):
+        self.assertEqual(self.directives["script-src"], ["'self'"])
+        self.assertEqual(self.directives["frame-src"], ["https://www.youtube-nocookie.com"])
+        self.assertEqual(self.directives["object-src"], ["'none'"])

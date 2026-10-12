@@ -78,7 +78,6 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
         className="hero-backdrop"
         src={`${BACKDROP_URL}${item.backdrop_path}`}
         alt={title}
-        loading="lazy"
       />
       <div className="hero-gradient-overlay" />
       <div className="hero-content">

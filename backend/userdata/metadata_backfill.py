@@ -75,13 +75,9 @@ def fetch_entry_metadata(entry):
     """
     try:
         data = tmdb_client._get(f"/{entry.media_type}/{entry.media_id}")
-    except requests.HTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            return {"genre_ids": [], "original_language": UNKNOWN_LANGUAGE, "release_year": UNKNOWN_YEAR}, True
-        logger.warning("Metadata fetch failed for WatchedEntry %s: %s", entry.pk, e)
-        _mark_failed(entry.pk)
-        return None
     except (requests.RequestException, ValueError) as e:
+        if tmdb_client.is_not_found(e):
+            return {"genre_ids": [], "original_language": UNKNOWN_LANGUAGE, "release_year": UNKNOWN_YEAR}, True
         logger.warning("Metadata fetch failed for WatchedEntry %s: %s", entry.pk, e)
         _mark_failed(entry.pk)
         return None
@@ -101,17 +97,20 @@ def fetch_entry_metadata(entry):
 
 
 def _store(entry, fields, settled):
+    """Write fetched metadata onto the row and the in-memory entry. Returns
+    whether it was stored."""
     fields = {**fields, "metadata_settled": settled}
     try:
         WatchedEntry.objects.filter(pk=entry.pk).update(**fields)
     except DBError:
         logger.exception("Failed to store metadata for WatchedEntry %s", entry.pk)
         _mark_failed(entry.pk)
-        return
+        return False
     for name, value in fields.items():
         setattr(entry, name, value)
     with _failed_lock:
         _failed_at.pop(entry.pk, None)
+    return True
 
 
 def backfill_entries(entries):
@@ -121,17 +120,25 @@ def backfill_entries(entries):
     TMDB fetches run in a small pool; DB writes stay on the calling thread so
     the workers never open (and leak) their own DB connections. Entries are
     updated in place.
+
+    Returns False when this run leaves titles unfilled because of a failure:
+    a fetch or store failed, or a title was skipped while in backoff from an
+    earlier failure. Titles left for a later run only by the MAX_PER_RUN cap
+    don't count. Recommendations use this to mark the compute as failed.
     """
-    candidates = [e for e in entries if entry_needs_metadata(e) and not _in_backoff(e)]
+    needing = [e for e in entries if entry_needs_metadata(e)]
+    candidates = [e for e in needing if not _in_backoff(e)]
+    complete = len(candidates) == len(needing)
     candidates.sort(key=lambda e: (e.watched_at, e.pk), reverse=True)
     todo = candidates[:MAX_PER_RUN]
     if not todo:
-        return
+        return complete
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
         results = list(ex.map(fetch_entry_metadata, todo))
     for entry, result in zip(todo, results, strict=True):
-        if result is not None:
-            _store(entry, *result)
+        if result is None or not _store(entry, *result):
+            complete = False
+    return complete
 
 
 def _run_backfill(user_id):

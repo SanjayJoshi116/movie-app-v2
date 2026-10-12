@@ -168,9 +168,18 @@ export interface TMDBMovieDetail extends Omit<TMDBMovieSummary, "genre_ids"> {
   recommendations: TMDBMovieSummary[];
 }
 
-/** Raw `/movie/{id}` response: `append_to_response` returns recommendations paginated, before the app flattens them. */
-export type TMDBMovieDetailResponse = Omit<TMDBMovieDetail, "recommendations"> & {
+export interface TMDBReleaseDates {
+  results: Array<{ iso_3166_1: string; release_dates: Array<{ certification: string; type: number }> }>;
+}
+
+/** Raw `/movie/{id}` response with its `append_to_response` parts, before the
+ *  app flattens them. Any part can be missing, so each is optional. */
+export type TMDBMovieDetailResponse = Omit<TMDBMovieDetail, "recommendations" | "reviews"> & {
   recommendations?: TMDBPaginatedResponse<TMDBMovieSummary>;
+  reviews?: TMDBPaginatedResponse<TMDBReview>;
+  similar?: TMDBPaginatedResponse<TMDBMovieSummary>;
+  "watch/providers"?: TMDBWatchProviderResponse;
+  release_dates?: TMDBReleaseDates;
 };
 
 // ─── TV Show ──────────────────────────────────────────────────────────────────
@@ -239,14 +248,28 @@ export interface TMDBTVDetail extends Omit<TMDBTVSummary, "genre_ids"> {
   homepage: string | null;
   created_by?: { id: number; name: string }[];
   // Joined by the app during fetch
-  credits: TMDBCredits;
-  aggregateCredits: TMDBAggregateCreditsFull;
   videos: TMDBVideoResults;
   images: TMDBImages;
   reviews: TMDBReview[];
   recommendations: TMDBTVSummary[];
   watchProviders: TMDBWatchProviders;
 }
+
+/** Raw `/tv/{id}` response with its `append_to_response` parts, before the
+ *  app flattens them. Any part can be missing, so each is optional. */
+export type TMDBTVDetailResponse = Omit<
+  TMDBTVDetail,
+  "videos" | "images" | "reviews" | "recommendations" | "watchProviders"
+> & {
+  videos?: TMDBVideoResults;
+  images?: TMDBImages;
+  reviews?: TMDBPaginatedResponse<TMDBReview>;
+  recommendations?: TMDBPaginatedResponse<TMDBTVSummary>;
+  similar?: TMDBPaginatedResponse<TMDBTVSummary>;
+  aggregate_credits?: TMDBAggregateCreditsFull;
+  external_ids?: { imdb_id?: string };
+  "watch/providers"?: TMDBWatchProviderResponse;
+};
 
 // ─── Person ───────────────────────────────────────────────────────────────────
 

@@ -3,8 +3,10 @@ import { fetchAllPages } from "../utils/fetchAllPages";
 import type { MediaType } from "../types";
 import { deviceTimeZone } from "../utils/formatDate";
 
-const API_HOST = window.location.hostname;
-const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || `http://${API_HOST}:8000/api`;
+// Same-origin by default: nginx routes /api in production, and in development
+// CRA's `proxy` (package.json) forwards it to Django over 127.0.0.1, so there's
+// no CORS preflight and no localhost-resolves-to-::1 connect delay.
+const DJANGO_BASE = process.env.REACT_APP_API_BASE_URL || "/api";
 
 const userApi = axios.create({
   baseURL: DJANGO_BASE,
@@ -33,8 +35,22 @@ function storedUserId(): number | undefined {
  *  token belongs to that account; this is what stops our requests using it. */
 let boundUserId: number | null = null;
 
+/** Changes whenever the bound account does (sign-out included). A hook that
+ *  captured it before an `await` drops its result if it changed meanwhile, so a
+ *  slow response can't show one account's data to the next one in the tab. */
+let sessionGeneration = 0;
+
 export function bindSessionUser(id: number | null) {
+  if (id !== boundUserId) sessionGeneration += 1;
   boundUserId = id;
+}
+
+export function currentSessionGeneration(): number {
+  return sessionGeneration;
+}
+
+export function isCurrentSession(generation: number): boolean {
+  return generation === sessionGeneration;
 }
 
 userApi.interceptors.request.use((config) => {
@@ -93,8 +109,14 @@ function processQueue(error: unknown, token: string | null) {
 
 function forceLogout() {
   clearSession();
-  boundUserId = null;
-  window.location.href = "/login";
+  bindSessionUser(null);
+  // Land on /login carrying the page we were on, the way ProtectedRoute's
+  // <Navigate state={{ from }}> does, so signing in again returns there. React
+  // Router reads location.state from history.state.usr (see stashReturnState);
+  // a reload keeps history.state and still throws away all in-memory state.
+  const { pathname, search, hash } = window.location;
+  window.history.replaceState({ usr: { from: { pathname, search, hash } } }, "", "/login");
+  window.location.reload();
 }
 
 /** The refresh endpoint refused the token itself (expired, revoked, malformed):

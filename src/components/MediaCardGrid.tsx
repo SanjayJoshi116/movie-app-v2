@@ -1,5 +1,5 @@
 import { Row, Col, Card, Typography } from "antd";
-import { IMG_URL } from "../constants/ui";
+import { POSTER_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { SectionHeader } from "./SectionHeader";
 import { PosterPlaceholder } from "./PosterPlaceholder";
@@ -35,7 +35,7 @@ export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCard
               cover={
                 item.posterPath ? (
                   <img
-                    src={`${IMG_URL}${item.posterPath}`}
+                    src={`${POSTER_URL}${item.posterPath}`}
                     alt={item.name}
                     className="rec-card-img"
                     loading="lazy"

@@ -11,7 +11,7 @@ import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import { IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -43,7 +43,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
         cover={
           poster_path ? (
             <img
-              src={`${IMG_URL}${poster_path}`}
+              src={`${POSTER_URL}${poster_path}`}
               alt={title}
               loading="lazy"
               className="movie-poster-img"

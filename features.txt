@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.21.0)
+CINE DB — Feature List (v0.22.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -7,12 +7,13 @@ DISCOVERY
 - Advanced filters: year range, TMDB rating, language, runtime, sort order; filters belong to one media type and reset when you switch between Movies, TV and the Anime tabs; on phones they open from a Filters button in the bottom nav
 - Genre tag filtering: movie genres on movie pages, TV genres (e.g. "Sci-Fi & Fantasy") on TV/anime-TV; picking a genre always applies, even from a category tab
 - Browser Back / swipe-back from a detail page restores the browse page's category, loaded pages and scroll, same as the in-app Back button
-- Infinite scroll (Home, TV, Anime), up to TMDB's 500-page limit
+- Infinite scroll (Home, TV, Anime), up to TMDB's 500-page limit; a failed next page shows "Couldn't load more" with Retry and stops auto-loading until you retry
 - Recently watched strip on Movies/TV pages
 - Hero banner: trending title of the week
 
 DETAIL PAGES
-- Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability
+- Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability, all loaded in one request
+- Trailers show a thumbnail with a play button; the YouTube player (privacy-enhanced youtube-nocookie) loads only when you press play
 - Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a centered grid (no horizontal scroll)
 - Recommendations and Similar sections are both filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing)
 - Backdrop images in the Images section open a full-size lightbox on click
@@ -35,7 +36,7 @@ LIBRARY
 - Ratings (0.5-10) + written reviews (up to 5000 characters, with a live count); remove a rating from the rating dialog; a failed save keeps your stars and review
 - User Lists: create, rename, add/remove items, CSV export, CSV import; create/edit can't double-submit; list cards open from the keyboard; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
 - Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap; genre charts fill in for any library size; readable in both light and dark theme
-- Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card; a failed load retries in place; the "updating" state is accurate across server processes, and a refresh during a TMDB outage keeps your previous recommendations
+- Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card; a failed load retries in place; the "updating" state is accurate across server processes, and a refresh during a TMDB outage keeps your previous recommendations, and a title or person deleted from TMDB never freezes them
 - Release Calendar: 7-day lookahead, grouped by date, title search, sticky date headers, "Jump to Today", standards-compliant iCal export; a failed load shows an error with Retry
 
 AUTH
@@ -44,6 +45,11 @@ AUTH
 - Tabs stay in step: signing out in one tab signs out the others, and signing in as someone else in another tab reloads this one (no request ever goes out under the wrong account)
 - A busy or unreachable server never signs you out; only a rejected session does
 - Changing your password signs out every other device at once, including their already-issued access and any refresh that was in flight (this one stays signed in); completing a password reset signs out all devices
+- Accounts without an email can edit their profile and change their password; clearing an email needs the current password
+- The Edit Profile dialog always opens with your saved profile and empty password fields
+- "Export All" never saves a partial backup: while something is still loading or failed to load, it says so instead of producing a file
+- When a session expires for good, signing in again returns you to the page you were on
+- After signing out, a late response for the previous account is never shown to whoever signs in next in that tab
 - Changing your account email asks for your current password, rejects an email already used by another account, and notifies your old address
 - Email-based password reset; reset links expire after 1 hour
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords (no longer blocks passwords similar to your username/email, by design — see CHANGELOG 0.15.3)
@@ -58,7 +64,8 @@ UI/UX
 - Skeleton loaders (staggered fade-in), toast notifications (success only after the server confirms; double-clicks send one request, one toast)
 - Every page shows loading, an error with in-place Retry, empty, or content — a failed load never looks like an empty library; detail pages degrade per section and show "not found" for bad ids
 - Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent — Poppins font throughout, unified size scale: caption/body/emphasis/display
-- Dates render as dd-mm-yyyy everywhere, independent of browser locale
+- Dates render as dd-mm-yyyy everywhere, independent of browser locale; one implausibly old imported date can never break Stats (imports reject dates before 1900)
+- Fast pages: same-origin API in dev (no CORS preflights), identical TMDB requests shared, TMDB answers cached on the server (10 min for lists, 6 h for details, 24 h for genres), library loads 500 rows per request, images sized for display (w342 grid posters, w1280 backdrops)
 - Keyboard accessible: every poster card that opens a page is a real link (Tab, Enter, middle/Ctrl-click opens a new tab) with a visible focus outline in both themes; icon-only buttons have screen-reader labels
 - Unknown URLs show a "Page not found" page with a link back to Movies
 - Framer Motion page transitions
@@ -75,5 +82,7 @@ SECURITY & OPERATIONS
 - Imports of unknown titles can't flood TMDB: missing title details are filled at most 100 at a time, and titles TMDB doesn't know are remembered permanently
 - A redeploy never leaves an open tab on a blank page (the entry page is revalidated; a missing old file is a clean 404)
 - The database container gets only the database password (kept in its own .env.db), none of the app's other secrets
+- Endpoints that wait on TMDB (proxy, notifications, followed-people recommendations, Stats genre lookup) each answer within a fixed time budget under the server's request timeout
+- Production reuses database connections (60 s) instead of connecting per request
 - TMDB browsing limits apply per signed-in user, so people sharing one network don't share a limit; a malformed time zone never causes an error
 - Node 22 and the Python linter are pinned, so local, CI and Docker builds use the same versions

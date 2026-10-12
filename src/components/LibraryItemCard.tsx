@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Card } from "antd";
 import MarqueeTitle from "./MarqueeTitle";
-import { IMG_URL } from "../constants/ui";
+import { POSTER_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import CardLink from "./CardLink";
@@ -36,7 +36,7 @@ const LibraryItemCard = ({ posterPath, title, to, onOpen, tags, actionButtons, f
           // Poster-only link: the action buttons must stay outside it.
           <CardLink to={to} onNavigate={onOpen} label={`Open ${title}`}>
             {posterPath ? (
-              <img src={`${IMG_URL}${posterPath}`} alt={title} loading="lazy" className="movie-poster-img" />
+              <img src={`${POSTER_URL}${posterPath}`} alt={title} loading="lazy" className="movie-poster-img" />
             ) : (
               <PosterPlaceholder className="movie-poster-img" />
             )}

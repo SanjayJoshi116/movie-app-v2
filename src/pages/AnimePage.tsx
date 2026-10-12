@@ -7,6 +7,7 @@ import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
 import HeroBanner from "../components/HeroBanner";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
@@ -135,7 +136,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     [animeTab, scopeMediaType, activeCategory, searchTerm, genreString, hasFilters, externalFilters, externalSortBy, includeAdult]
   );
 
-  const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } =
+  const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry, loadMoreError, retryLoadMore } =
     usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
       fetchPage,
       restore: { isReturning, savedLoadedPages, savedScrollY },
@@ -151,7 +152,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     prevLoadingRef.current = loading;
   }, [loading]);
 
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadMoreError);
 
   // Lets browser Back (not just the in-app Back button) restore this page.
   const stashBrowseState = () =>
@@ -235,6 +236,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       {/* Loading more indicator */}
       {loadingMore && <SkeletonCard count={6} />}
+      {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
     </motion.div>
   );
 }

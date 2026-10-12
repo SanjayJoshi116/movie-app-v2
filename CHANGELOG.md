@@ -3,6 +3,54 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.22.0] - 2026-10-12
+
+Bug-audit release, part 7. Implements three OpenSpec changes from `docs/BUG_BACKLOG.md`: `speed-up-pages` (item 26), `fix-upstream-resilience` (item 17) and `fix-account-edges` (item 18), all archived under `openspec/changes/archive/`. Items 19–21 and 23–25 are still open.
+
+### ⚠️ Notes for deploy
+- **No migrations.** The TMDB proxy cache uses a new `DatabaseCache` table, `tmdb_proxy_cache`, which the existing `createcachetable` step in `docker-entrypoint.sh` (and `start.py`) creates on boot.
+- **CSP change:** `nginx.conf`'s `img-src` adds `https://i.ytimg.com` for trailer thumbnails.
+- **Production now keeps DB connections for 60 s** (`CONN_MAX_AGE`, overridable from the environment). Under `DEBUG` it stays 0.
+- **Dev:** API traffic now goes through CRA's `proxy` (`package.json`), so restart `npm run dev` once. If your root `.env` sets `HOST=0.0.0.0`, change it to `HOST=::` (see `.env.example`). Production `REACT_APP_*` values and nginx routing are unchanged.
+- **Unverified on the dev machine (no Docker):** `nginx -t` on the new CSP line and the `tmdb_proxy_cache` table creation. `test_nginx_conf.py` checks the config statically.
+
+### Performance (`speed-up-pages`)
+- **Dev API calls are same-origin.** The clients default to relative URLs (`/api`, `/api/tmdb`, media `""`), and CRA proxies them to `127.0.0.1:8000`. That removes the CORS preflight on every call and the ~300 ms IPv6 → IPv4 fallback on every new connection (`localhost` resolved to `::1` while `runserver` listens on IPv4 only).
+- **Movie and TV detail pages load in one TMDB request** (`append_to_response`) instead of 5–6. Each appended part goes through shape guards (`src/utils/appended.ts`), so a missing or malformed part empties only its own section.
+- **Identical TMDB requests in flight are shared** (`sharedGet` in `src/api/tmdb.ts`), so the dev double mount and two components asking at once cost one request. A failure reaches every waiter and isn't kept.
+- **The TMDB proxy caches successful responses** in its own `tmdb` cache alias: 10 min for lists and search, 6 h for details, 24 h for genres and configuration, with an `X-Cache: HIT|MISS|BYPASS` header. Requests carrying a TMDB `session_id`/`guest_session_id`, and `account`/`authentication` paths, are never cached, and neither are errors.
+- **Library lists load 500 rows per request** (`page_size`, max 500). A 1,300-title watched history takes 3 requests instead of 13.
+- **Images are sized for display:** grid posters `w342`, hero and detail backdrops `w1280` (`original` only in the full-screen preview). The hero backdrop is no longer lazy-loaded.
+- **Trailers load on demand** (`TrailerEmbed`): a thumbnail with a play button, and the `youtube-nocookie` player only after you press it.
+- `App` no longer re-renders the whole route tree on every library change.
+- Production reuses DB connections (see deploy notes).
+
+### Fixed — TMDB trouble (`fix-upstream-resilience`)
+- **A failed "load more" no longer retries in a loop.** Movies, TV, Anime, People and Search show "Couldn't load more" with Retry (`LoadMoreError`), and scrolling doesn't request again until you retry. Before, the page re-requested continuously while TMDB was failing.
+- **A title or person deleted from TMDB no longer freezes recommendations.** A TMDB 404 is now an answer, not an outage: it's stored as empty (title details, similar titles, person credits) instead of marking the refresh failed, which had kept an old result forever and restarted a full recompute on every For You visit. The notifications poll caches such a person as having no credits instead of refetching them on every poll.
+- **A metadata-backfill failure inside a recommendations compute now counts as an upstream failure**, so a result clustered on genre-less titles can't replace a good stored one.
+- **Overlapping refreshes keep the right status:** a finishing refresh clears only its own "refreshing" stamp, not a newer one set by another server process.
+- **Two more endpoints answer within a time budget:** followed-people recommendations (15 s, returning what arrived) and Stats' cold genre-name lookup (a short per-call timeout; a failed lookup's fallback is cached for 5 minutes, not 24 hours). Tests pin both under gunicorn's `--timeout`.
+
+### Fixed — account edges (`fix-account-edges`)
+- **Accounts without an email can save profile changes**, password changes included. Every save used to fail with "This field may not be blank." Clearing an email now needs the current password, and two accounts without an email never conflict.
+- **One implausibly old imported date can't break Stats.** Bulk imports reject timestamps before 1900-01-01, and a row already stored with one falls back to UTC instead of making `/api/stats/` raise `OverflowError` on every request.
+- **A response that lands after sign-out is dropped.** The library hooks (watched, watchlist, ratings, lists) and the notifications poll check the session generation, so the next account signed in in that tab never sees the previous account's bell items or library. The notifications error flag resets on logout.
+- **The Edit Profile dialog opens with the saved profile every time**, with every password field empty. Typed passwords and unsaved edits used to survive closing and reopening it.
+- **"Export All" never saves a partial backup silently.** While part of the library is still loading or failed to load, it says why instead of producing a file, and a failure while building the file shows an error.
+- **A forced logout returns you to your page** after signing in again, instead of landing on `/movies`.
+- TMDB connect/disconnect errors use the shared error text, so an unreachable server reads "Can't reach the server…".
+
+### Docs
+- CLAUDE.md: same-origin dev traffic and `HOST=::`, the proxy cache and `sharedGet`, image-size constants, `TrailerEmbed` and `appended.ts`, `LoadMoreError`, 404-is-settled in the upstream-failures rule, the session-generation guard for new data hooks, library page size, and `CONN_MAX_AGE`.
+- `docs/ARCHITECTURE.md`: rationale for each change above. `docs/BUG_BACKLOG.md`: items 17, 18 and 26 marked done.
+- New specs: `page-performance`, `tmdb-proxy-cache`, `endpoint-time-budgets`. Updated: `load-states`, `container-deployment`, `recommendation-refresh`, `title-metadata`, `notifications`, `account-security`, `input-validation`, `auth-session`, `data-backup`.
+
+### Tests
+- The backend suite grew from 318 to 372 tests: proxy cache (TTL tiers, credential bypass, errors not cached, alias isolation), page size, `CONN_MAX_AGE`, 404 handling at every recommendations/notifications site, backfill health, the own-stamp clear, followed-people and Stats genre budgets, blank-email profiles, the 1900 bound and the Stats overflow guard.
+- Jest grew from 224 to 245 tests: `fetchAllPages` past page 1, in-flight request sharing, `TrailerEmbed`, `LoadMoreError`, the infinite-scroll failure loop, `usePaginatedFetch` load-more errors, and stale-session response guards.
+- E2E: new `e2e/session-expiry.spec.ts` (forced logout returns to the page); TS and Python detail-page mocks moved to the combined `append_to_response` shape; Python profile tests follow the dialog's reset behavior.
+
 ## [0.21.0] - 2026-10-09
 
 Bug-audit release, part 6. A third and fourth audit (2026-10-09) logged backlog items 16–25 in `docs/BUG_BACKLOG.md`. This release implements two OpenSpec changes from them, `fix-ci-lint` (item 16) and `harden-security-3` (item 22, plus two log fixes from item 17), both archived under `openspec/changes/archive/`. Items 17–21 and 23–25 are still open.

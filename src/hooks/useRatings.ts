@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
-import userApi from "../api/userApi";
-import { fetchAllPages } from "../utils/fetchAllPages";
+import userApi, { currentSessionGeneration, isCurrentSession } from "../api/userApi";
+import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
 import type { RatingEntry, RatingEntryDTO, RatingsMap } from "../types";
 
 function ratingKey(id: number, type: string) { return `${type}-${id}`; }
@@ -17,9 +17,12 @@ export function useRatings() {
 
   const reload = useCallback(async () => {
     if (!isAuthenticated) return;
+    // A response that lands after sign-out belongs to the previous account.
+    const gen = currentSessionGeneration();
     setIsLoading(true);
     try {
-      const data = await fetchAllPages<RatingEntryDTO>(userApi, "/ratings/");
+      const data = await fetchAllPages<RatingEntryDTO>(userApi, "/ratings/", { pageSize: LIBRARY_PAGE_SIZE });
+      if (!isCurrentSession(gen)) return;
       const map: Record<string, number> = {};
       const ratingsMap: RatingsMap = {};
       data.forEach((item) => {
@@ -38,11 +41,12 @@ export function useRatings() {
       setRatings(ratingsMap);
       setError(null);
     } catch (err) {
+      if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(gen)) setIsLoading(false);
     }
   }, [isAuthenticated]);
 
@@ -65,6 +69,7 @@ export function useRatings() {
     review = ""
   ) => {
     if (!isAuthenticated) return;
+    const gen = currentSessionGeneration();
     const { data } = await userApi.post<RatingEntryDTO>("/ratings/", {
       mediaId: id,
       mediaType: type,
@@ -72,6 +77,7 @@ export function useRatings() {
       userRating,
       review,
     });
+    if (!isCurrentSession(gen)) return;
     const k = ratingKey(id, type);
     dbIdMap.current[k] = data.id;
     setRatings((prev) => ({
@@ -96,7 +102,9 @@ export function useRatings() {
     const k = ratingKey(id, type);
     const dbId = dbIdMap.current[k];
     if (dbId == null) return;
+    const gen = currentSessionGeneration();
     await userApi.delete(`/ratings/${dbId}/`);
+    if (!isCurrentSession(gen)) return;
     delete dbIdMap.current[k];
     setRatings((prev) => {
       const next = { ...prev };

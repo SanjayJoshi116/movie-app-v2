@@ -25,8 +25,7 @@ new MutationObserver(() => {
 
 class TestKeyboardCardLinks:
     def test_enter_on_similar_card_opens_that_title(self, authed_page: Page):
-        mock_movie_detail_routes(authed_page, 100)
-        authed_page.route("**/api/tmdb/movie/100/similar**", lambda r: fulfill_json(r, MOCK_MOVIE_RESPONSE))
+        mock_movie_detail_routes(authed_page, 100, detail={**MOCK_MOVIE_DETAIL, "similar": MOCK_MOVIE_RESPONSE})
         mock_movie_detail_routes(authed_page, 101, detail={**MOCK_MOVIE_DETAIL, "id": 101, "title": "Movie 2"})
         authed_page.goto("/movie/100")
 

@@ -5,7 +5,7 @@ import type { DropdownProps } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { useNotifications } from "../hooks/useNotifications";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import { IMG_URL } from "../constants/ui";
+import { POSTER_THUMB_URL } from "../constants/ui";
 import { formatDateDMY } from "../utils/formatDate";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -93,7 +93,7 @@ function NotificationBell({ buttonClassName, placement = "topLeft", autoAdjustOv
                 style={{ display: "flex", gap: 10, padding: 8, cursor: "pointer", borderRadius: 6, alignItems: "center" }}
               >
                 {item.posterPath ? (
-                  <img src={`${IMG_URL}${item.posterPath}`} alt={item.title} style={THUMB_STYLE} />
+                  <img src={`${POSTER_THUMB_URL}${item.posterPath}`} alt={item.title} style={THUMB_STYLE} />
                 ) : (
                   <PosterPlaceholder style={THUMB_STYLE} />
                 )}

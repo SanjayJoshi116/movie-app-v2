@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, Typography, theme } from "antd";
+import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, Typography, Alert, theme } from "antd";
 import {
   CheckCircleOutlined,
   DownloadOutlined,
@@ -11,7 +11,9 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../hooks/useToast";
-import { useAppContext } from "../context/useAppContext";
+import { useWatchlistContext } from "../context/WatchlistContext";
+import { useWatchedContext } from "../context/WatchedContext";
+import { useRatingsContext } from "../context/RatingsContext";
 import { useListsContext } from "../context/useListsContext";
 import CSVUploadModal from "./CSVUploadModal";
 import CSVImportAllModal from "./lists/CSVImportAllModal";
@@ -32,11 +34,18 @@ interface Props {
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
-const ProfileModal = ({ open, onClose }: Props) => {
+/**
+ * Everything inside the dialog. The Modal destroys it on close, so each opening
+ * starts from the saved profile: no typed password, unsaved edit or form-store
+ * value survives (rc-field-form merges a kept store over initialValues).
+ */
+function ProfileModalBody({ onClose }: { onClose: () => void }) {
   const { user, updateProfile, setUserData, logout } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { watchlist, watchedList, allRatings } = useAppContext();
-  const { lists } = useListsContext();
+  const watchlistCtx = useWatchlistContext();
+  const watchedCtx = useWatchedContext();
+  const ratingsCtx = useRatingsContext();
+  const listsCtx = useListsContext();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -49,21 +58,56 @@ const ProfileModal = ({ open, onClose }: Props) => {
   const [deletePassword, setDeletePassword] = useState("");
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportBlocked, setExportBlocked] = useState<string[] | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    if (open) {
-      getTMDBAuthStatus()
-        .then((res) => setTmdbConnected(res.data.connected))
-        .catch(() => setTmdbConnected(null));
-    } else {
-      // This component stays mounted (only the modal body is destroyed), so
-      // password state would otherwise reappear on the next open.
-      setDeletePassword("");
-      setNewPassword("");
+    getTMDBAuthStatus()
+      .then((res) => setTmdbConnected(res.data.connected))
+      .catch(() => setTmdbConnected(null));
+  }, [tmdbStatusRetry]);
+
+  // A backup is only as complete as what loaded: exporting a failed or
+  // still-loading part would silently write a file without it.
+  const libraryParts = [
+    { label: "watchlist", ctx: watchlistCtx, reload: watchlistCtx.reload },
+    { label: "watched history", ctx: watchedCtx, reload: watchedCtx.reload },
+    { label: "ratings", ctx: ratingsCtx, reload: ratingsCtx.reload },
+    { label: "lists", ctx: listsCtx, reload: listsCtx.reloadLists },
+  ];
+  const libraryLoading = libraryParts.some((p) => p.ctx.isLoading);
+
+  const handleExportAll = async () => {
+    if (libraryLoading) return;
+    const failed = libraryParts.filter((p) => p.ctx.error != null).map((p) => p.label);
+    if (failed.length > 0) {
+      setExportBlocked(failed);
+      return;
     }
-  }, [open, tmdbStatusRetry]);
+    setExportBlocked(null);
+    setExporting(true);
+    try {
+      await downloadAllAsZip(
+        watchlistCtx.watchlist,
+        watchedCtx.watchedList,
+        Object.values(ratingsCtx.ratings),
+        listsCtx.lists,
+      );
+    } catch {
+      showError("Couldn't create the backup file.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const retryFailedParts = () => {
+    setExportBlocked(null);
+    libraryParts
+      .filter((p) => p.ctx.error != null)
+      .forEach((p) => p.reload().catch(() => { /* recorded in that context's `error` */ }));
+  };
 
   const handleSubmit = async (values: {
     first_name: string;
@@ -115,8 +159,8 @@ const ProfileModal = ({ open, onClose }: Props) => {
     try {
       const res = await getTMDBRequestToken(window.location.origin + "/tmdb-callback");
       window.location.href = res.data.redirect_url;
-    } catch {
-      showError("Could not connect to TMDB. Try again.");
+    } catch (err) {
+      showError(getApiError(err, "Could not connect to TMDB. Try again."));
       setTmdbLoading(false);
     }
   };
@@ -127,8 +171,8 @@ const ProfileModal = ({ open, onClose }: Props) => {
       await disconnectTMDB();
       setTmdbConnected(false);
       showSuccess("TMDB account disconnected.");
-    } catch {
-      showError("Failed to disconnect.");
+    } catch (err) {
+      showError(getApiError(err, "Failed to disconnect TMDB."));
     } finally {
       setTmdbLoading(false);
     }
@@ -323,9 +367,17 @@ const ProfileModal = ({ open, onClose }: Props) => {
         <Button block icon={<UploadOutlined />} onClick={() => setCsvOpen(true)}>
           Import Watched from CSV
         </Button>
-        <Button block icon={<DownloadOutlined />} onClick={() => downloadAllAsZip(watchlist, watchedList, Object.values(allRatings), lists)}>
-          Export All Data (ZIP)
+        <Button block icon={<DownloadOutlined />} loading={libraryLoading || exporting} onClick={handleExportAll}>
+          {libraryLoading ? "Loading library…" : "Export All Data (ZIP)"}
         </Button>
+        {exportBlocked && (
+          <Alert
+            type="warning"
+            showIcon
+            message={`Couldn't load your ${exportBlocked.join(", ")}. The backup would be incomplete.`}
+            action={<Button size="small" onClick={retryFailedParts}>Retry</Button>}
+          />
+        )}
         <Button block icon={<UploadOutlined />} onClick={() => setImportAllOpen(true)}>
           Import All from Backup
         </Button>
@@ -381,7 +433,7 @@ const ProfileModal = ({ open, onClose }: Props) => {
   );
 
   return (
-    <Modal title="Edit Profile" open={open} onCancel={onClose} footer={null} destroyOnHidden>
+    <>
       <Tabs
         defaultActiveKey="account"
         items={[
@@ -393,8 +445,14 @@ const ProfileModal = ({ open, onClose }: Props) => {
 
       <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} />
       <CSVImportAllModal open={importAllOpen} onClose={() => setImportAllOpen(false)} />
-    </Modal>
+    </>
   );
-};
+}
+
+const ProfileModal = ({ open, onClose }: Props) => (
+  <Modal title="Edit Profile" open={open} onCancel={onClose} footer={null} destroyOnHidden>
+    <ProfileModalBody onClose={onClose} />
+  </Modal>
+);
 
 export default ProfileModal;

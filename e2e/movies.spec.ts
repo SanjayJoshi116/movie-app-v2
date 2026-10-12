@@ -56,21 +56,13 @@ test.describe("Movies page", () => {
           original_language: "en", budget: 0, revenue: 0,
           credits: { cast: [], crew: [] }, images: { backdrops: [] },
           videos: { results: [] }, recommendations: { results: [] },
-          certifications: [],
+          // append_to_response parts: the detail page loads everything in one request.
+          reviews: { results: [], total_pages: 1 },
+          similar: { results: [], total_pages: 1 },
+          "watch/providers": { results: {} },
+          release_dates: { results: [] },
         },
       })
-    );
-    await page.route("**/api/tmdb/movie/100/reviews**", (route) =>
-      route.fulfill({ json: { results: [], total_pages: 1 } })
-    );
-    await page.route("**/api/tmdb/movie/100/similar**", (route) =>
-      route.fulfill({ json: { results: [], total_pages: 1 } })
-    );
-    await page.route("**/api/tmdb/movie/100/watch*", (route) =>
-      route.fulfill({ json: { results: {} } })
-    );
-    await page.route("**/api/tmdb/movie/100/release_dates**", (route) =>
-      route.fulfill({ json: { results: [] } })
     );
     await page.route("**/api/tmdb/person/**", (route) =>
       route.fulfill({ json: { id: 1, name: "Actor", profile_path: null } })

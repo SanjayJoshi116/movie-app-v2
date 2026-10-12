@@ -51,7 +51,12 @@ def entry_local(entry, request):
     watched_at = entry.watched_at
     if timezone.is_naive(watched_at):
         watched_at = watched_at.replace(tzinfo=DT_UTC)
-    return watched_at.astimezone(entry_tz(entry, request))
+    try:
+        return watched_at.astimezone(entry_tz(entry, request))
+    except OverflowError:
+        # Near year 1 (imported before imports were bounded) the local time
+        # would fall before datetime.min. Like a bad zone, fall back to UTC.
+        return watched_at.astimezone(DT_UTC)
 
 
 def entry_day(entry, request) -> date:

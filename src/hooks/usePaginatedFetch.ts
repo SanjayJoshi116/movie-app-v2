@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
-import { useToast } from "./useToast";
-import { getApiError } from "../utils/apiError";
 
 export interface PageResult<T> {
   results: T[];
@@ -43,8 +41,11 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // A failed next page. While set, loadMore does nothing: the sentinel is
+  // still in view after a failure, and the observer re-fires as soon as
+  // loadMore's identity changes, so without this it re-requests in a loop.
+  const [loadMoreError, setLoadMoreError] = useState<unknown>(null);
   const [retryToken, setRetryToken] = useState(0);
-  const { showError } = useToast();
 
   const didRestoreScrollRef = useRef(false);
   const isRestoringRef = useRef(restore.isReturning);
@@ -86,6 +87,7 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
     const load = async () => {
       setLoading(true);
       setError(null);
+      setLoadMoreError(null);
       try {
         if (isRestoringRef.current && restoredStateRef.current) {
           const { items: cachedItems, hasMore: cachedHasMore } = restoredStateRef.current;
@@ -134,10 +136,10 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
-  const loadMore = useCallback(async () => {
-    if (loading || loadingMore || !hasMore) return;
+  const fetchNextPage = useCallback(async () => {
     const generation = generationRef.current;
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const nextPage = currentPage + 1;
       const { results, totalPages } = await fetchPage(nextPage);
@@ -150,14 +152,28 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       setCurrentPage(nextPage);
       setHasMore(nextPage < totalPages);
     } catch (err) {
-      // Keep the pages already shown; the next scroll can try again.
-      if (generationRef.current === generation) showError(getApiError(err, "Couldn't load more results."));
+      // Keep the pages already shown. Auto-loading stays off until the user
+      // retries (retryLoadMore).
+      if (generationRef.current === generation) setLoadMoreError(err);
     } finally {
       setLoadingMore(false);
     }
-  }, [fetchPage, currentPage, hasMore, loading, loadingMore, showError]);
+  }, [fetchPage, currentPage]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore || loadMoreError) return;
+    await fetchNextPage();
+  }, [fetchNextPage, hasMore, loading, loadingMore, loadMoreError]);
+
+  const retryLoadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    await fetchNextPage();
+  }, [fetchNextPage, hasMore, loading, loadingMore]);
 
   const retry = useCallback(() => setRetryToken((t) => t + 1), []);
 
-  return { items, setItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry };
+  return {
+    items, setItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry,
+    loadMoreError, retryLoadMore,
+  };
 }

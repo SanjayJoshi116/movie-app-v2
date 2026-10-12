@@ -3,19 +3,14 @@ import { motion } from "framer-motion";
 import TVShowDetails from "../components/TVShowDetails";
 import type { TVShowDetailData } from "../components/TVShowDetails";
 import DetailPageSkeleton from "../components/DetailPageSkeleton";
-import {
-  fetchTVDetails,
-  fetchTVCredits,
-  fetchTVAggregateCredits,
-  fetchTVImages,
-  fetchTVWatchProviders,
-  fetchTVReviews,
-} from "../api/tmdb";
+import { fetchTVDetails } from "../api/tmdb";
 import { pageVariants } from "../constants/ui";
 import { LoadError } from "../components/LoadError";
 import NotFoundPage from "./NotFoundPage";
 import { useValidId } from "../hooks/useValidId";
-import { settledData, isNotFound } from "../utils/settled";
+import { isNotFound } from "../utils/settled";
+import { arrayOr, objectOr, resultsOf } from "../utils/appended";
+import type { TMDBAggregateCreditsFull, TMDBImages, TMDBReview, TMDBTVDetailResponse } from "../types";
 
 function TVDetailPage() {
   const id = useValidId();
@@ -34,33 +29,32 @@ function TVDetailPage() {
     let cancelled = false;
 
     const load = async () => {
-      // Only the details call is essential; each secondary section degrades
-      // to empty on its own instead of failing the whole page.
-      const [detailsRes, creditsRes, aggregateCreditsRes, imagesRes, providersRes, reviewsRes] =
-        await Promise.allSettled([
-          fetchTVDetails(id),
-          fetchTVCredits(id),
-          fetchTVAggregateCredits(id),
-          fetchTVImages(id),
-          fetchTVWatchProviders(id),
-          fetchTVReviews(id),
-        ]);
-      if (cancelled) return;
-
-      if (detailsRes.status === "rejected") {
-        console.error("Error fetching TV show details:", detailsRes.reason);
-        setError(isNotFound(detailsRes.reason) ? "not-found" : "failed");
+      // One request carries every section (append_to_response). Only the
+      // details are essential: a missing or malformed part leaves just that
+      // section empty instead of failing the whole page.
+      let show: TMDBTVDetailResponse;
+      try {
+        show = (await fetchTVDetails(id)).data;
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Error fetching TV show details:", err);
+        setError(isNotFound(err) ? "not-found" : "failed");
         setLoading(false);
         return;
       }
+      if (cancelled) return;
 
+      const images = objectOr<Partial<TMDBImages>>(show.images, {});
+      const aggregate = objectOr<Partial<TMDBAggregateCreditsFull>>(show.aggregate_credits, {});
       setTVShow({
-        ...detailsRes.value.data,
-        credits: settledData(creditsRes) ?? { cast: [], crew: [] },
-        aggregate_credits: settledData(aggregateCreditsRes),
-        images: settledData(imagesRes) ?? { backdrops: [], posters: [] },
-        watchProviders: settledData(providersRes)?.results ?? {},
-        reviews: settledData(reviewsRes)?.results ?? [],
+        ...show,
+        videos: { results: resultsOf(show.videos) },
+        images: { backdrops: arrayOr(images.backdrops), posters: arrayOr(images.posters) },
+        aggregate_credits: { cast: arrayOr(aggregate.cast), crew: arrayOr(aggregate.crew) },
+        recommendations: resultsOf(show.recommendations),
+        similar: { results: resultsOf(show.similar) },
+        watchProviders: objectOr(show["watch/providers"]?.results, {}),
+        reviews: resultsOf<TMDBReview>(show.reviews),
       });
       setLoading(false);
     };

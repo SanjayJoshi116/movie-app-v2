@@ -1,7 +1,8 @@
 {
   "name": "movie-app",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": true,
+  "proxy": "http://127.0.0.1:8000",
   "engines": {
     "node": ">=22 <23"
   },

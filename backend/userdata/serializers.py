@@ -1,5 +1,5 @@
 import math
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -60,7 +60,9 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     # Same rules as User.username/User.email, which this plain Serializer doesn't inherit.
     username = serializers.CharField(max_length=150, required=False, validators=[UnicodeUsernameValidator()])
-    email = serializers.EmailField(max_length=254, required=False)
+    # Blank is allowed: registration accepts accounts without an email, and the
+    # profile form resubmits the email on every save.
+    email = serializers.EmailField(max_length=254, required=False, allow_blank=True)
     current_password = serializers.CharField(write_only=True, required=False)
     new_password = serializers.CharField(write_only=True, required=False)
 
@@ -72,6 +74,10 @@ class UserProfileUpdateSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         user = self.context["request"].user
+        # No email is never a conflict: email__iexact="" would match every
+        # other account without one. Clearing it still needs the password (validate()).
+        if not value:
+            return ""
         # Skip the check on an unchanged resubmit: legacy accounts from before
         # registration enforced uniqueness may share an email, and they'd
         # otherwise be unable to save any profile edit at all.
@@ -235,8 +241,20 @@ def _validate_not_future(value):
         raise serializers.ValidationError("Can't be in the future.")
 
 
+# Nobody logged a watch, rating or list add before this. Near year 1 a time
+# can't even be shown in a zone behind UTC (astimezone raises OverflowError).
+EARLIEST_TIMESTAMP = datetime(1900, 1, 1, tzinfo=UTC)
+
+
+def _validate_not_before_1900(value):
+    if value < EARLIEST_TIMESTAMP:
+        raise serializers.ValidationError("Timestamps before 1900 aren't supported.")
+
+
 def _past_timestamp():
-    return serializers.DateTimeField(required=False, allow_null=True, validators=[_validate_not_future])
+    return serializers.DateTimeField(
+        required=False, allow_null=True, validators=[_validate_not_future, _validate_not_before_1900]
+    )
 
 
 class BulkEntrySerializer(serializers.Serializer):

@@ -3,7 +3,10 @@ from rest_framework.pagination import PageNumberPagination
 
 class DefaultPagination(PageNumberPagination):
     page_size = 100
-    max_page_size = 200
+    # The library loads (watched/watchlist/ratings) ask for 500 per page, so a
+    # large history takes a few requests instead of one per 100 rows.
+    page_size_query_param = "page_size"
+    max_page_size = 500
 
     def get_next_link(self):
         if not self.page.has_next():

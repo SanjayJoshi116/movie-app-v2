@@ -3,6 +3,8 @@ import {
   getFollowedPeople,
   followPerson,
   unfollowPerson,
+  currentSessionGeneration,
+  isCurrentSession,
   type FollowedPersonEntry,
 } from "../api/userApi";
 import { useAuth } from "./AuthContext";
@@ -79,7 +81,9 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const follow = useCallback(
     (personId: number, name: string, profilePath: string | null) =>
       inflight.current.run(`person-${personId}`, async () => {
+        const gen = currentSessionGeneration();
         const res = await followPerson(personId, name, profilePath);
+        if (!isCurrentSession(gen)) return;
         setFollowed((prev) => [...prev.filter((f) => f.personId !== personId), res.data]);
       }),
     []
@@ -88,7 +92,9 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const unfollow = useCallback(
     (personId: number) =>
       inflight.current.run(`person-${personId}`, async () => {
+        const gen = currentSessionGeneration();
         await unfollowPerson(personId);
+        if (!isCurrentSession(gen)) return;
         setFollowed((prev) => prev.filter((f) => f.personId !== personId));
       }),
     []

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import userApi from "../api/userApi";
+import userApi, { currentSessionGeneration, isCurrentSession } from "../api/userApi";
 import { fetchAllPages } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import type { UserList, UserListDTO, UserListItemDTO, WatchlistInput } from "../types";
@@ -32,17 +32,21 @@ export function useLists() {
 
   const fetchLists = useCallback(async () => {
     if (!isAuthenticated) return;
+    // A response that lands after sign-out belongs to the previous account.
+    const gen = currentSessionGeneration();
     setIsLoading(true);
     try {
       const data = await fetchAllPages<UserListDTO>(userApi, "/lists/");
+      if (!isCurrentSession(gen)) return;
       setLists(mapListData(data));
       setError(null);
     } catch (err) {
+      if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(gen)) setIsLoading(false);
     }
   }, [isAuthenticated]);
 
@@ -57,7 +61,9 @@ export function useLists() {
   const createList = useCallback((name: string, description: string): Promise<UserList | undefined> =>
     inflight.current.run(`create-${name.trim().toLowerCase()}`, async () => {
       if (!isAuthenticated) return undefined;
+      const gen = currentSessionGeneration();
       const { data } = await userApi.post<UserListDTO>("/lists/", { name, description });
+      if (!isCurrentSession(gen)) return undefined;
       const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
       setLists((prev) => [...prev, created]);
       return created;
@@ -65,7 +71,9 @@ export function useLists() {
 
   const deleteList = useCallback((id: number) => inflight.current.run(`list-${id}`, async () => {
     if (!isAuthenticated) return;
+    const gen = currentSessionGeneration();
     await userApi.delete(`/lists/${id}/`);
+    if (!isCurrentSession(gen)) return;
     setLists((prev) => prev.filter((l) => l.id !== id));
   }), [isAuthenticated]);
 
@@ -73,7 +81,9 @@ export function useLists() {
   const updateList = useCallback((id: number, patch: { name?: string; description?: string }) =>
     inflight.current.run(`list-${id}`, async () => {
       if (!isAuthenticated) return;
+      const gen = currentSessionGeneration();
       const { data } = await userApi.patch<UserListDTO>(`/lists/${id}/`, patch);
+      if (!isCurrentSession(gen)) return;
       setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
     }), [isAuthenticated]);
 
@@ -82,6 +92,7 @@ export function useLists() {
     if (!isAuthenticated) return;
     const list = lists.find((l) => l.id === listId);
     if (list?.items.some((i) => i.id === entry.id && i.type === entry.type)) return;
+    const gen = currentSessionGeneration();
     const { data } = await userApi.post<UserListItemDTO>(`/lists/${listId}/items/`, {
       mediaId: entry.id,
       mediaType: entry.type,
@@ -89,6 +100,7 @@ export function useLists() {
       posterPath: entry.posterPath,
       voteAverage: entry.voteAverage,
     });
+    if (!isCurrentSession(gen)) return;
     setLists((prev) =>
       prev.map((l) => {
         if (l.id !== listId) return l;
@@ -119,7 +131,9 @@ export function useLists() {
     const list = lists.find((l) => l.id === listId);
     const item = list?.items.find((i) => i.id === itemId && i.type === type) as { _itemId?: number } | undefined;
     if (!item?._itemId) return;
+    const gen = currentSessionGeneration();
     await userApi.delete(`/lists/${listId}/items/${item._itemId}/`);
+    if (!isCurrentSession(gen)) return;
     setLists((prev) =>
       prev.map((l) =>
         l.id !== listId
@@ -131,7 +145,9 @@ export function useLists() {
 
   const clearList = useCallback((listId: number) => inflight.current.run(`list-${listId}`, async () => {
     if (!isAuthenticated) return;
+    const gen = currentSessionGeneration();
     await userApi.delete(`/lists/${listId}/items/clear/`);
+    if (!isCurrentSession(gen)) return;
     setLists((prev) =>
       prev.map((l) => (l.id !== listId ? l : { ...l, items: [] }))
     );

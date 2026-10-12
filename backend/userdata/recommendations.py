@@ -34,6 +34,7 @@ REFRESH_STATUS_WINDOW = timedelta(minutes=10)
 _computing_lock = threading.Lock()
 _computing_users = set()  # user ids currently being (re)computed, in-process only
 _rerun_users = set()  # in-flight user ids that got another trigger; get one follow-up run
+_own_stamp = {}  # user id -> the refreshing_since this process last wrote for its running refresh
 
 
 class FetchHealth:
@@ -61,14 +62,13 @@ def _refresh_thread(user_id):
         connection.close()
 
 
-def _set_refreshing_since(user_id, value, *, only_before=None):
+def _set_refreshing_since(user_id, value, *, only_if=None):
     """Record (or clear) the cross-process "refresh running" stamp. Best-effort:
-    a DB error only costs an accurate status, never the refresh itself."""
+    a DB error only costs an accurate status, never the refresh itself.
+    With `only_if`, change it only while it still holds exactly that stamp."""
     qs = UserRecommendationCache.objects.filter(user_id=user_id)
-    if only_before is not None:
-        # lte, not lt: a coarse clock (Windows) can stamp the start and the
-        # finish of a short run with the same instant.
-        qs = qs.filter(refreshing_since__lte=only_before)
+    if only_if is not None:
+        qs = qs.filter(refreshing_since=only_if)
     try:
         qs.update(refreshing_since=value)
     except DBError as e:
@@ -89,8 +89,17 @@ def request_refresh(user_id, *, rerun_if_running):
             return
         _computing_users.add(user_id)
     # No-op without a row yet; the endpoints already answer "pending" then.
-    _set_refreshing_since(user_id, timezone.now())
+    _stamp_refresh(user_id)
     _spawn_refresh(user_id)
+
+
+def _stamp_refresh(user_id):
+    """Stamp the row as refreshing, remembering the stamp so this run's finish
+    clears only its own and never one another process wrote since."""
+    stamp = timezone.now()
+    with _computing_lock:
+        _own_stamp[user_id] = stamp
+    _set_refreshing_since(user_id, stamp)
 
 
 def _start_refresh_if_needed(user):
@@ -105,10 +114,14 @@ def _is_fresh(cached):
 
 def _fetch_media_details(entry, health=None):
     """Worker-thread half of the cache fill: TMDB HTTP only, no DB. Returns
-    the details, or None on failure."""
+    the details, empty details when TMDB says the title doesn't exist (a
+    settled answer, cached like any other), or None on failure."""
     try:
         return tmdb_client.get_details_with_cast(entry.media_id, entry.media_type)
     except (requests.RequestException, KeyError, TypeError, ValueError) as e:
+        if tmdb_client.is_not_found(e):
+            logger.info("TMDB has no %s %s; caching it as empty", entry.media_type, entry.media_id)
+            return {"genre_ids": [], "top_cast": []}
         logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
         if health is not None:
             health.mark_failed()
@@ -121,7 +134,8 @@ def _store_media_cache(entry, details, cached):
     Never cache a failure: writing empty genres/cast here used to replace good
     data and hide the title for a whole CACHE_TTL_DAYS. With no details, keep
     any existing (even stale) row; with none, store nothing so the next run
-    retries.
+    retries. A TMDB 404 is not a failure: it arrives as empty details and is
+    stored, so the title isn't refetched every run.
     """
     if details is None:
         return cached
@@ -340,8 +354,10 @@ def _compute_for_you(user, health=None) -> list:
             else:
                 data = tmdb_client._get(f"/tv/{w.media_id}/recommendations")
             return w, [_tmdb_item(r, w.media_type) for r in data.get("results", [])]
-        except (requests.RequestException, ValueError):
-            health.mark_failed()
+        except (requests.RequestException, ValueError) as e:
+            # A title TMDB no longer has just yields no section.
+            if not tmdb_client.is_not_found(e):
+                health.mark_failed()
             return w, []
 
     with ThreadPoolExecutor(max_workers=5) as ex:
@@ -390,8 +406,11 @@ def _compute_for_you(user, health=None) -> list:
             ]
             items.sort(key=lambda x: -x["voteAverage"])
             return actor_id, info["name"], items
-        except (requests.RequestException, ValueError):
-            health.mark_failed()
+        except (requests.RequestException, ValueError) as e:
+            # Actor ids come from cached top_cast, so a merged or deleted
+            # person keeps 404ing: that's no section, not an outage.
+            if not tmdb_client.is_not_found(e):
+                health.mark_failed()
             return actor_id, info["name"], []
 
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -436,7 +455,10 @@ def _compute_personalized(user, health=None) -> list:
     }
 
     # --- Fill missing genres first (clustering needs them); updates entries in place ---
-    backfill_entries(watched)
+    # Titles left genre-less by a TMDB failure would skew the clusters, so the
+    # result must not replace a good stored one (save_recommendations).
+    if not backfill_entries(watched):
+        health.mark_failed()
 
     # --- Build genre vocabulary ---
     all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})
@@ -557,20 +579,24 @@ def _refresh_cache_by_id(user_id):
 
 def _finish_refresh(user_id):
     """Release user_id's in-flight slot, or hand it to one queued follow-up run."""
-    finished_at = timezone.now()
     with _computing_lock:
         if user_id in _rerun_users:
             _rerun_users.discard(user_id)
             rerun = True  # stays in _computing_users for the follow-up
+            own = None
         else:
             _computing_users.discard(user_id)
             rerun = False
+            own = _own_stamp.pop(user_id, None)
     if rerun:
+        # A fresh stamp, so a long chain of follow-ups can't age past
+        # REFRESH_STATUS_WINDOW and read as a killed run.
+        _stamp_refresh(user_id)
         _spawn_refresh(user_id)
-    else:
-        # Clear only a stamp from no later than this run's end: a refresh
-        # started since (here or on another process) keeps its own.
-        _set_refreshing_since(user_id, None, only_before=finished_at)
+    elif own is not None:
+        # Exact match: a refresh another process started meanwhile overwrote
+        # the stamp, and it keeps reporting "pending" until it finishes.
+        _set_refreshing_since(user_id, None, only_if=own)
 
 
 def _non_empty_sections(*section_lists):

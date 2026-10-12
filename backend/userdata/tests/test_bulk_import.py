@@ -208,3 +208,32 @@ class SingleCreateIgnoresTimestampsTests(BulkTestCase):
         self.assertGreaterEqual(WatchedEntry.objects.get().watched_at, before)
         self.assertGreaterEqual(WatchlistEntry.objects.get().added_at, before)
         self.assertGreaterEqual(RatingEntry.objects.get().rated_at, before)
+
+
+YEAR_ONE = "0001-01-01T00:00:00Z"
+
+
+class BulkTimestampLowerBoundTests(BulkTestCase):
+    """Near year 1 a time can't be shown in a zone behind UTC, which made
+    /api/stats/ 500 for good. Imports reject anything before 1900."""
+
+    CASES = (
+        ("/api/watched/bulk/", {"mediaId": 2, "watchedAt": YEAR_ONE}, WatchedEntry),
+        ("/api/watchlist/bulk/", {"mediaId": 2, "addedAt": YEAR_ONE}, WatchlistEntry),
+        ("/api/ratings/bulk/", {"mediaId": 2, "userRating": 8, "ratedAt": YEAR_ONE}, RatingEntry),
+    )
+
+    def test_year_one_rejected_and_nothing_written(self):
+        for url, entry, model in self.CASES:
+            with self.subTest(url=url):
+                self.url = url
+                first = {"mediaId": 1, "title": "A", "userRating": 7} if model is RatingEntry else {"mediaId": 1}
+                res = self.post([first, entry])
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("1", res.data["entries"])
+                self.assertFalse(model.objects.exists())
+
+    def test_1900_itself_accepted(self):
+        self.url = "/api/watched/bulk/"
+        res = self.post([{"mediaId": 1, "watchedAt": "1900-01-01T00:00:00Z"}])
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)

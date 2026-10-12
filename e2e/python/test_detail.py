@@ -1,12 +1,22 @@
 """
 Detail page tests: movie detail, TV detail, episode guide, toggles, error states.
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from conftest import (
     paginated,
-    fulfill_json, MOCK_LIST, mock_movie_detail_routes, mock_tv_detail_routes,
+    fulfill_json, MOCK_LIST, MOCK_MOVIE_DETAIL, MOCK_TV_DETAIL, mock_movie_detail_routes, mock_tv_detail_routes,
 )
+
+
+def _detail_requests(page: Page, path: str) -> list:
+    """Collect requests for exactly `/api/tmdb/<path>` (sub-paths excluded)."""
+    seen = []
+    pattern = re.compile(r"/api/tmdb/" + re.escape(path) + r"(\?|$)")
+    page.on("request", lambda req: seen.append(req.url) if pattern.search(req.url) else None)
+    return seen
 
 
 class TestMovieDetailPage:
@@ -94,13 +104,12 @@ class TestMovieDetailPage:
         expect(authed_page.get_by_text("Action")).to_be_visible(timeout=5_000)
 
     def test_movie_detail_certification_with_rating(self, authed_page: Page):
-        mock_movie_detail_routes(authed_page, 100)
-        # Override release_dates route with actual certification data
-        authed_page.route("**/api/tmdb/movie/100/release_dates**", lambda r: fulfill_json(r, {
+        # Certification data arrives in the combined response's release_dates part
+        mock_movie_detail_routes(authed_page, 100, {**MOCK_MOVIE_DETAIL, "release_dates": {
             "results": [
                 {"iso_3166_1": "US", "release_dates": [{"certification": "R", "type": 3}]}
             ]
-        }))
+        }})
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         # Ant Descriptions renders as a table — check row with "Certification" label
@@ -109,7 +118,75 @@ class TestMovieDetailPage:
         expect(authed_page.get_by_role("cell", name="R", exact=True)).to_be_visible(timeout=5_000)
 
 
+    def test_movie_detail_loads_in_one_tmdb_request(self, authed_page: Page):
+        mock_movie_detail_routes(authed_page, 100)
+        seen = _detail_requests(authed_page, "movie/100")
+        authed_page.goto("/movie/100")
+        expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_role("rowheader", name="Certification")).to_be_visible()
+        # One request even under the dev build's double mount (in-flight sharing),
+        # carrying every section the page shows.
+        assert len(seen) == 1, seen
+        for part in ("reviews", "similar", "watch%2Fproviders", "release_dates", "credits", "recommendations"):
+            assert part in seen[0], (part, seen[0])
+
+    def test_movie_detail_missing_or_malformed_parts_degrade_per_section(self, authed_page: Page):
+        detail = {k: v for k, v in MOCK_MOVIE_DETAIL.items() if k not in ("reviews", "release_dates")}
+        detail.update({"similar": "oops", "watch/providers": None, "credits": {"cast": "bad"}, "videos": {}})
+        mock_movie_detail_routes(authed_page, 100, detail)
+        authed_page.goto("/movie/100")
+        expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_text("Action")).to_be_visible()
+        expect(authed_page.get_by_text("Failed to load movie details")).to_have_count(0)
+
+    def test_trailers_load_only_when_played_from_the_keyboard(self, authed_page: Page):
+        videos = {"results": [
+            {"id": "v1", "key": "KEY1", "name": "Teaser", "site": "YouTube", "type": "Trailer"},
+            {"id": "v2", "key": "KEY2", "name": "Final Trailer", "site": "YouTube", "type": "Trailer"},
+        ]}
+        mock_movie_detail_routes(authed_page, 100, {**MOCK_MOVIE_DETAIL, "videos": videos})
+        authed_page.route("https://i.ytimg.com/**", lambda r: r.fulfill(status=204))
+        authed_page.route("https://www.youtube-nocookie.com/**", lambda r: r.fulfill(status=200, body="", content_type="text/html"))
+        authed_page.goto("/movie/100")
+        teaser = authed_page.get_by_role("button", name="Play trailer: Teaser")
+        expect(teaser).to_be_visible(timeout=10_000)
+        expect(authed_page.locator("iframe")).to_have_count(0)
+
+        teaser.focus()
+        authed_page.keyboard.press("Enter")
+        expect(authed_page.locator('iframe[title="Teaser"]')).to_have_attribute(
+            "src", "https://www.youtube-nocookie.com/embed/KEY1?autoplay=1")
+        expect(authed_page.locator("iframe")).to_have_count(1)
+
+        authed_page.get_by_role("button", name="Play trailer: Final Trailer").focus()
+        authed_page.keyboard.press("Space")
+        expect(authed_page.locator('iframe[title="Final Trailer"]')).to_be_attached()
+
+    def test_movie_detail_not_found(self, authed_page: Page):
+        authed_page.route("**/api/tmdb/movie/998**", lambda r: fulfill_json(r, {"status_code": 34}, status=404))
+        authed_page.goto("/movie/998")
+        expect(authed_page.get_by_text("Movie not found")).to_be_visible(timeout=10_000)
+
+
 class TestTVDetailPage:
+    def test_tv_detail_loads_in_one_tmdb_request(self, authed_page: Page):
+        mock_tv_detail_routes(authed_page, 1396)
+        seen = _detail_requests(authed_page, "tv/1396")
+        authed_page.goto("/tv/1396")
+        expect(authed_page.get_by_text("Breaking Bad").first).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_role("heading", name="Episode Guide")).to_be_visible(timeout=10_000)
+        assert len(seen) == 1, seen
+        for part in ("aggregate_credits", "images", "reviews", "watch%2Fproviders", "similar", "videos"):
+            assert part in seen[0], (part, seen[0])
+
+    def test_tv_detail_malformed_parts_degrade_per_section(self, authed_page: Page):
+        detail = {**MOCK_TV_DETAIL, "aggregate_credits": "bad", "images": [], "reviews": None}
+        mock_tv_detail_routes(authed_page, 1396, detail)
+        authed_page.goto("/tv/1396")
+        expect(authed_page.get_by_text("Breaking Bad").first).to_be_visible(timeout=10_000)
+        expect(authed_page.get_by_text("Drama")).to_be_visible()
+        expect(authed_page.get_by_text("Failed to load TV show details")).to_have_count(0)
+
     def test_tv_detail_renders_show_name(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)
         authed_page.goto("/tv/1396")

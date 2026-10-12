@@ -17,7 +17,7 @@ import {
   type PersonalizedRecSection,
   type PersonalizedRecItem,
 } from "../api/userApi";
-import { pageVariants, IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
@@ -54,7 +54,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
           <CardLink to={path} state={{ from: "/recommendations" }} label={item.title} stopPropagation>
             {item.posterPath ? (
               <img
-                src={`${IMG_URL}${item.posterPath}`}
+                src={`${POSTER_URL}${item.posterPath}`}
                 alt=""
                 loading="lazy"
                 className="movie-poster-img"

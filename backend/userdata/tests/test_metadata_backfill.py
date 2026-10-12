@@ -200,3 +200,37 @@ class BackfillBoundsTests(_Base):
         self.assertEqual(settled, {sentinel.pk})
         self.assertTrue(entry_needs_metadata(WatchedEntry.objects.get(pk=no_genres.pk)))
         self.assertFalse(entry_needs_metadata(WatchedEntry.objects.get(pk=filled.pk)))
+
+
+class BackfillCompletenessTests(_Base):
+    """backfill_entries' return value: False when a failure left titles unfilled."""
+
+    @patch("userdata.tmdb_client._get", return_value=_details())
+    def test_clean_run_is_complete(self, _):
+        self.assertTrue(backfill_entries([self._entry(1), self._entry(2)]))
+
+    @patch("userdata.tmdb_client._get", side_effect=_http_error(404))
+    def test_not_found_is_complete(self, _):
+        self.assertTrue(backfill_entries([self._entry()]))
+
+    @patch("userdata.tmdb_client._get", side_effect=requests.Timeout())
+    def test_transient_failure_is_incomplete_and_so_is_its_backoff(self, get):
+        entry = self._entry()
+        self.assertFalse(backfill_entries([entry]))
+        self.assertFalse(backfill_entries([entry]))  # skipped while in backoff
+        self.assertEqual(get.call_count, 1)
+
+    @patch("userdata.tmdb_client._get", return_value=_details())
+    def test_store_failure_is_incomplete(self, _):
+        entry = self._entry()
+        db_down = patch.object(
+            metadata_backfill.WatchedEntry.objects, "filter", side_effect=metadata_backfill.DBError("db"),
+        )
+        with db_down, self.assertLogs("userdata.metadata_backfill", level="ERROR"):
+            self.assertFalse(backfill_entries([entry]))
+
+    @patch("userdata.tmdb_client._get", return_value=_details())
+    def test_run_cap_alone_is_complete(self, _):
+        a, b = self._entry(1), self._entry(2)
+        with patch.object(metadata_backfill, "MAX_PER_RUN", 1):
+            self.assertTrue(backfill_entries([a, b]))

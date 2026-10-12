@@ -33,10 +33,6 @@ class TestMoviesPage:
     def test_movies_page_details_button_navigates(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         mock_movie_detail_routes(authed_page, 100, MOCK_MOVIE_DETAIL)
-        authed_page.route("**/api/tmdb/movie/100/reviews**", lambda r: fulfill_json(r, {"results": [], "total_pages": 1}))
-        authed_page.route("**/api/tmdb/movie/100/similar**", lambda r: fulfill_json(r, EMPTY_RESPONSE))
-        authed_page.route("**/api/tmdb/movie/100/watch*", lambda r: fulfill_json(r, {"results": {}}))
-        authed_page.route("**/api/tmdb/movie/100/release_dates**", lambda r: fulfill_json(r, {"results": []}))
 
         authed_page.goto("/movies")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)

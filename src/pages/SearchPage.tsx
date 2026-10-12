@@ -6,6 +6,7 @@ import { EyeOutlined, EyeFilled, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";
+import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
@@ -14,7 +15,7 @@ import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import { saveSessionCache } from "../api/userApi";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
-import { pageVariants, IMG_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
@@ -102,7 +103,7 @@ function usePaginatedSearch<T extends { id: number }>(
     [query, adult]
   );
 
-  const { items, currentPage, hasMore, loading, loadingMore, loadMore, error, retry } = usePaginatedFetch<T>({
+  const { items, currentPage, hasMore, loading, loadingMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedFetch<T>({
     fetchPage,
     restore,
     restoredState,
@@ -151,7 +152,7 @@ function usePaginatedSearch<T extends { id: number }>(
     }
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { items, loading, loadingMore, hasMore, loadMore, error, retry };
+  return { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore };
 }
 
 // ── Sub-tabs ─────────────────────────────────────────────────────────────────
@@ -167,7 +168,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
       return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
@@ -177,7 +178,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
     "cinedb_search_movies",
     active,
   );
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
   if (error && !items.length) return <LoadError onRetry={retry} />;
@@ -204,7 +205,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
                   <CardLink to={`/movie/${m.id}`} label={m.title} stopPropagation>
                     {m.poster_path ? (
                       <img
-                        src={`${IMG_URL}${m.poster_path}`}
+                        src={`${POSTER_URL}${m.poster_path}`}
                         alt=""
                         loading="lazy"
                         className="movie-poster-img"
@@ -265,6 +266,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
         ))}
       </Row>
       {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
       <MarkWatchedModal
         open={pendingWatch !== null}
@@ -292,7 +294,7 @@ function TVTab({ query, adult, active }: TabProps) {
   const { isWatched, toggleWatched, theme } = useAppContext();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
       return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
@@ -302,7 +304,7 @@ function TVTab({ query, adult, active }: TabProps) {
     "cinedb_search_tv",
     active,
   );
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
   if (error && !items.length) return <LoadError onRetry={retry} />;
@@ -329,7 +331,7 @@ function TVTab({ query, adult, active }: TabProps) {
                   <CardLink to={`/tv/${t.id}`} label={t.name} stopPropagation>
                     {t.poster_path ? (
                       <img
-                        src={`${IMG_URL}${t.poster_path}`}
+                        src={`${POSTER_URL}${t.poster_path}`}
                         alt=""
                         loading="lazy"
                         className="movie-poster-img"
@@ -390,6 +392,7 @@ function TVTab({ query, adult, active }: TabProps) {
         ))}
       </Row>
       {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
       <MarkWatchedModal
         open={pendingWatch !== null}
@@ -414,7 +417,7 @@ function TVTab({ query, adult, active }: TabProps) {
 
 function PeopleTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
-  const { items, loading, loadingMore, hasMore, loadMore, error, retry } = usePaginatedSearch(
+  const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchPeople(q, p, a);
       return { results: res.data.results, totalPages: pageableTotal(res.data.total_pages) };
@@ -424,7 +427,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
     "cinedb_search_people",
     active,
   );
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
   if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
   if (error && !items.length) return <LoadError onRetry={retry} />;
@@ -440,6 +443,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
         ))}
       </Row>
       {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
     </>
   );

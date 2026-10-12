@@ -88,7 +88,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Recent Searches** — Search history dropdown (last 5 queries)
 - **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies
 - **Genre Tags** — Click any genre to filter results
-- **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll (capped at TMDB's 500-page limit)
+- **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll (capped at TMDB's 500-page limit); a failed next page shows "Couldn't load more" with Retry and stops auto-loading until you retry
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
 
 ### Detail Pages
@@ -124,6 +124,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
 - **Keyboard & Screen-Reader Friendly** — Every poster card that opens a page is a real link: Tab to it, Enter to open, Ctrl/middle-click for a new tab, with a visible focus outline in both themes; icon-only buttons are labelled
+- **Fast Pages** — Each movie/TV detail page loads in one TMDB request (`append_to_response`), identical requests in flight are shared, the Django proxy caches TMDB answers (10 min–24 h by kind), library lists load 500 rows per request, images are sized for display (`w342` grid posters, `w1280` backdrops), and trailers load the YouTube player only when you press play
 - **Honest Load & Error States** — Every page shows loading, an error with in-place Retry, the empty state, or content — a failed request is never shown as "nothing here". Detail pages degrade per section and show "not found" for unknown ids
 - **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions, shown only after the server confirms; a double-click sends one request and shows one toast
 - **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
@@ -196,15 +197,16 @@ backend/
 │   │                            #   SafeTokenRefreshView (guards against a since-deleted token owner),
 │   │                            #   revoke-all-sessions on password change/reset
 │   ├── health_views.py          # /api/health/ liveness check (never throttled)
-│   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout
+│   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout;
+│   │                            #   200s cached in their own `tmdb` cache alias (TTL by path, X-Cache header)
 │   ├── logging.py               # RedactingFormatter: strips the TMDB API key from log output
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list) + bulk import
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + bulk import + TMDB mirror
 │   ├── lists_views.py           # user lists + list items CRUD (incl. PATCH rename)
 │   ├── tmdb_views.py            # TMDB OAuth (request token, session, disconnect)
-│   ├── stats_views.py           # stats aggregation + genre cache
-│   ├── social_views.py          # episode progress + followed people (paginated list) + recs
+│   ├── stats_views.py           # stats aggregation + genre cache (cold lookup time-boxed, fallback cached briefly)
+│   ├── social_views.py          # episode progress + followed people (paginated list) + recs (time-budgeted)
 │   ├── urls.py                  # /api/ endpoint routing
 │   ├── recommendations.py       # K-means genre clustering + followed-people recommendations;
 │   │                            #   _compute_for_you / _compute_personalized are standalone fns
@@ -245,6 +247,8 @@ src/
 │   ├── HeroBanner.tsx           # Trending title hero with backdrop and CTA
 │   ├── SkeletonCard.tsx         # Skeleton placeholder for media cards
 │   ├── LoadError.tsx            # Shared failed-load / not-found state (antd Result) with optional in-place Retry
+│   ├── LoadMoreError.tsx        # Inline "Couldn't load more" + Retry under an infinite-scroll grid
+│   ├── TrailerEmbed.tsx         # YouTube thumbnail + play button; youtube-nocookie iframe only after activation
 │   ├── CardLink.tsx             # Real router <Link> for any card that opens a page (Tab/Enter, new tab,
 │   │                            #   focus outline); optional onNavigate for click-time router state
 │   ├── PosterPlaceholder.tsx    # Real DOM "No Image" fallback (not an SVG image) so the text
@@ -341,19 +345,20 @@ src/
 │   │                            #   shared by LoginPage and App's signed-in auth-page redirect
 │   ├── apiError.ts              # getApiError(error) — normalizes axios/DRF errors to a string
 │   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
-│   │                            #   (falls back to a plain array response transparently)
+│   │                            #   (optional pageSize, up to 500; falls back to a plain array response)
+│   ├── appended.ts              # resultsOf/arrayOr/objectOr shape guards for append_to_response parts
 │   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres; falls back
 │   │                            #   to the unfiltered list if that would empty the result — used by
 │   │                            #   Movie/TV detail pages' Recommendations and Similar sections
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
 │                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
-│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, BACKDROP_URL,
+│   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, POSTER_URL (w342), BACKDROP_URL (w1280),
 │   │                            #   RATING_GOLD, WATCHED_GREEN — shared across pages
 │   ├── genres.ts                # Static TMDB genre list for filter UI
 │   ├── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
 │   └── media.ts                 # resolveAvatarUrl() — resolves a user's relative avatar_url against
-│                                #   REACT_APP_MEDIA_BASE_URL (empty/same-origin in prod, :8000 in dev)
+│                                #   REACT_APP_MEDIA_BASE_URL (empty = same-origin; dev goes through CRA's proxy)
 ├── theme/
 │   └── antdTheme.ts             # Ant Design ConfigProvider tokens: dark / light
 └── types/
@@ -415,7 +420,7 @@ python backend/manage.py compute_recommendations
 npm run dev
 ```
 
-The React app runs at `http://localhost:3000`. The Django API runs at `http://localhost:8000`.
+The React app runs at `http://localhost:3000`. The Django API runs at `http://localhost:8000`, and the app reaches it same-origin: CRA's dev `proxy` (`package.json`) forwards `/api` and `/media` to `127.0.0.1:8000`, so there are no CORS preflights. Restart `npm run dev` after changing `proxy`.
 
 > **Note:** Both must be running for the app to work fully. `npm run dev` starts them together using `concurrently` (and first runs `kill-port 3000 8000` to clear anything left over from a previous run).
 
@@ -596,7 +601,9 @@ src/hooks/__tests__/
 ├── useRatings.test.ts
 ├── useLists.test.ts
 ├── useToast.test.tsx            # Memoized, identical messages deduped by key
-└── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch)
+├── useInfiniteScroll.test.tsx    # A failed page is requested once, not in a loop, until Retry
+├── sessionGeneration.test.tsx    # Library/notification responses from a signed-out session are dropped
+└── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch), load-more error
 
 src/context/__tests__/
 ├── AppContext.test.tsx
@@ -609,7 +616,8 @@ src/api/__tests__/
                                   #   logout during refresh, retry-on-500 for safe methods only,
                                   #   X-Timezone header sent (omitted if Intl fails)
 ├── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
-└── tmdb.test.ts                  # Token attached; a 401 retries once without it; never logs out
+└── tmdb.test.ts                  # Token attached; a 401 retries once without it; never logs out;
+                                  #   identical in-flight GETs shared, failures not kept
 
 src/utils/__tests__/
 ├── apiError.test.ts              # Object bodies only; HTML/string bodies → fallback; network → connection message
@@ -619,6 +627,7 @@ src/utils/__tests__/
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
+├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
 ├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
 ├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
@@ -627,7 +636,9 @@ src/utils/__tests__/
 └── tmdbPages.test.tsx            # TMDB's 500-page cap
 
 src/components/__tests__/
-└── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
+├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
+├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
+└── TrailerEmbed.test.tsx         # No iframe until the thumbnail is activated
 ```
 
 ```bash
@@ -660,7 +671,10 @@ backend/userdata/tests/
 ├── test_throttle_identity.py       # Spoofed X-Forwarded-For, shared-cache counters under load
 ├── test_session_throttle.py        # Refresh/logout on their own token_refresh scope, not anon 300/day
 ├── test_health.py                  # Health check never throttled
-├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout, per-user throttle
+├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout, per-user throttle,
+│                                   #   response cache (TTL tiers, credential bypass, errors never cached)
+├── test_pagination.py              # Library lists accept page_size up to 500
+├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
 │                                   #   connect bound to the requesting user (single-use token), reconnect revokes
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
@@ -672,9 +686,9 @@ backend/userdata/tests/
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
-├── test_followed_people.py         # Follow/unfollow, ownership
+├── test_followed_people.py         # Follow/unfollow, ownership, followed-people recs budget, 404 = no credits
 ├── test_episode_progress.py        # Episode progress CRUD, ownership
-├── test_profile.py                 # Profile GET/PATCH
+├── test_profile.py                 # Profile GET/PATCH, accounts with no email
 ├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins
 ├── test_e2e_mock_shapes.py         # Python e2e mock records match the serializers and a real /api/stats/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
@@ -708,6 +722,7 @@ e2e/
 ├── double-submit.spec.ts  # Register and list create/edit submit once
 ├── search-url.spec.ts     # Search term and tab survive reload and a sign-in round trip
 ├── route-ids.spec.ts      # Invalid/traversal ids show not-found and request nothing
+├── session-expiry.spec.ts # Rejected refresh → /login, signing in returns to the same page
 ├── untrusted-links.spec.ts # A javascript: TMDB homepage is never a link
 └── responsive.spec.ts     # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
                             #   bottom-nav no-overflow at 320px, notification popup on-screen +

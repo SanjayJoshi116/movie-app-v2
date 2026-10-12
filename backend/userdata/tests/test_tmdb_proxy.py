@@ -5,7 +5,9 @@ from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth.models import User
-from django.core.cache import cache
+from django.conf import settings
+from django.core.cache import cache, caches
+from django.db import Error as DatabaseError
 from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -100,3 +102,126 @@ class TmdbProxyTimeBudgetTests(SimpleTestCase):
     def test_old_configuration_would_have_exceeded_the_budget(self):
         old = tmdb_proxy_views._worst_case_seconds(Retry(total=4, connect=4, read=4, backoff_factor=0.5), 20, 20)
         self.assertGreater(old, 30)
+
+
+@patch("userdata.tmdb_proxy_views._session.get")
+class TmdbProxyCacheTests(APITestCase):
+    """Successful responses are reused across requests and users (tmdb-proxy-cache spec)."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _ok(self, mock_get, body=None, status_code=200):
+        mock_get.return_value = Mock(status_code=status_code, **{"json.return_value": body or {"id": 550}})
+
+    def test_repeat_request_is_served_from_the_cache(self, mock_get):
+        self._ok(mock_get, {"id": 550, "title": "Fight Club"})
+        first = self.client.get("/api/tmdb/movie/550?append_to_response=credits")
+        second = self.client.get("/api/tmdb/movie/550?append_to_response=credits")
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertEqual((second.status_code, second.data), (200, {"id": 550, "title": "Fight Club"}))
+        self.assertEqual((first["X-Cache"], second["X-Cache"]), ("MISS", "HIT"))
+
+    def test_different_params_are_fetched_separately(self, mock_get):
+        self._ok(mock_get)
+        self.client.get("/api/tmdb/discover/movie?page=1")
+        self.client.get("/api/tmdb/discover/movie?page=2")
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_client_api_key_does_not_split_or_poison_the_key(self, mock_get):
+        self._ok(mock_get)
+        self.client.get("/api/tmdb/movie/550")
+        self.client.get("/api/tmdb/movie/550?api_key=abc")
+        self.assertEqual(mock_get.call_count, 1)
+
+    def test_error_responses_are_not_cached(self, mock_get):
+        for code in (404, 429, 500):
+            mock_get.reset_mock()
+            self._ok(mock_get, {"status_code": 34}, status_code=code)
+            self.assertEqual(self.client.get(f"/api/tmdb/movie/{code}").status_code, code)
+            self._ok(mock_get)
+            self.assertEqual(self.client.get(f"/api/tmdb/movie/{code}").status_code, 200)
+            self.assertEqual(mock_get.call_count, 2, code)
+
+    def test_upstream_failure_is_not_cached(self, mock_get):
+        mock_get.side_effect = requests.ConnectionError("boom")
+        self.assertEqual(self.client.get("/api/tmdb/movie/550").status_code, 502)
+        mock_get.side_effect = None
+        self._ok(mock_get)
+        self.assertEqual(self.client.get("/api/tmdb/movie/550").status_code, 200)
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_session_id_bypasses_the_cache(self, mock_get):
+        self._ok(mock_get)
+        for params in ({"session_id": "S"}, {"guest_session_id": "G"}):
+            mock_get.reset_mock()
+            a = self.client.get("/api/tmdb/movie/550/account_states", params)
+            self.client.get("/api/tmdb/movie/550/account_states", params)
+            self.assertEqual(mock_get.call_count, 2, params)
+            self.assertEqual(a["X-Cache"], "BYPASS")
+        key = tmdb_proxy_views._cache_key("movie/550/account_states", [("session_id", "S")])
+        self.assertIsNone(caches["tmdb"].get(key))
+
+    def test_account_paths_bypass_the_cache(self, mock_get):
+        self._ok(mock_get)
+        self.client.get("/api/tmdb/account")
+        self.client.get("/api/tmdb/account")
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_entries_are_stored_with_their_tier_ttl(self, mock_get):
+        self._ok(mock_get)
+        with patch.object(caches["tmdb"], "set", wraps=caches["tmdb"].set) as cache_set:
+            for path in ("trending/movie/week", "genre/movie/list", "movie/550"):
+                self.client.get(f"/api/tmdb/{path}")
+        self.assertEqual([c.args[2] for c in cache_set.call_args_list], [
+            tmdb_proxy_views.LIST_TTL, tmdb_proxy_views.STATIC_TTL, tmdb_proxy_views.DETAIL_TTL,
+        ])
+
+    def test_cache_hits_still_count_against_the_throttle(self, mock_get):
+        self._ok(mock_get)
+        with patch.object(tmdb_proxy_views.TmdbProxyThrottle, "rate", "2/min", create=True):
+            codes = [self.client.get("/api/tmdb/movie/550").status_code for _ in range(3)]
+        self.assertEqual(codes, [200, 200, 429])
+        self.assertEqual(mock_get.call_count, 1)
+
+    def test_cache_backend_errors_fall_through_to_tmdb(self, mock_get):
+        self._ok(mock_get)
+        with patch.object(caches["tmdb"], "get", side_effect=DatabaseError("no table")), \
+                patch.object(caches["tmdb"], "set", side_effect=DatabaseError("no table")):
+            res = self.client.get("/api/tmdb/movie/550")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(mock_get.call_count, 1)
+
+
+class TmdbProxyCacheTtlTests(SimpleTestCase):
+    def test_lifetime_tiers(self):
+        ttl = tmdb_proxy_views.cache_ttl
+        for path in ("trending/all/day", "discover/tv", "search/movie", "movie/popular", "movie/now_playing",
+                     "movie/upcoming", "movie/top_rated", "tv/airing_today", "tv/on_the_air", "person/popular"):
+            self.assertEqual(ttl(path), tmdb_proxy_views.LIST_TTL, path)
+        for path in ("genre/movie/list", "genre/tv/list", "configuration", "configuration/languages"):
+            self.assertEqual(ttl(path), tmdb_proxy_views.STATIC_TTL, path)
+        for path in ("movie/550", "movie/550/similar", "tv/1399/season/1", "person/287", "movie/popularity"):
+            self.assertEqual(ttl(path), tmdb_proxy_views.DETAIL_TTL, path)
+        self.assertLessEqual(tmdb_proxy_views.LIST_TTL, 10 * 60)
+        self.assertLessEqual(tmdb_proxy_views.STATIC_TTL, 24 * 60 * 60)
+        self.assertLessEqual(tmdb_proxy_views.DETAIL_TTL, 6 * 60 * 60)
+
+
+class TmdbProxyCacheIsolationTests(SimpleTestCase):
+    def test_filling_the_proxy_cache_never_evicts_default_entries(self):
+        caches["default"].set("throttle_user_1", [1, 2, 3], 300)
+        self.addCleanup(caches["default"].delete, "throttle_user_1")
+        limit = settings.CACHES["tmdb"]["OPTIONS"]["MAX_ENTRIES"]
+        for i in range(limit + 50):
+            caches["tmdb"].set(f"tmdbproxy:{i}", {"i": i}, 60)
+        caches["tmdb"].clear()
+        self.assertEqual(caches["default"].get("throttle_user_1"), [1, 2, 3])
+
+    def test_production_uses_its_own_bounded_table(self):
+        prod = settings.TMDB_CACHE_PRODUCTION
+        self.assertEqual(prod["BACKEND"], "django.core.cache.backends.db.DatabaseCache")
+        self.assertNotEqual(prod["LOCATION"], settings.PRODUCTION_CACHE["LOCATION"])
+        self.assertTrue(prod["OPTIONS"]["MAX_ENTRIES"])
+        self.assertNotEqual(settings.TMDB_CACHE_DEV["LOCATION"], settings.CACHES["default"].get("LOCATION", ""))

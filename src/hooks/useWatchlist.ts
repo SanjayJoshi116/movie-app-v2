@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
-import userApi from "../api/userApi";
-import { fetchAllPages } from "../utils/fetchAllPages";
+import userApi, { currentSessionGeneration, isCurrentSession } from "../api/userApi";
+import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import type { WatchlistEntry, WatchlistEntryDTO, WatchlistInput } from "../types";
 
@@ -19,9 +19,12 @@ export function useWatchlist() {
 
   const reload = useCallback(async () => {
     if (!isAuthenticated) return;
+    // A response that lands after sign-out belongs to the previous account.
+    const gen = currentSessionGeneration();
     setIsLoading(true);
     try {
-      const data = await fetchAllPages<WatchlistEntryDTO>(userApi, "/watchlist/");
+      const data = await fetchAllPages<WatchlistEntryDTO>(userApi, "/watchlist/", { pageSize: LIBRARY_PAGE_SIZE });
+      if (!isCurrentSession(gen)) return;
       const map: Record<string, number> = {};
       const entries: WatchlistEntry[] = data.map((item) => {
         map[mkKey(item.mediaId, item.mediaType)] = item.id;
@@ -38,11 +41,12 @@ export function useWatchlist() {
       setWatchlist(entries);
       setError(null);
     } catch (err) {
+      if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(gen)) setIsLoading(false);
     }
   }, [isAuthenticated]);
 
@@ -60,6 +64,7 @@ export function useWatchlist() {
   const addRaw = useCallback(async (entry: WatchlistInput) => {
     if (!isAuthenticated) return;
     if (watchlistRef.current.some((i) => i.id === entry.id && i.type === entry.type)) return;
+    const gen = currentSessionGeneration();
     const { data } = await userApi.post<WatchlistEntryDTO>("/watchlist/", {
       mediaId: entry.id,
       mediaType: entry.type,
@@ -67,6 +72,7 @@ export function useWatchlist() {
       posterPath: entry.posterPath,
       voteAverage: entry.voteAverage,
     });
+    if (!isCurrentSession(gen)) return;
     dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
     setWatchlist((prev) => {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
@@ -78,14 +84,18 @@ export function useWatchlist() {
     if (!isAuthenticated) return;
     const dbId = dbIdMap.current[mkKey(id, type)];
     if (dbId == null) return;
+    const gen = currentSessionGeneration();
     await userApi.delete(`/watchlist/${dbId}/`);
+    if (!isCurrentSession(gen)) return;
     delete dbIdMap.current[mkKey(id, type)];
     setWatchlist((prev) => prev.filter((i) => !(i.id === id && i.type === type)));
   }, [isAuthenticated]);
 
   const clearAll = useCallback(async () => {
     if (!isAuthenticated) return;
+    const gen = currentSessionGeneration();
     await userApi.delete("/watchlist/clear/");
+    if (!isCurrentSession(gen)) return;
     dbIdMap.current = {};
     setWatchlist([]);
   }, [isAuthenticated]);

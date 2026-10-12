@@ -333,3 +333,174 @@ class CrossProcessStatusTests(_RefreshBase):
         for url in self.URLS:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).data["status"], "ready")
+
+
+def _http_error(status_code):
+    response = requests.Response()
+    response.status_code = status_code
+    return requests.HTTPError(f"{status_code} error", response=response)
+
+
+class NotFoundIsSettledTests(_RefreshBase):
+    """A TMDB 404 is an answer (the title or person is gone), not an outage."""
+
+    def _details(self, failing_id, error):
+        def details(media_id, media_type):
+            if media_id == failing_id:
+                raise error
+            return {"genre_ids": [18], "top_cast": [{"id": 5, "name": "A"}]}
+        return patch.object(recommendations.tmdb_client, "get_details_with_cast", side_effect=details)
+
+    def test_404_title_is_cached_empty_and_not_refetched(self):
+        entries = list(WatchedEntry.objects.filter(user=self.user))
+        health = recommendations.FetchHealth()
+        with self._details(1, _http_error(404)) as details:
+            rows = recommendations._fill_media_cache(entries, health)
+        self.assertFalse(health.failed)
+        self.assertEqual((rows[(1, "movie")].genre_ids, rows[(1, "movie")].top_cast), ([], []))
+        self.assertEqual(details.call_count, 4)
+
+        with self._details(1, _http_error(404)) as details:
+            recommendations._fill_media_cache(entries, recommendations.FetchHealth())
+        details.assert_not_called()  # all fresh now, the 404 title included
+
+    def test_5xx_title_stores_nothing_and_marks_failed(self):
+        entries = list(WatchedEntry.objects.filter(user=self.user))
+        health = recommendations.FetchHealth()
+        with self._details(1, _http_error(503)):
+            rows = recommendations._fill_media_cache(entries, health)
+        self.assertTrue(health.failed)
+        self.assertIsNone(rows[(1, "movie")])
+        self.assertFalse(TMDBMediaCache.objects.filter(media_id=1, media_type="movie").exists())
+
+    def _tmdb_with_404(self, path_part):
+        ok = _tmdb_ok()
+        ids = itertools.count(20_000)
+
+        def get(path, *a, **k):
+            if path_part in path:
+                raise _http_error(404)
+            return {
+                "results": [{"id": next(ids), "title": "x", "vote_average": 7, "media_type": "movie"}],
+                "cast": [{"id": next(ids), "title": "x", "vote_average": 7, "media_type": "movie"}],
+            }
+        return [p for p in ok if p.attribute != "_get"] + [
+            patch.object(recommendations.tmdb_client, "_get", side_effect=get),
+        ]
+
+    def test_404_similar_titles_do_not_mark_failed(self):
+        self._with(self._tmdb_with_404("/similar"))
+        health = recommendations.FetchHealth()
+        recommendations._compute_for_you(self.user, health)
+        self.assertFalse(health.failed)
+
+    def test_404_actor_credits_do_not_mark_failed(self):
+        self._with(self._tmdb_with_404("/person/"))
+        health = recommendations.FetchHealth()
+        recommendations._compute_for_you(self.user, health)
+        self.assertFalse(health.failed)
+
+    def test_5xx_similar_titles_still_mark_failed(self):
+        ok = [p for p in _tmdb_ok() if p.attribute != "_get"]
+        self._with([*ok, patch.object(recommendations.tmdb_client, "_get", side_effect=_http_error(502))])
+        health = recommendations.FetchHealth()
+        recommendations._compute_for_you(self.user, health)
+        self.assertTrue(health.failed)
+
+    def test_smaller_result_is_saved_when_only_404s_happened(self):
+        stored = [_section(f"old-{i}") for i in range(30)]
+        UserRecommendationCache.objects.create(user=self.user, for_you_json=stored, personalized_json=[])
+        self._with(self._tmdb_with_404("/person/"))
+        recommendations._refresh_cache(self.user)
+        self.assertNotEqual(UserRecommendationCache.objects.get(user=self.user).for_you_json, stored)
+
+
+class BackfillHealthTests(_RefreshBase):
+    def setUp(self):
+        super().setUp()
+        WatchedEntry.objects.filter(user=self.user, media_id=1).update(genre_ids=[])
+
+    def test_incomplete_backfill_marks_personalized_compute_failed(self):
+        self._with([p for p in _tmdb_ok() if p.attribute != "backfill_entries"] + [
+            patch.object(recommendations, "backfill_entries", return_value=False),
+        ])
+        health = recommendations.FetchHealth()
+        recommendations._compute_personalized(self.user, health)
+        self.assertTrue(health.failed)
+
+    def test_complete_backfill_leaves_health_alone(self):
+        self._with([p for p in _tmdb_ok() if p.attribute != "backfill_entries"] + [
+            patch.object(recommendations, "backfill_entries", return_value=True),
+        ])
+        health = recommendations.FetchHealth()
+        recommendations._compute_personalized(self.user, health)
+        self.assertFalse(health.failed)
+
+    def test_incomplete_backfill_keeps_a_larger_stored_result(self):
+        stored = [_section(f"old-{i}") for i in range(30)]
+        UserRecommendationCache.objects.create(user=self.user, for_you_json=stored, personalized_json=[])
+        self._with([
+            patch.object(recommendations, "backfill_entries", return_value=False),
+            patch.object(recommendations, "_compute_for_you", return_value=[_section("trending")]),
+        ])
+        with self.assertLogs("userdata.recommendations", level="WARNING"):
+            recommendations._refresh_cache(self.user)
+        self.assertEqual(UserRecommendationCache.objects.get(user=self.user).for_you_json, stored)
+
+
+class OwnStampTests(_RefreshBase):
+    URLS = ("/api/recommendations/for-you/", "/api/recommendations/personalized/")
+
+    def setUp(self):
+        super().setUp()
+        recommendations._own_stamp.clear()
+        self.addCleanup(recommendations._own_stamp.clear)
+        self.client.force_authenticate(user=self.user)
+        self.row = UserRecommendationCache.objects.create(
+            user=self.user, for_you_json=[_section("a")], personalized_json=[_section("b")],
+        )
+
+    def _stamp(self):
+        self.row.refresh_from_db()
+        return self.row.refreshing_since
+
+    def test_finish_keeps_a_stamp_another_process_wrote_meanwhile(self):
+        recommendations.request_refresh(self.user.id, rerun_if_running=False)
+        theirs = timezone.now() + timedelta(seconds=1)  # another process started a refresh
+        UserRecommendationCache.objects.filter(pk=self.row.pk).update(refreshing_since=theirs)
+
+        recommendations._finish_refresh(self.user.id)
+
+        self.assertEqual(self._stamp(), theirs)
+        for url in self.URLS:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).data["status"], "pending")
+
+    def test_finish_keeps_an_earlier_stamp_another_process_wrote_meanwhile(self):
+        recommendations.request_refresh(self.user.id, rerun_if_running=False)
+        theirs = self._stamp() - timedelta(microseconds=1)  # same instant on a coarse clock
+        UserRecommendationCache.objects.filter(pk=self.row.pk).update(refreshing_since=theirs)
+        recommendations._finish_refresh(self.user.id)
+        self.assertEqual(self._stamp(), theirs)
+
+    def test_lone_refresh_clears_its_own_stamp(self):
+        recommendations.request_refresh(self.user.id, rerun_if_running=False)
+        self.assertIsNotNone(self._stamp())
+        recommendations._finish_refresh(self.user.id)
+        self.assertIsNone(self._stamp())
+        self.assertNotIn(self.user.id, recommendations._own_stamp)
+
+    def test_follow_up_run_restamps(self):
+        recommendations.request_refresh(self.user.id, rerun_if_running=True)
+        old = timezone.now() - timedelta(minutes=9)
+        UserRecommendationCache.objects.filter(pk=self.row.pk).update(refreshing_since=old)
+        recommendations._own_stamp[self.user.id] = old
+        recommendations.request_refresh(self.user.id, rerun_if_running=True)  # queues a follow-up
+
+        recommendations._finish_refresh(self.user.id)  # hands off
+
+        new = self._stamp()
+        self.assertGreater(new, old)
+        self.assertEqual(recommendations._own_stamp[self.user.id], new)
+        recommendations._finish_refresh(self.user.id)
+        self.assertIsNone(self._stamp())

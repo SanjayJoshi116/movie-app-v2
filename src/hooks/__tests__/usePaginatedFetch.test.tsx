@@ -73,6 +73,46 @@ describe("usePaginatedFetch", () => {
     expect(result.current.currentPage).toBe(1);
   });
 
+  it("stops loading more after a failed page until retryLoadMore", async () => {
+    const fetchPage = jest.fn()
+      .mockResolvedValueOnce(page([1, 2]))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce(page([3, 4]));
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }), { wrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.loadMoreError).toBeInstanceOf(Error);
+    expect(result.current.items).toHaveLength(2);
+
+    await act(async () => { await result.current.loadMore(); });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+
+    await act(async () => { await result.current.retryLoadMore(); });
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+    expect(fetchPage).toHaveBeenLastCalledWith(2);
+    expect(result.current.items.map((i) => i.id)).toEqual([1, 2, 3, 4]);
+    expect(result.current.loadMoreError).toBeNull();
+  });
+
+  it("clears a load-more failure when the query changes", async () => {
+    const fetchA = jest.fn()
+      .mockResolvedValueOnce(page([1, 2]))
+      .mockRejectedValueOnce(new Error("down"));
+    const fetchB = jest.fn().mockResolvedValue(page([10]));
+    const { result, rerender } = renderHook(
+      ({ fetchPage }) => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }),
+      { wrapper, initialProps: { fetchPage: fetchA } },
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.loadMoreError).toBeInstanceOf(Error);
+
+    rerender({ fetchPage: fetchB });
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 10 }]));
+    expect(result.current.loadMoreError).toBeNull();
+  });
+
   it("seeds restored state without fetching or clearing it", async () => {
     const fetchPage = jest.fn();
     const restore = { isReturning: true, savedLoadedPages: 3, savedScrollY: 0 };

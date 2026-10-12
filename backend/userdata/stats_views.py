@@ -3,6 +3,7 @@ import time as _time
 from collections import Counter
 from datetime import date, timedelta
 
+import requests
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,17 +17,31 @@ logger = logging.getLogger(__name__)
 
 _genre_name_cache: dict[int, str] = {}
 _genre_cache_ts: float = 0.0
+_genre_cache_ttl: float = 0.0
 _GENRE_CACHE_TTL = 86400  # 24 hours
+# After a failed lookup the built-in names are used, and TMDB is tried again
+# after this long instead of after a full day.
+_GENRE_FALLBACK_TTL = 300
+# (connect, read) per genre call. The two calls run back to back on a cold
+# cache, so 2 * (connect + read) must stay well under gunicorn's --timeout
+# (docker-entrypoint.sh); test_stats_genres pins the margin.
+GENRE_LOOKUP_TIMEOUT = (3.05, 5)
 
 
 def _get_cached_genre_names() -> dict[int, str]:
-    global _genre_name_cache, _genre_cache_ts
-    if not _genre_name_cache or (_time.time() - _genre_cache_ts) > _GENRE_CACHE_TTL:
+    global _genre_name_cache, _genre_cache_ts, _genre_cache_ttl
+    if not _genre_name_cache or (_time.time() - _genre_cache_ts) > _genre_cache_ttl:
         try:
-            _genre_name_cache = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
-            _genre_cache_ts = _time.time()
-        except TypeError:
-            pass
+            _genre_name_cache = {
+                **tmdb_client.get_genre_names("movie", GENRE_LOOKUP_TIMEOUT, fallback=False),
+                **tmdb_client.get_genre_names("tv", GENRE_LOOKUP_TIMEOUT, fallback=False),
+            }
+            _genre_cache_ttl = _GENRE_CACHE_TTL
+        except (requests.RequestException, ValueError, KeyError, TypeError) as e:
+            logger.warning("Genre names lookup failed, using built-in names: %s", type(e).__name__)
+            _genre_name_cache = dict(tmdb_client.STATIC_GENRE_NAMES)
+            _genre_cache_ttl = _GENRE_FALLBACK_TTL
+        _genre_cache_ts = _time.time()
     return _genre_name_cache
 
 

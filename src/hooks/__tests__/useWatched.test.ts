@@ -6,6 +6,9 @@ import { AuthContext } from "../../context/AuthContext";
 import type { WatchedInput } from "../../types";
 
 jest.mock("../../api/userApi", () => ({
+  // One session throughout: the stale-session guard is covered in sessionGeneration.test.tsx.
+  currentSessionGeneration: () => 0,
+  isCurrentSession: () => true,
   __esModule: true,
   default: {
     get: jest.fn(),

@@ -21,10 +21,11 @@ import { WatchProviders } from "./WatchProviders";
 import { MediaCardGrid } from "./MediaCardGrid";
 import CardLink from "./CardLink";
 import { ReviewsSection } from "./ReviewsSection";
+import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
-import { IMG_URL, BACKDROP_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
 interface ReleaseDateEntry {
@@ -339,13 +340,7 @@ const MovieDetails = ({ movie }: Props) => {
             <Row gutter={[16, 16]}>
               {videos.results.filter((v) => v.type === "Trailer").map((video) => (
                 <Col key={video.id} xs={24} md={12}>
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${video.key}`}
-                    title={video.name}
-                    className="embed-frame"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+                  <TrailerEmbed videoKey={video.key} name={video.name} />
                   <Typography.Text style={{ display: "block", marginTop: 4, fontSize: FONT_SIZE.caption }}>{video.name}</Typography.Text>
                 </Col>
               ))}
@@ -363,7 +358,7 @@ const MovieDetails = ({ movie }: Props) => {
                   <Col key={image.file_path} xs={12} sm={8} md={6}>
                     <Image
                       src={`${IMG_URL}${image.file_path}`}
-                      preview={{ src: `${BACKDROP_URL}${image.file_path}` }}
+                      preview={{ src: `${BACKDROP_ORIGINAL_URL}${image.file_path}` }}
                       alt="Backdrop"
                       className="backdrop-img"
                       style={{ borderRadius: 8 }}
