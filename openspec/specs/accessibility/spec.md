@@ -12,10 +12,14 @@ reachable with Tab, SHALL open its page when Enter is pressed, and SHALL be
 exposed to assistive technology as a link with the title, person's or list's name as
 its accessible name. Opening it with a modifier click (Ctrl/Cmd-click or
 middle-click) SHALL open the page in a new tab. This applies to the
-recommendation, similar and credit grids, cast cards, the Home "Recently
-Watched" strip, Calendar release cards, person cards, library item cards,
-Search's movie and TV result cards, the Recommendations and Following pages'
-recommendation cards, and the Lists page's list cards. There are no exceptions.
+Movies, TV and Anime browse grid cards, the recommendation, similar and credit
+grids, cast cards, the Home "Recently Watched" strip, Calendar release cards,
+person cards, library item cards, Search's movie and TV result cards, the
+Recommendations and Following pages' recommendation cards, and the Lists page's
+list cards. The Home and Anime hero's "View Details" control and each item in
+the notification dropdown SHALL also be links to the title's page. There are no
+exceptions. Opening a browse grid card or the hero with a plain click or Enter
+SHALL still save the browse state that Back restores.
 
 #### Scenario: Keyboard opens a similar title
 - **WHEN** a keyboard user on a movie's detail page tabs to a card in "Similar" and presses Enter
@@ -36,6 +40,18 @@ recommendation cards, and the Lists page's list cards. There are no exceptions.
 #### Scenario: Search result in a new tab
 - **WHEN** the user Ctrl-clicks a movie in Search results
 - **THEN** the movie's detail page opens in a new tab and the search stays put
+
+#### Scenario: Browse card in a new tab
+- **WHEN** the user middle-clicks a movie poster in the Movies grid
+- **THEN** the movie's detail page opens in a new tab and the grid keeps its loaded pages and scroll position
+
+#### Scenario: Browse card from the keyboard
+- **WHEN** a keyboard user tabs to a TV show's poster on the TV page and presses Enter
+- **THEN** the show's detail page opens, and Back returns to the TV page with the same category and scroll position
+
+#### Scenario: Notification item is a link
+- **WHEN** a screen reader reaches an item in the open notification dropdown
+- **THEN** it is announced as a link to that title's page
 
 ### Requirement: Cards with their own buttons keep them separate
 On a card that also contains buttons (follow, mark watched, remove), the card's
@@ -75,3 +91,14 @@ The control that opens the profile dialog and the Sign Out control SHALL be reac
 #### Scenario: Sign Out is announced
 - **WHEN** a screen reader reaches the sidebar's sign-out icon button
 - **THEN** it is announced as "Sign out"
+
+### Requirement: The activity heatmap is keyboard-readable
+The Stats activity heatmap SHALL be reachable with a single Tab stop. While it has focus, the arrow keys SHALL move between days following the grid (columns are weeks and rows are weekdays, so Up/Down move one day and Left/Right one week), staying within the shown days, and the focused day's date and count SHALL be shown visibly and announced to assistive technology. Leaving the heatmap with Tab SHALL NOT require passing through each day.
+
+#### Scenario: Reading a day from the keyboard
+- **WHEN** a keyboard user tabs to the heatmap and presses Up
+- **THEN** the previous day is highlighted and its date and count are shown and announced
+
+#### Scenario: Tabbing past
+- **WHEN** a keyboard user tabs into the heatmap and presses Tab again
+- **THEN** focus moves to the next control after the heatmap

@@ -38,8 +38,12 @@ function FollowingPage() {
     getTitle: (p) => p.name,
   });
 
+  // Keyed on who is followed, not how many: following one person and
+  // unfollowing another must still refetch.
+  const followedKey = followed.map((p) => p.personId).sort((a, b) => a - b).join(",");
+
   useEffect(() => {
-    if (followed.length === 0) { setRecSections([]); setRecError(false); return; }
+    if (!followedKey) { setRecSections([]); setRecError(false); return; }
     let cancelled = false;
     setRecError(false);
     fetchFollowedPeopleRecommendations()
@@ -47,7 +51,7 @@ function FollowingPage() {
       // Say it failed rather than quietly dropping the section.
       .catch(() => { if (!cancelled) { setRecSections([]); setRecError(true); } });
     return () => { cancelled = true; };
-  }, [followed.length, recRetry]);
+  }, [followedKey, recRetry]);
 
   if (error) {
     return <LoadError title="Couldn't load who you follow" onRetry={retry} />;
@@ -122,7 +126,7 @@ function FollowingPage() {
                 Recommended From People You Follow
               </Title>
               {recSections.map((section) => (
-                <SectionRow key={section.key} section={section} navigate={navigate} />
+                <SectionRow key={section.key} section={section} navigate={navigate} from="/following" />
               ))}
             </>
           )}

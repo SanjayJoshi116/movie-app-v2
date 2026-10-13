@@ -33,7 +33,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
 - **Responsive, 3-tier layout** — full sidebar (desktop), collapsible icon rail (tablet), bottom nav (phone) — no JS width checks, CSS-only breakpoints
-- **Four automated test suites**: Jest, Django pytest, Playwright (TS, ×2 viewports) and pytest-playwright, plus `tsc`, `eslint`, `ruff` and a `makemigrations --check`. All of it runs in CI on every push (`## Testing`)
+- **Four automated test suites**: Jest, Django pytest, Playwright (TS, ×2 viewports) and pytest-playwright, plus `tsc`, `eslint`, `ruff`, a `makemigrations --check` and a Docker image build with an nginx header check. All of it runs in CI on every push (`## Testing`)
 
 ---
 
@@ -304,7 +304,8 @@ src/
 │   ├── useLocalStorage.ts       # Generic localStorage hook
 │   ├── useValidId.ts            # `:id` route param as a TMDB id (positive int ≤ INT32_MAX) or null;
 │   │                            #   detail/person pages show not-found instead of building a proxy path
-│   ├── useRecentSearches.ts     # Last 5 searches
+│   ├── useRecentSearches.ts     # Last 5 searches (shared by the Sidebar and BottomNav search boxes)
+│   ├── useActionIconColor.ts    # Idle watched/watchlist icon color: gold (dark) / theme text color (light)
 │   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
 │                                #   used by Sidebar.tsx and BottomNav.tsx
 ├── pages/
@@ -350,11 +351,15 @@ src/
 │   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres; falls back
 │   │                            #   to the unfiltered list if that would empty the result — used by
 │   │                            #   Movie/TV detail pages' Recommendations and Similar sections
+│   ├── watchRuntime.ts          # prefillRuntime(): Mark as Watched runtime (movie runtime, TV episodes × runtime)
+│   ├── personCredits.ts         # Person credits newest first; mergeCrew() = one card per title, jobs joined
+│   ├── listImport.ts            # orderForImport(): undated rows reversed so a list keeps file order
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
 │                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
 │   ├── ui.ts                    # pageVariants (Framer Motion), IMG_URL, POSTER_URL (w342), BACKDROP_URL (w1280),
-│   │                            #   RATING_GOLD, WATCHED_GREEN — shared across pages
+│   │                            #   RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE, ON_GOLD_TEXT,
+│   │                            #   AVATAR_INITIALS_TEXT — shared across pages
 │   ├── genres.ts                # Static TMDB genre list for filter UI
 │   ├── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
 │   └── media.ts                 # resolveAvatarUrl() — resolves a user's relative avatar_url against
@@ -479,6 +484,8 @@ FRONTEND_URL=http://localhost:3000
 # ALLOWED_HOSTS=yourdomain.com
 # Reverse proxies in front of Django (rate-limit client identity); 0 = none
 # TRUSTED_PROXY_COUNT=0
+# Only with DEBUG off, and only for a frontend on another origin (unset = none)
+# CORS_ALLOWED_ORIGINS=https://app.example.com
 ```
 
 ---
@@ -603,6 +610,8 @@ src/hooks/__tests__/
 ├── useToast.test.tsx            # Memoized, identical messages deduped by key
 ├── useInfiniteScroll.test.tsx    # A failed page is requested once, not in a loop, until Retry
 ├── sessionGeneration.test.tsx    # Library/notification responses from a signed-out session are dropped
+├── useNotifications.test.tsx     # A poll in flight can't bring back a badge just marked seen
+├── useActionIconColor.test.tsx   # Gold in dark mode, the light theme's text color in light
 └── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch), load-more error
 
 src/context/__tests__/
@@ -627,18 +636,26 @@ src/utils/__tests__/
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
+├── csvBom.test.ts                # Exports start with a UTF-8 BOM and still round-trip
 ├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
 ├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
 ├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
+├── listImport.test.ts            # Undated rows reversed, dated rows kept
+├── personCredits.test.ts         # Newest first, crew merged per title, movie/TV with one id kept apart
 ├── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
 ├── safeUrl.test.ts               # http(s) kept; javascript:/data:/relative rejected
-└── tmdbPages.test.tsx            # TMDB's 500-page cap
+├── tmdbPages.test.tsx            # TMDB's 500-page cap
+└── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
 
 src/components/__tests__/
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
+├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
 └── TrailerEmbed.test.tsx         # No iframe until the thumbnail is activated
+
+src/pages/__tests__/
+└── FollowingPage.test.tsx        # Recommendations refetch when the followed set changes at the same size
 ```
 
 ```bash
@@ -664,6 +681,7 @@ backend/userdata/tests/
 ├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS and implicit EMAIL_BACKEND
 │                                   #   refused, DB password fallback
 ├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache,
+│                                   #   immutable /static/ cache (not on 404s), gzip off for /api/ and /media/,
 │                                   #   access log redacts reset links and TMDB callback tokens
 ├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
 ├── test_local_dates.py            # X-Timezone parsing/fallback (incl. tzdata directory names), CORS preflight,
@@ -675,6 +693,8 @@ backend/userdata/tests/
 │                                   #   response cache (TTL tiers, credential bypass, errors never cached)
 ├── test_pagination.py              # Library lists accept page_size up to 500
 ├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout
+├── test_stats_math.py              # Half-up rounding and buckets, gap-free monthly activity, unscored titles
+│                                   #   left out of the TMDB average
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
 │                                   #   connect bound to the requesting user (single-use token), reconnect revokes
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
@@ -686,14 +706,16 @@ backend/userdata/tests/
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
-├── test_followed_people.py         # Follow/unfollow, ownership, followed-people recs budget, 404 = no credits
+├── test_followed_people.py         # Follow/unfollow, ownership, followed-people recs budget, 404 = no credits,
+│                                   #   a movie and TV show sharing an id both kept
 ├── test_episode_progress.py        # Episode progress CRUD, ownership
 ├── test_profile.py                 # Profile GET/PATCH, accounts with no email
 ├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins
 ├── test_e2e_mock_shapes.py         # Python e2e mock records match the serializers and a real /api/stats/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
-├── test_bulk_import.py             # Bulk watchlist/watched/ratings: create-only, timestamps, all-or-nothing
+├── test_bulk_import.py             # Bulk watchlist/watched/ratings/list items: create-only, timestamps,
+│                                   #   all-or-nothing; list createdAt on create only
 ├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
 │                                   #   review (5000) and list description (200) caps
 └── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
@@ -710,10 +732,13 @@ Covers auth flows, movie browsing, search, watchlist operations, notifications, 
 
 ```
 e2e/
-├── auth.spec.ts           # Login (incl. 429, trim, autofocus, locked in flight, return URL),
+├── auth.spec.ts           # Tab title; login (incl. 429, trim, autofocus, locked in flight, return URL),
 │                           #   register, forgot password, redirect guards
 ├── movies.spec.ts         # Movie/TV browse, category buttons, search, detail navigation
-├── watchlist.spec.ts      # Empty state, add/remove, export CSV, watched list
+├── watchlist.spec.ts      # Empty state, add/remove, export CSV, watched list (incl. a two-page history)
+├── detail-and-nav.spec.ts # No stray 0, Where to Watch, grid posters as links, Back targets, crew tab,
+│                           #   Mark as Watched runtime, Add to List states
+├── stats.spec.ts          # Genre tooltip label, keyboard heatmap, empty genres, gap months plotted
 ├── notifications.spec.ts  # Both bells share one poll; unread shown until close marks seen
 ├── write-feedback.spec.ts # Failed clear/follow/rating save leave the UI as it was; unfollow
 │                           #   from Following
@@ -764,7 +789,7 @@ pytest
 
 ### CI
 
-GitHub Actions runs four jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0`, Jest, build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright) and **e2e-ts** (`npx playwright test`, both projects). Both e2e jobs run only the CRA dev server, since every API call is mocked.
+GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded report. A newer push to a pull request cancels that PR's older run.
 
 Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
 
@@ -799,6 +824,7 @@ Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` u
 | GET/POST        | `/api/lists/`                               | Create and list user lists                         |
 | DELETE/PATCH    | `/api/lists/<id>/`                          | Delete or rename a list                            |
 | POST            | `/api/lists/<id>/items/`                    | Add an item to a list                              |
+| POST            | `/api/lists/<id>/items/bulk/`               | Bulk-add list items, up to 500 (backup / CSV import) |
 | DELETE          | `/api/lists/<id>/items/clear/`              | Remove all items from a list (keeps the list)      |
 | DELETE          | `/api/lists/<id>/items/<item_id>/`          | Remove an item from a list                         |
 | GET             | `/api/stats/`                               | Watch history statistics                           |

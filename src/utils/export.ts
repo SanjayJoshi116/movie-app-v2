@@ -15,10 +15,16 @@ function escape(v: unknown): string {
   return /[,"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/**
+ * UTF-8 byte order mark. Excel on Windows reads a BOM-less CSV in the legacy
+ * code page and garbles non-ASCII titles; parseCSV strips it back off.
+ */
+export const CSV_BOM = "﻿";
+
 export function buildCSVString(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
   const headers = Object.keys(rows[0]!);
-  return [headers.join(","), ...rows.map((row) => headers.map((h) => escape(row[h])).join(","))].join("\n");
+  return CSV_BOM + [headers.join(","), ...rows.map((row) => headers.map((h) => escape(row[h])).join(","))].join("\n");
 }
 
 export function downloadCSV(rows: Record<string, unknown>[], filename: string): void {

@@ -242,6 +242,8 @@ export interface TMDBTVDetail extends Omit<TMDBTVSummary, "genre_ids"> {
   status: string;
   tagline: string | null;
   episode_run_time: number[];
+  /** Newer shows often list no `episode_run_time`; this episode's runtime stands in. */
+  last_episode_to_air?: { runtime?: number | null } | null;
   networks: TMDBNetwork[];
   production_companies: TMDBProductionCompany[];
   spoken_languages: TMDBSpokenLanguage[];

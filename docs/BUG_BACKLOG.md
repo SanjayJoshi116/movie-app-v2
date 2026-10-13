@@ -35,9 +35,11 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 16 | `fix-ci-lint` | ✅ 2026-10-09 | `main` fails CI lint (`no-script-url` in `safeUrl.test.ts`) |
 | 17 | `fix-upstream-resilience` | ✅ 2026-10-12 | Infinite-scroll retry loop; TMDB 404 freezes recs; missing time budgets; refresh stamp race; unmarked backfill failures |
 | 18 | `fix-account-edges` | ✅ 2026-10-12 | Blank-email profile 400; year-1 date breaks Stats; logout response race; Profile stale fields/partial export |
-| 19 | `fix-detail-and-nav` | ⏳ | Stray `0`; browse cards not links; Following Back target; crew credits; providers/runtime |
-| 20 | `fix-stats-math` | ⏳ | Banker's rounding buckets, skipped months, 0-score average, tooltip labels |
-| 21 | `harden-ci-2` + polish | ⏳ | Pagination test gap, Playwright retries, gzip/cache, Docker build job, hex sweep, docs drift |
+| 19 | `fix-detail-and-nav` | ✅ 2026-10-12 | Stray `0`; browse cards not links; Following Back target; crew credits; providers/runtime |
+| 20 | `fix-stats-math` | ✅ 2026-10-13 | Banker's rounding buckets, skipped months, 0-score average, tooltip labels |
+| 21a | `harden-ci-2` | ✅ 2026-10-13 | Playwright retries, e2e lint, Jest no-tests pass, Docker build + nginx smoke job, gzip/cache, flaky waits, app-level pagination test |
+| 21b | `polish-colors-docs` | ✅ 2026-10-13 | Hex sweep, docs drift, proxy param-order wording |
+| 21c | `spec-test-gaps` | ⏳ | Missing tests from the spec conformance check (import modals, theme-readability, container checks, …) |
 | 22 | `harden-security-3` | ✅ 2026-10-09 | Forgeable TMDB connect; import-driven TMDB amplification; unbounded review/description; reset token in nginx logs |
 | 23 | `fix-recs-correctness` | ⏳ | Movie/TV genre ids mixed in For You; ratings never refresh recs; gave-up poll cached as complete |
 | 24 | `fix-import-export-2` | ⏳ | Backup omits follows/episode progress; same-name lists merge; Watched CSV loses dates; import posters throttled |
@@ -423,9 +425,9 @@ Line numbers are from 2026-10-09 (`b3a5930`); re-check them before fixing. ✔ =
 At audit time, typecheck, Jest (220), backend pytest (270), ruff, `manage.py check` and `makemigrations --check` all passed. Only `npm run lint` failed (item 16).
 
 **Open decisions:**
-- **(19)** TV runtime in `MarkWatchedModal` is one episode's length (`episode_run_time[0]`), and the input is disabled. Should a whole-series watch count episodes × runtime, let the user edit it, or stay as is (documented)?
-- **(19)** Browse grids (`HomePage.tsx:160`, `AnimePage.tsx:167`) hide watched titles, so a card disappears right after it's marked watched. Is that intended? If so, document it.
-- **(19)** Person pages: add crew credits (Directing/Writing) as their own tab, or merge them into Movies/TV?
+- ~~**(19)** TV runtime in `MarkWatchedModal`~~ **Decided 2026-10-12:** editable, prefilled with episodes × episode runtime (falling back to the latest episode's runtime), blank when unknown.
+- ~~**(19)** Browse grids hide watched titles~~ **Decided 2026-10-12:** intended. Specified in `browse-filters` and documented in `docs/ARCHITECTURE.md`.
+- ~~**(19)** Person pages crew credits~~ **Decided 2026-10-12:** a separate Crew tab (jobs joined per title). Non-actors open on it.
 
 ### 16. `fix-ci-lint` (✅ archived 2026-10-09)
 
@@ -472,7 +474,9 @@ Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak a
   - `ProfileModal.tsx:120,133`: TMDB connect/disconnect errors use fixed strings instead of `getApiError`.
   - `userApi.ts:97`: `forceLogout`'s hard redirect to `/login` loses the page the user was on.
 
-### 19. `fix-detail-and-nav` (frontend) (⏳)
+### 19. `fix-detail-and-nav` (frontend) (✅ archived 2026-10-12, `openspec/changes/archive/2026-10-12-fix-detail-and-nav`)
+
+Every bullet below is fixed in that change. Already fixed by 26 before this change: the HeroBanner `<img>` `loading="lazy"`. Found during implementation: `useNavigationType()` reports POP for every in-route navigation because `App.tsx` passes `location` to `<Routes>`, so Watchlist's scroll restore uses `stashReturnState` instead.
 
 - **[med] ✔ A stray `0` renders on detail pages.** `MovieDetails.tsx:193` `{runtime && …}`, `TVShowDetails.tsx:192,197` `{number_of_seasons && …}`/`{number_of_episodes && …}`. TMDB returns `runtime: 0` for many unreleased films.
 - **[med] ✔ Browse cards aren't links.** `Movie.tsx:38`, `TVShowCard.tsx:37` are `motion.div onClick` with no poster `CardLink`, on the main grids of /movies, /tv and /anime: no href, no Ctrl/middle-click, no Tab stop. CLAUDE.md says no CardLink exceptions are left. Also `HeroBanner.tsx:98` "View Details" (a `navigate` button) and `NotificationBell.tsx:83` items (`role="button"` divs).
@@ -494,7 +498,7 @@ Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak a
   - `TMDBCallbackPage.tsx:39`: antd 5 ignores `<Spin tip>` unless nested/fullscreen, so the text never shows.
   - `export.ts:240-249`: CSVs have no UTF-8 BOM, so Excel on Windows garbles non-ASCII titles. `parseCSV` already strips a BOM, so adding one round-trips safely.
 
-### 20. `fix-stats-math` (backend + frontend) (⏳)
+### 20. `fix-stats-math` (backend + frontend) (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-fix-stats-math`)
 
 - **[low] Half-step ratings fall into uneven buckets.** `stats_views.py:50-52` uses `round(r)` (banker's rounding): 6.5 → 6 but 7.5 → 8, and 1.5 and 2.5 both → 2.
 - **[low] The monthly chart skips months with no watches.** `stats_views.py:55-64` emits only months with entries, and `StatsPage.tsx:515` plots them on a category axis, so Jan and Jun look adjacent.
@@ -503,7 +507,14 @@ Two bullets below moved to 22 (`harden-security-3`): the `session_id` log leak a
 - **[low] Stats page labels:** the Rating-by-Genre tooltip reads "7.3 avgRating" (`StatsPage.tsx:571`, raw dataKey); the heatmap tooltip shows raw `yyyy-mm-dd` instead of `formatDateDMY` (`:225`); heatmap cells are mouse-only; the Top Genres empty text (`:556-557`) still says to visit For You, though `stats_views.py` backfills itself.
 - **[low] A backup restore loses list dates and order.** `UserListItem.added_at`/`UserList.created_at` are `auto_now_add` (`models.py:71,84`), and `CSVImportAllModal.tsx:115-118` restores items one POST at a time in parallel batches of 20, so items get restore-time dates and a scrambled newest-first order. With one request per item, a few thousand list items in a day also use up the `5000/day` user throttle for the whole app.
 
-### 21. `harden-ci-2` + polish (⏳)
+### 21. `harden-ci-2` + polish (split 2026-10-13: 21a ✅, 21b ✅, 21c ⏳)
+
+Split by theme, like item 7:
+- **21a `harden-ci-2`** (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-harden-ci-2`) covers the CI, nginx and test-hygiene findings: retries, the CI gaps, gzip/cache, the flaky wait, and the `test_ratings.py` guard.
+- **21b `polish-colors-docs`** (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-polish-colors-docs`) covers the hardcoded colors, both docs-drift lists and the `api-hardening` param-order wording. Two findings were dropped on re-check: the `browseFilters.ts` comment is accurate (it's about genres, which are cleared in an effect), and the Stats chart palette and heat scale stay fixed on purpose (now noted in CLAUDE.md).
+- **21c `spec-test-gaps`** covers the conformance-check test list under "Additions to earlier items (fourth round)".
+- The `fetchAllPages` unit test below already exists (`src/utils/__tests__/fetchAllPages.test.ts`, from `speed-up-pages`). 21a adds the app-level two-page test.
+- The dependency note stays info-only.
 
 - **[low-med] Nothing tests `fetchAllPages` past page 1.** `src/utils/fetchAllPages.ts` has no unit test, and every `paginated()` mock hardcodes `next: null` (`e2e/fixtures.ts:24`, `e2e/python/conftest.py:275-281`). A page-following regression would silently cut every library over 100 items.
 - **[low-med] CI Playwright retries hide flaky tests.** `playwright.config.ts:9` `retries: process.env.CI ? 2 : 0`, against `openspec/specs/ci-pipeline` ("CI SHALL fail when any test … fails"). The Python e2e job has none.

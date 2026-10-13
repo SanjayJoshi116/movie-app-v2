@@ -25,7 +25,7 @@ describe("CSV formula neutralization", () => {
   it("prefixes every formula-like cell with an apostrophe, and nothing else", () => {
     for (const title of TRICKY) {
       // Single-column export: everything after the header line is the cell.
-      const cell = buildCSVString([{ title }]).slice("title\n".length);
+      const cell = buildCSVString([{ title }]).slice("﻿title\n".length);
       const text = cell.startsWith('"') ? cell.slice(1, -1).replace(/""/g, '"') : cell;
       const expected = /^[=+\-@\t\r']/.test(title) ? `'${title}` : title;
       expect({ title, text }).toEqual({ title, text: expected });

@@ -113,6 +113,14 @@ describe("usePaginatedFetch", () => {
     expect(result.current.loadMoreError).toBeNull();
   });
 
+  it("shows a title once when it appears on two restored pages", async () => {
+    const fetchPage = jest.fn((n: number) => Promise.resolve(n === 1 ? page([1, 2, 3]) : page([3, 4])));
+    const restore = { isReturning: true, savedLoadedPages: 2, savedScrollY: 0 };
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(4));
+    expect(result.current.items.map((i) => i.id)).toEqual([1, 2, 3, 4]);
+  });
+
   it("seeds restored state without fetching or clearing it", async () => {
     const fetchPage = jest.fn();
     const restore = { isReturning: true, savedLoadedPages: 3, savedScrollY: 0 };

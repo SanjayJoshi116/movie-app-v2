@@ -32,7 +32,7 @@ import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { avatarColor } from "../utils/colors";
-import { RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { RATING_GOLD, WATCHED_GREEN, AVATAR_INITIALS_TEXT } from "../constants/ui";
 
 interface Props {
   isBrowsePage: boolean;
@@ -203,7 +203,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
                   src={resolveAvatarUrl(user.avatar_url)}
                   style={{
                     backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
-                    color: "#fff",
+                    color: AVATAR_INITIALS_TEXT,
                     fontWeight: 700,
                     flexShrink: 0,
                   }}

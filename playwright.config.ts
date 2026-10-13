@@ -6,13 +6,17 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // Never retried: a test that fails once fails the run (ci-pipeline spec).
+  // Fix the wait instead of adding retries back.
+  retries: 0,
   workers: process.env.CI ? 1 : undefined,
   // CI also writes an HTML report, uploaded as an artifact when the job fails.
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
+    // With no retries, "on-first-retry" would never record; CI uploads these
+    // with the HTML report when the job fails.
+    trace: "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -27,6 +31,8 @@ export default defineConfig({
     url: "http://localhost:3000",
     env: { BROWSER: "none" },
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    // A cold CRA compile can take over two minutes; same budget as the Python
+    // job's wait-on.
+    timeout: 300_000,
   },
 });

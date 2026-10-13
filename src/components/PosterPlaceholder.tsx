@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { theme } from "antd";
 import { FONT_SIZE } from "../constants/typography";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function PosterPlaceholder({ className, style, onClick }: Props) {
+  const { token } = theme.useToken();
   return (
     <div
       className={className}
@@ -16,8 +18,8 @@ export function PosterPlaceholder({ className, style, onClick }: Props) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#1a1a2e",
-        color: "#555",
+        background: token.colorFillSecondary,
+        color: token.colorTextTertiary,
         fontSize: FONT_SIZE.caption,
         ...style,
       }}

@@ -53,6 +53,30 @@ class NginxConfTests(SimpleTestCase):
         server = _blocks(self.conf, "server")[""]
         self.assertRegex(server, r"add_header\s+Cache-Control\s+\$entry_cache_control\s+always\s*;")
 
+    def test_hashed_static_assets_are_cached_long_term(self):
+        static_map = _blocks(self.conf, "map")["$uri $static_cache_control"]
+        self.assertRegex(static_map, r'~\^/static/\s+"public, max-age=31536000, immutable"\s*;')
+        self.assertRegex(static_map, r'default\s+""\s*;')
+        # Only /static/ (content-hashed names): one rule plus the default.
+        self.assertEqual(len(re.findall(r";", static_map)), 2)
+        server = _blocks(self.conf, "server")[""]
+        outside_locations = re.sub(r"\blocation\b[^{]*\{[^{}]*\}", "", server)
+        # Without `always`, so a missing chunk's 404 is never cached for a year.
+        self.assertRegex(outside_locations, r"add_header\s+Cache-Control\s+\$static_cache_control\s*;")
+
+    def test_compression_covers_app_assets_not_proxied_paths(self):
+        server = _blocks(self.conf, "server")[""]
+        outside_locations = re.sub(r"\blocation\b[^{]*\{[^{}]*\}", "", server)
+        self.assertRegex(outside_locations, r"\bgzip\s+on\s*;")
+        types = re.search(r"\bgzip_types\s+([^;]+);", outside_locations)
+        self.assertIsNotNone(types)
+        for mime in ("application/javascript", "text/javascript", "text/css"):
+            with self.subTest(mime=mime):
+                self.assertIn(mime, types.group(1).split())
+        for name in ("/api/", "/media/"):
+            with self.subTest(location=name):
+                self.assertRegex(self.locations[name], r"\bgzip\s+off\s*;")
+
     def test_security_headers_stay_server_level(self):
         server = _blocks(self.conf, "server")[""]
         outside_locations = re.sub(r"\blocation\b[^{]*\{[^{}]*\}", "", server)

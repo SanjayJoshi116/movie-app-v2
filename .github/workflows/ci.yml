@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a pull request cancels that PR's older run. Runs on main are
+# never cancelled, so every commit there keeps its own result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     name: Frontend (typecheck + lint + test + build)
@@ -20,7 +26,8 @@ jobs:
       # App code and the e2e specs (e2e/tsconfig.json).
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test -- --watchAll=false --passWithNoTests
+      # No --passWithNoTests: a run that finds no tests is a broken setup.
+      - run: npm test -- --watchAll=false
         env:
           CI: true
       # CI=false: lint warnings already fail the lint step above. No TMDB key:
@@ -111,7 +118,17 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r e2e/python/requirements.txt
-      - run: playwright install --with-deps chromium
+      # Keyed on the pip pin: its browser build can differ from the npm one.
+      - id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-py-${{ runner.os }}-${{ hashFiles('e2e/python/requirements.txt') }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: playwright install --with-deps chromium
+      # The cache holds the browser only; its system libraries still need installing.
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
       # Node resolves localhost to ::1 first, but the CRA dev server only
       # listens on IPv4 — without ipv4first, wait-on hangs forever.
       - run: npx wait-on http://localhost:3000 -t 300000
@@ -140,7 +157,15 @@ jobs:
           cache: npm
       - run: npm ci
       # Both projects are Chromium (mobile-chrome is an emulated Pixel 5).
-      - run: npx playwright install --with-deps chromium
+      - id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       # playwright.config.ts starts the CRA dev server itself; every API call
       # is mocked (e2e/fixtures.ts). ipv4first: see the e2e-python job.
       - run: npx playwright test
@@ -155,3 +180,42 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  docker:
+    name: Docker images (build + frontend smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Built only: running it needs Postgres and the deploy's secrets.
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: false
+          load: true
+          tags: cinedb-frontend:ci
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      # nginx resolves its proxy_pass host ("backend") at startup and won't boot
+      # without it; nothing here calls /api/, so it just has to resolve.
+      - name: Start frontend image
+        run: |
+          docker run -d --name web --add-host backend:127.0.0.1 -p 8080:80 cinedb-frontend:ci
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:8080/ && exit 0
+            sleep 1
+          done
+          echo "nginx did not come up"; docker logs web; exit 1
+      - name: Check served headers
+        run: bash .github/scripts/smoke-frontend.sh http://localhost:8080 web

@@ -24,11 +24,15 @@ The backup SHALL identify its format and version.
 - **THEN** the backup records a list named exactly `Sci-Fi / Horror` with no items
 
 ### Requirement: Restoring a backup is faithful
-Importing a backup SHALL restore each entry's original timestamps (added, watched, rated), watched runtime and platform, ratings with their reviews, and list names, descriptions and empty lists. Imported watched entries SHALL count in stats on their original dates, not the import date.
+Importing a backup SHALL restore each entry's original timestamps (added, watched, rated), watched runtime and platform, ratings with their reviews, and list names, descriptions and empty lists. Each list SHALL keep its creation time when the backup has it, and each list item SHALL keep its added time, so lists and their items show in the same order as in the exported account. Imported watched entries SHALL count in stats on their original dates, not the import date.
 
 #### Scenario: Round trip into an empty account
 - **WHEN** a user exports a backup, and a new account imports it
 - **THEN** the new account's watchlist, watched history (with watched dates, runtime and platform), ratings (with reviews) and lists (with names, descriptions and items, including empty lists) match the exported account
+
+#### Scenario: List order survives a restore
+- **WHEN** a user exports a backup with a list whose items were added on three different days, and a new account imports it
+- **THEN** the restored list shows the items in the same order with the same added dates, and the lists themselves are in the same order as before
 
 ### Requirement: Restore never overwrites and is idempotent
 Importing SHALL skip any watchlist entry, watched entry, rating or list item that already exists for the same title and type, leaving the existing entry unchanged, including an existing rating's value and review. Lists SHALL be matched by exact name: an existing list with that name receives the items, and no second list is created. Importing the same backup twice SHALL produce the same library as importing it once.
@@ -89,7 +93,7 @@ A CSV or backup import SHALL succeed for any number of rows, even beyond the per
 - **THEN** the file is read again and the error is shown again
 
 ### Requirement: Bulk imports keep supplied timestamps and refresh recommendations
-The bulk watchlist, watched and rating import endpoints SHALL store a supplied added/watched/rated time instead of the current time, and SHALL reject a time in the future. They SHALL only create entries; existing ones are skipped. The counts they return SHALL match what was actually created. A bulk watched import that creates at least one entry SHALL schedule a refresh of that user's recommendations. A bulk rating import SHALL NOT send ratings to a connected TMDB account. Paginated reads of a user's watchlist, watched history, ratings, followed people and lists SHALL return every entry exactly once, even when many entries share the same timestamp.
+The bulk watchlist, watched, rating and list-item import endpoints SHALL store a supplied added/watched/rated time instead of the current time, and SHALL reject a time in the future. They SHALL only create entries; existing ones are skipped. The counts they return SHALL match what was actually created. A bulk watched import that creates at least one entry SHALL schedule a refresh of that user's recommendations. A bulk rating import SHALL NOT send ratings to a connected TMDB account. Paginated reads of a user's watchlist, watched history, ratings, followed people and lists SHALL return every entry exactly once, even when many entries share the same timestamp.
 
 #### Scenario: Watched date preserved
 - **WHEN** a client bulk-imports a watched entry with `watchedAt` of 2024-03-01T20:00:00Z
@@ -106,6 +110,10 @@ The bulk watchlist, watched and rating import endpoints SHALL store a supplied a
 #### Scenario: Recommendations refresh after import
 - **WHEN** a bulk watched import creates new watched entries
 - **THEN** exactly one recommendation refresh is scheduled for that user after the import commits
+
+#### Scenario: List item added date preserved
+- **WHEN** a client bulk-adds a list item with `addedAt` of 2023-05-10T12:00:00Z
+- **THEN** the stored item's added time is 2023-05-10T12:00:00Z
 
 ### Requirement: Watched exports keep the logged time zone
 Watched history exported as CSV or inside a backup SHALL include each entry's
@@ -162,3 +170,32 @@ The backup import SHALL refuse a file larger than 50 MB, or one whose entries de
 #### Scenario: Everything loaded
 - **WHEN** every part of the library loaded and the user clicks "Export All Data (ZIP)"
 - **THEN** the backup file is downloaded with the whole library
+
+### Requirement: Exported CSVs open correctly in spreadsheet apps
+Every CSV the app exports SHALL start with a UTF-8 byte order mark, so spreadsheet apps that otherwise assume a legacy encoding show non-ASCII titles correctly. Importing an exported CSV SHALL still give back the same rows.
+
+#### Scenario: Non-ASCII title in Excel
+- **WHEN** the user exports a watched history containing "Amélie" and opens the CSV in Excel on Windows
+- **THEN** the title reads "Amélie"
+
+#### Scenario: Round trip
+- **WHEN** the user imports a CSV the app exported
+- **THEN** the imported rows match the exported ones, with no stray character in the first column name
+
+### Requirement: CSV import templates list only imported columns
+The downloadable CSV import templates SHALL contain only columns that the CSV import reads. A column the import ignores SHALL NOT appear in a template.
+
+#### Scenario: Downloading the movie template
+- **WHEN** the user downloads the movie CSV template
+- **THEN** every column in it is one the import uses
+
+### Requirement: List imports are batched and keep file order
+Restoring lists from a backup and importing a CSV into a list SHALL add items in batches (at most 500 per request), not one request per item. Rows without an added time SHALL get the import time, and the list SHALL then show them in the same order as the file.
+
+#### Scenario: Large list restore
+- **WHEN** a user restores a backup containing a list of 1,200 items
+- **THEN** the items are added in 3 requests and all 1,200 are in the list
+
+#### Scenario: CSV without dates
+- **WHEN** a user imports a CSV with rows A, B, C (no dates) into an empty list
+- **THEN** the list shows A, B, C in that order

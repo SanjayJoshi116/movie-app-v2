@@ -19,6 +19,11 @@ test.describe("Login page", () => {
     await expect(page.getByRole("link", { name: "Register" })).toBeVisible();
   });
 
+  test("the browser tab is titled CINE DB, like the manifest", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page).toHaveTitle("CINE DB");
+  });
+
   test("shows error on invalid credentials", async ({ page }) => {
     // Use 400 not 401: a 401 triggers the JWT refresh interceptor which redirects to /login
     await page.route("**/api/auth/login/", (route) =>

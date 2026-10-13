@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  Button, Tag, Typography, Empty, Space, Popconfirm, Select, Tooltip,
-} from "antd";
+import { Button, Tag, Typography, Empty, Space, Popconfirm, Select, Tooltip, theme } from "antd";
 import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useToast } from "../hooks/useToast";
+import { stashReturnState } from "../utils/browseReturnState";
 import { RatingModal } from "../components/watchlist/RatingModal";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
 import LibraryItemCard from "../components/LibraryItemCard";
@@ -19,10 +18,10 @@ import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
 import type { MediaType, WatchlistEntry } from "../types";
 
-const SS_SCROLL = "watchlist_scroll";
 const SS_WATCHED_FILTER = "watchlist_watched_filter";
 
 type WatchedFilter = "all" | "watched" | "unwatched";
@@ -49,10 +48,12 @@ interface PendingWatch {
 }
 
 function WatchlistPage() {
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const {
-    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched, theme,
+    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched,
   } = useAppContext();
+  const idleIconColor = useActionIconColor();
   const { isLoading, error: loadError, reload } = useWatchlistContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
@@ -60,15 +61,21 @@ function WatchlistPage() {
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>(() => (sessionStorage.getItem(SS_WATCHED_FILTER) as WatchedFilter) ?? "all");
   const didRestoreScroll = useRef(false);
 
+  // Restore the scroll position only on a return from a title this list
+  // opened: the detail page's in-app Back and (via stashReturnState) the
+  // browser's Back both arrive with `isReturn`. Any other visit starts at the
+  // top. (useNavigationType can't tell: App passes `location` to <Routes>,
+  // which reports every in-route navigation as POP.)
+  const location = useLocation();
   useEffect(() => {
-    const saved = sessionStorage.getItem(SS_SCROLL);
-    if (saved && !didRestoreScroll.current) {
-      didRestoreScroll.current = true;
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: parseInt(saved, 10), behavior: "instant" });
-        sessionStorage.removeItem(SS_SCROLL);
-      });
-    }
+    const state = location.state as { isReturn?: boolean; scrollY?: number } | null;
+    if (didRestoreScroll.current || !state?.isReturn || !state.scrollY) return;
+    didRestoreScroll.current = true;
+    const y = state.scrollY;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: y, behavior: "instant" });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { sessionStorage.setItem(SS_WATCHED_FILTER, watchedFilter); }, [watchedFilter]);
@@ -202,8 +209,9 @@ function WatchlistPage() {
                 title={item.title}
                 to={`/${item.type}/${item.id}`}
                 onOpen={() => {
-                  sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
-                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist" } });
+                  const scrollY = window.scrollY;
+                  stashReturnState({ scrollY, isReturn: true });
+                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: "/watchlist", scrollY } });
                 }}
                 tags={
                   <>
@@ -223,7 +231,7 @@ function WatchlistPage() {
                         type="text"
                         size="small"
                         icon={watched ? <EyeFilled /> : <EyeOutlined />}
-                        style={{ color: watched ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
+                        style={{ color: watched ? WATCHED_GREEN : idleIconColor }}
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (watched) {
@@ -280,7 +288,7 @@ function WatchlistPage() {
                 }
                 footer={
                   rating?.review && (
-                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: "#aaa", marginTop: 6, marginBottom: 0 }}>
+                    <Typography.Paragraph ellipsis={{ rows: 2 }} style={{ fontSize: FONT_SIZE.caption, color: token.colorTextTertiary, marginTop: 6, marginBottom: 0 }}>
                       "{rating.review}"
                     </Typography.Paragraph>
                   )

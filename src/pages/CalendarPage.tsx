@@ -283,7 +283,7 @@ function CalendarPage() {
         <LoadError title="Couldn't load upcoming releases" onRetry={() => fetchCalendar(mediaFilter)} />
       ) : filteredGroups.length === 0 ? (
         <Empty
-          image={<CalendarOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+          image={<CalendarOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />}
           description={
             search.trim()
               ? `No releases match "${search}".`

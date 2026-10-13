@@ -10,6 +10,7 @@ import {
   Divider,
   Tag,
   Switch,
+  theme,
 } from "antd";
 import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
@@ -69,6 +70,7 @@ interface Props {
 
 export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, onApply, onReset }: Props) {
   const { selectedGenres, toggleGenre, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
+  const { token } = theme.useToken();
   const [filters, setFilters] = useState<FilterValues>(() => ({ ...DEFAULT_FILTERS, ...appliedFilters }));
   const [sortBy, setSortBy] = useState<SortOption>(appliedSortBy);
 
@@ -202,7 +204,7 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
                   fontSize: FONT_SIZE.caption,
                   padding: "4px 12px",
                   borderRadius: 50,
-                  border: selected ? `1px solid ${RATING_GOLD}` : "1px solid rgba(128,128,128,0.4)",
+                  border: selected ? `1px solid ${RATING_GOLD}` : `1px solid ${token.colorBorder}`,
                   cursor: "pointer",
                 }}
               >

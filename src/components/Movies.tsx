@@ -1,4 +1,4 @@
-import { Row, Col, Empty } from "antd";
+import { Row, Col, Empty, theme } from "antd";
 import { SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
 import Movie from "./Movie";
 import type { TMDBMovieSummary } from "../types";
@@ -11,16 +11,17 @@ interface Props {
 }
 
 function Movies({ movies, onKnowMore, searchTerm, hasFilters }: Props) {
+  const { token } = theme.useToken();
 
   if (movies.length === 0) {
-    let icon = <InboxOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+    let icon = <InboxOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
     let description = "No movies found.";
 
     if (searchTerm) {
-      icon = <SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      icon = <SearchOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
       description = `No results for "${searchTerm}". Try a different search.`;
     } else if (hasFilters) {
-      icon = <FilterOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      icon = <FilterOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
       description = "No movies match your filters. Try adjusting them.";
     }
 

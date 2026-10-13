@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Card, Typography, Spin, Empty, Tabs, theme } from "antd";
 import {
@@ -32,7 +32,7 @@ import {
   Area,
 } from "recharts";
 import { fetchStats, type StatsData } from "../api/userApi";
-import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN, ON_GOLD_TEXT } from "../constants/ui";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { LoadError } from "../components/LoadError";
 import { formatDateDMY } from "../utils/formatDate";
@@ -182,12 +182,38 @@ function heatColor(count: number, emptyColor: string): string {
   return "#39d353";
 }
 
+const VISUALLY_HIDDEN: CSSProperties = {
+  position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden",
+  clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0,
+};
+
 function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; count: number }[] }) {
   const { token } = theme.useToken();
   const [hover, setHover] = useState<{ text: string; x: number; y: number } | null>(null);
+  // Keyboard: the grid is one tab stop; arrows move this index over the days
+  // (column-major, so ±1 is a day and ±7 a week, like the grid).
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const cellRefs = useRef<(HTMLDivElement | null)[]>([]);
   const weeks = buildHeatmapWeeks(dailyActivity);
+  const days = weeks.flat();
+  const lastShown = days.reduce((last, d, i) => (d.future ? last : i), 0);
   const CELL = 12;
   const GAP = 2;
+
+  const dayLabel = (day: DayCell) => `${formatDateDMY(day.date)} — ${day.count} item${day.count !== 1 ? "s" : ""}`;
+
+  const activate = (idx: number) => {
+    const day = days[idx];
+    const cell = cellRefs.current[idx];
+    if (!day || !cell) return;
+    setActiveIdx(idx);
+    cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const rect = cell.getBoundingClientRect();
+    setHover({ text: dayLabel(day), x: rect.right, y: rect.top });
+  };
+
+  const KEY_STEP: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 };
+  const activeDay = activeIdx === null ? undefined : days[activeIdx];
 
   const monthLabels = weeks.map((week, i) => {
     const d = new Date((week[0]?.date ?? "") + "T00:00:00");
@@ -206,26 +232,37 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: GAP }}>
+        <div
+          role="group"
+          tabIndex={0}
+          aria-label="Watch activity by day, last 52 weeks. Use the arrow keys to read each day."
+          style={{ display: "flex", gap: GAP, outline: "none" }}
+          onFocus={() => activate(activeIdx ?? lastShown)}
+          onBlur={() => { setActiveIdx(null); setHover(null); }}
+          onKeyDown={(e) => {
+            const step = KEY_STEP[e.key];
+            if (step === undefined) return;
+            e.preventDefault();
+            activate(Math.min(lastShown, Math.max(0, (activeIdx ?? lastShown) + step)));
+          }}
+        >
           {weeks.map((week, wi) => (
             <div key={wi} style={{ display: "flex", flexDirection: "column", gap: GAP }}>
               {week.map((day, di) => (
                 <div
                   key={di}
+                  ref={(el) => { cellRefs.current[wi * 7 + di] = el; }}
                   style={{
                     width: CELL,
                     height: CELL,
                     borderRadius: 2,
                     backgroundColor: day.future ? "transparent" : heatColor(day.count, token.colorFillTertiary),
                     cursor: "default",
+                    ...(activeIdx === wi * 7 + di ? { outline: `2px solid ${token.colorText}`, outlineOffset: 1 } : {}),
                   }}
                   onMouseEnter={(e) => {
                     if (!day.future) {
-                      setHover({
-                        text: `${day.date} — ${day.count} item${day.count !== 1 ? "s" : ""}`,
-                        x: e.clientX,
-                        y: e.clientY,
-                      });
+                      setHover({ text: dayLabel(day), x: e.clientX, y: e.clientY });
                     }
                   }}
                   onMouseMove={(e) => {
@@ -239,6 +276,10 @@ function ActivityHeatmap({ dailyActivity }: { dailyActivity: { date: string; cou
             </div>
           ))}
         </div>
+        {/* Announces the day the arrow keys land on. */}
+        <span id="heatmap-active-day" aria-live="polite" style={VISUALLY_HIDDEN}>
+          {activeDay ? dayLabel(activeDay) : ""}
+        </span>
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, justifyContent: "flex-end" }}>
           <span style={{ fontSize: FONT_SIZE.caption, color: token.colorTextTertiary }}>Less</span>
           {[0, 1, 2, 4, 6].map((v) => (
@@ -293,7 +334,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
         <div style={{
           position: "absolute", top: 6, right: 6,
           background: mediaType === "movie" ? GOLD : BLUE,
-          color: "#000", fontSize: FONT_SIZE.caption, fontWeight: 700,
+          color: ON_GOLD_TEXT, fontSize: FONT_SIZE.caption, fontWeight: 700,
           borderRadius: 3, padding: "1px 4px",
         }}>
           {mediaType === "movie" ? "FILM" : "TV"}
@@ -503,7 +544,7 @@ function StatsPage() {
       <Title level={4} style={{ marginBottom: 16 }}>Watch History</Title>
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         <Col xs={24} md={12}>
-          <Card className="glass-card" title={<>Activity Heatmap (Last 52 Weeks)<InfoTooltip title="Counts days you watched, rated, or added a title to a list." /></>} style={{ height: "100%" }}>
+          <Card className="glass-card" title={<>Activity Heatmap (Last 52 Weeks)<InfoTooltip title="Counts the titles you marked watched each day." /></>} style={{ height: "100%" }}>
             <ActivityHeatmap dailyActivity={data.dailyActivity ?? []} />
           </Card>
         </Col>
@@ -553,8 +594,10 @@ function StatsPage() {
               </ResponsiveContainer>
             ) : (
               <Text type="secondary" style={{ display: "block", padding: "24px 0", textAlign: "center" }}>
-                Genre data not yet available. Visit the{" "}
-                <Link to="/recommendations">For You</Link> page once to generate it.
+                {/* Stats backfills genres itself; nothing to visit. */}
+                {data.totalWatched > 0
+                  ? "Genres are still being looked up for your watched titles. Check back in a minute."
+                  : "Mark titles watched to see your top genres."}
               </Text>
             )}
           </Card>
@@ -568,7 +611,7 @@ function StatsPage() {
                   <XAxis type="number" domain={[0, 10]} allowDecimals={false} />
                   <YAxis type="category" dataKey="genre" width={110} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="avgRating" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="avgRating" name="Avg rating" radius={[0, 4, 4, 0]}>
                     {(data.ratingByGenre ?? []).map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}

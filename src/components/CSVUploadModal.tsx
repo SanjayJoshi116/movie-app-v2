@@ -7,6 +7,7 @@ import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
 import { parseCSVForImport, type ParsedEntry } from "../utils/csvParse";
 import { getApiError } from "../utils/apiError";
+import { downloadCSV } from "../utils/export";
 import { FONT_SIZE } from "../constants/typography";
 
 const { Text } = Typography;
@@ -16,26 +17,21 @@ interface Props {
   onClose: () => void;
 }
 
+/** Template rows: only the columns parseCSVForImport reads (id, title and the optional type). */
+export function templateRows(type: "movie" | "tv") {
+  return type === "movie"
+    ? [
+        { id: 550, title: "Fight Club", type: "movie" },
+        { id: 13, title: "Forrest Gump", type: "movie" },
+      ]
+    : [
+        { id: 1396, title: "Breaking Bad", type: "tv" },
+        { id: 66732, title: "Stranger Things", type: "tv" },
+      ];
+}
+
 function downloadTemplate(type: "movie" | "tv") {
-  const rows =
-    type === "movie"
-      ? [
-          "id,title,original_title,language,runtime,release_year",
-          "550,Fight Club,Fight Club,en,139,1999",
-          "13,Forrest Gump,Forrest Gump,en,142,1994",
-        ]
-      : [
-          "id,title,original_title,language,runtime,first_air_year",
-          "1396,Breaking Bad,Breaking Bad,en,47,2008",
-          "66732,Stranger Things,Stranger Things,en,51,2016",
-        ];
-  const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = type === "movie" ? "movies_template.csv" : "tvshows_template.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadCSV(templateRows(type), type === "movie" ? "movies_template.csv" : "tvshows_template.csv");
 }
 
 const CSVUploadModal = ({ open, onClose }: Props) => {

@@ -29,7 +29,7 @@ import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { avatarColor } from "../utils/colors";
-import { RATING_GOLD } from "../constants/ui";
+import { RATING_GOLD, ON_GOLD_TEXT, AVATAR_INITIALS_TEXT } from "../constants/ui";
 
 function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
   const f = user.first_name?.trim() ?? "";
@@ -214,7 +214,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
                     top: 10,
                     right: "calc(50% - 22px)",
                     background: RATING_GOLD,
-                    color: "#000",
+                    color: ON_GOLD_TEXT,
                     borderRadius: 10,
                     padding: "0 5px",
                     fontSize: FONT_SIZE.caption,
@@ -259,9 +259,9 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
                     src={resolveAvatarUrl(user.avatar_url)}
                     style={{
                       backgroundColor: user.avatar_url ? undefined : avatarColor(user.username),
-                      color: "#fff",
+                      color: AVATAR_INITIALS_TEXT,
                       fontWeight: 700,
-                      fontSize: 10,
+                      fontSize: FONT_SIZE.caption,
                     }}
                   >
                     {!user.avatar_url && getInitials(user)}

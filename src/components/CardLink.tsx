@@ -18,7 +18,8 @@ interface CardLinkProps {
   children: ReactNode;
 }
 
-const isPlainClick = (e: MouseEvent) =>
+/** A left click with no modifier: the only click an `onNavigate` handler takes over. */
+export const isPlainClick = (e: MouseEvent) =>
   e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 /** A card or thumbnail that opens a page: a real, keyboard-reachable link. */

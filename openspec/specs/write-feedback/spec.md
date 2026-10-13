@@ -67,7 +67,7 @@ While a write for a given item (identified by media id and type, person id, or l
 - **THEN** the user sees a single success (or error) message, not two identical stacked messages
 
 ### Requirement: Follow state is consistent across views
-Whether a person is followed SHALL be shared state for the session. Every view showing that person SHALL reflect a follow or unfollow made from any other view, without a reload. Showing a grid of people SHALL NOT make a separate followed-people request per card.
+Whether a person is followed SHALL be shared state for the session. Every view showing that person SHALL reflect a follow or unfollow made from any other view, without a reload. Showing a grid of people SHALL NOT make a separate followed-people request per card. While the followed-people list has failed to load, every Follow control, on person cards and on the person page alike, SHALL be disabled rather than claim the person is not followed. The Following page's recommendations SHALL be refetched whenever the set of followed people changes, including when one follow and one unfollow leave the count unchanged.
 
 #### Scenario: Unfollow from a card on the Following page
 - **WHEN** the user unfollows a person from their card on the Following page
@@ -76,6 +76,14 @@ Whether a person is followed SHALL be shared state for the session. Every view s
 #### Scenario: Grid of people
 - **WHEN** the People page renders a page of person cards
 - **THEN** the followed-people list is fetched at most once for the whole grid
+
+#### Scenario: Person page after a failed load
+- **WHEN** the followed-people list failed to load and the user opens a person page
+- **THEN** that page's Follow button is disabled
+
+#### Scenario: Swap one followed person for another
+- **WHEN** the user follows one person and unfollows another, then opens Following
+- **THEN** the recommendations from followed people are fetched again for the new set
 
 ### Requirement: Forms submit once per activation
 While a form's submit request is in flight (registration, creating a list, editing a list), the submit control SHALL show a busy state, and repeated activation (double-click, a second Enter) SHALL NOT send another request. This holds wherever a list can be created, including the Add to List dialog's inline create.

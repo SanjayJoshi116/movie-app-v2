@@ -1,4 +1,4 @@
-import userApi, { bulkImport, BULK_CHUNK_SIZE, type BulkImportEntry } from "../userApi";
+import userApi, { bulkAddListItems, bulkImport, BULK_CHUNK_SIZE, type BulkImportEntry } from "../userApi";
 
 function entries(n: number): BulkImportEntry[] {
   return Array.from({ length: n }, (_, i) => ({ mediaId: i + 1, title: `T${i + 1}` }));
@@ -38,5 +38,19 @@ describe("bulkImport", () => {
     const post = jest.spyOn(userApi, "post");
     expect(await bulkImport("watchlist", [])).toEqual({ added: 0, skipped: 0, failed: 0 });
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe("bulkAddListItems", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("adds 1,200 list items in 3 requests to the list's bulk route", async () => {
+    const post = jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => {
+      const size = (body as { entries: unknown[] }).entries.length;
+      return { data: { added: size, skipped: 0 } } as never;
+    });
+    const result = await bulkAddListItems(7, entries(1200));
+    expect(post.mock.calls.map(([url]) => url)).toEqual(Array(3).fill("/lists/7/items/bulk/"));
+    expect(result).toEqual({ added: 1200, skipped: 0, failed: 0 });
   });
 });

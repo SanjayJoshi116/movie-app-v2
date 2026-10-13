@@ -29,6 +29,18 @@ interface Options<T> {
   restoredState?: RestoredState<T>;
 }
 
+/** `next` without the ids already in `prev` (a title that moved between pages). */
+function appendNew<T extends { id: number }>(prev: T[], next: T[]): T[] {
+  const seen = new Set(prev.map((item) => item.id));
+  const added: T[] = [];
+  for (const item of next) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    added.push(item);
+  }
+  return [...prev, ...added];
+}
+
 /**
  * Shared "fetch page 1, infinite-scroll loadMore, restore N pages + scroll
  * position when returning via router location.state" logic used by the
@@ -98,7 +110,7 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
           const pages = Array.from({ length: restore.savedLoadedPages }, (_, i) => i + 1);
           const pageResults = await Promise.all(pages.map((p) => fetchPage(p)));
           if (ctl.cancelled) return;
-          const combined = pageResults.flatMap((p) => p.results);
+          const combined = pageResults.reduce<T[]>((acc, p) => appendNew(acc, p.results), []);
           const totalPages = pageResults[pageResults.length - 1]?.totalPages ?? 1;
           setItems(combined);
           setCurrentPage(restore.savedLoadedPages);
@@ -144,11 +156,7 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       const nextPage = currentPage + 1;
       const { results, totalPages } = await fetchPage(nextPage);
       if (generationRef.current !== generation) return;
-      setItems((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        const deduped = results.filter((item) => !existingIds.has(item.id));
-        return [...prev, ...deduped];
-      });
+      setItems((prev) => appendNew(prev, results));
       setCurrentPage(nextPage);
       setHasMore(nextPage < totalPages);
     } catch (err) {

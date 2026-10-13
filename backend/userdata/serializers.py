@@ -344,13 +344,22 @@ class EpisodeProgressInputSerializer(serializers.Serializer):
 
 class UserListSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    # Writable only on create (a backup restore sends the original time);
+    # update() drops it, so renaming a list can't move it in the order.
+    createdAt = serializers.DateTimeField(
+        source="created_at", required=False, allow_null=True,
+        validators=[_validate_not_future, _validate_not_before_1900],
+    )
     description = serializers.CharField(allow_blank=True, required=False, max_length=LIST_DESCRIPTION_MAX_LENGTH)
 
     class Meta:
         model = UserList
         fields = ("id", "name", "description", "items", "createdAt")
-        read_only_fields = ("id", "createdAt")
+        read_only_fields = ("id",)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("created_at", None)
+        return super().update(instance, validated_data)
 
     def get_items(self, obj):
         # Newest first, id as the tiebreak. Sorted in Python so it reuses the

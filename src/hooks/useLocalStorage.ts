@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type SetValue<T> = (value: T | ((prev: T) => T)) => void;
+
+/** Same-tab change notice: `storage` events only reach *other* tabs. */
+const SAME_TAB_EVENT = "cinedb-local-storage";
+type SameTabDetail = { key: string; raw: string; source: object };
 
 export function useLocalStorage<T>(key: string, initialValue: T): [T, SetValue<T>] {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -11,32 +15,52 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, SetValue<T
       return initialValue;
     }
   });
+  // Latest value, so back-to-back updater calls chain, and so the write and
+  // the same-tab notice happen once, outside React's (StrictMode
+  // double-invoked) state updater.
+  const latestRef = useRef(storedValue);
+  // Identifies this instance, so it skips its own same-tab notice.
+  const sourceRef = useRef({});
 
-  // Sync across tabs: another tab writing to this key updates our state too.
+  // Sync across tabs (`storage`) and across instances in this tab (e.g. the
+  // Sidebar and BottomNav search boxes both reading recent searches).
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== key) return;
+    const adopt = (raw: string | null) => {
       try {
-        setStoredValue(e.newValue !== null ? (JSON.parse(e.newValue) as T) : initialValue);
+        const next = raw !== null ? (JSON.parse(raw) as T) : initialValue;
+        latestRef.current = next;
+        setStoredValue(next);
       } catch {
-        // ignore malformed data written by another tab
+        // ignore malformed data written elsewhere
       }
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) adopt(e.newValue);
+    };
+    const onSameTab = (e: Event) => {
+      const detail = (e as CustomEvent<SameTabDetail>).detail;
+      if (detail.key === key && detail.source !== sourceRef.current) adopt(detail.raw);
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(SAME_TAB_EVENT, onSameTab);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(SAME_TAB_EVENT, onSameTab);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const setValue: SetValue<T> = (value) => {
-    setStoredValue((current) => {
-      const next = value instanceof Function ? value(current) : value;
-      try {
-        window.localStorage.setItem(key, JSON.stringify(next));
-      } catch (err) {
-        console.error(`useLocalStorage: failed to set "${key}"`, err);
-      }
-      return next;
-    });
+    const next = value instanceof Function ? value(latestRef.current) : value;
+    latestRef.current = next;
+    setStoredValue(next);
+    const raw = JSON.stringify(next);
+    try {
+      window.localStorage.setItem(key, raw);
+    } catch (err) {
+      console.error(`useLocalStorage: failed to set "${key}"`, err);
+    }
+    window.dispatchEvent(new CustomEvent<SameTabDetail>(SAME_TAB_EVENT, { detail: { key, raw, source: sourceRef.current } }));
   };
 
   return [storedValue, setValue];

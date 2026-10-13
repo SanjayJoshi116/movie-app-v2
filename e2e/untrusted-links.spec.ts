@@ -16,9 +16,11 @@ async function mockPerson(page: import("@playwright/test").Page, homepage: strin
 
 test("a javascript: homepage is shown as text, never as a link", async ({ page }) => {
   await mockAuthedBase(page);
+  // eslint-disable-next-line no-script-url -- hostile input under test
   await mockPerson(page, "javascript:alert(document.domain)");
   await page.goto("/person/42");
 
+  // eslint-disable-next-line no-script-url -- hostile input under test
   await expect(page.getByText("javascript:alert(document.domain)")).toBeVisible();
   await expect(page.locator('a[href^="javascript"]')).toHaveCount(0);
 });

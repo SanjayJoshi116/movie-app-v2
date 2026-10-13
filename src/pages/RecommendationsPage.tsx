@@ -1,10 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Tooltip } from "antd";
+import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Tooltip, theme } from "antd";
 import { StarFilled, BulbOutlined, SearchOutlined, EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
-import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
@@ -17,7 +16,8 @@ import {
   type PersonalizedRecSection,
   type PersonalizedRecItem,
 } from "../api/userApi";
-import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { ratingColor } from "../utils/colors";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
@@ -31,9 +31,12 @@ import CardLink from "../components/CardLink";
 const SS_SEARCH = "foryou_search";
 const SS_TYPE_FILTER = "foryou_type_filter";
 
-const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRecSection["items"][number]; navigate: (path: string, opts?: object) => void }) {
+type NavigateFn = (path: string, opts?: object) => void;
+
+/** `from` is the page hosting the card: the detail page's Back returns there. */
+const RecCard = memo(function RecCard({ item, navigate, from }: { item: PersonalizedRecSection["items"][number]; navigate: NavigateFn; from: string }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
-  const { theme } = useUIContext();
+  const idleIconColor = useActionIconColor();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
   const { showSuccess, showError } = useToast();
@@ -47,11 +50,11 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
       <Card
         hoverable
         className="glass-card"
-        onClick={() => navigate(path, { state: { from: "/recommendations" } })}
+        onClick={() => navigate(path, { state: { from } })}
         cover={
           // Poster-only link (the card has its own buttons); the card's mouse
           // onClick stays, so stop the click there.
-          <CardLink to={path} state={{ from: "/recommendations" }} label={item.title} stopPropagation>
+          <CardLink to={path} state={{ from }} label={item.title} stopPropagation>
             {item.posterPath ? (
               <img
                 src={`${POSTER_URL}${item.posterPath}`}
@@ -81,7 +84,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     size="small"
                     type="text"
                     icon={isWatched(item.id, item.type) ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(item.id, item.type) ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
+                    style={{ color: isWatched(item.id, item.type) ? WATCHED_GREEN : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(item.id, item.type)) {
@@ -103,7 +106,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                     size="small"
                     type="text"
                     icon={isInWatchlist(item.id, item.type) ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(item.id, item.type) ? "#1677ff" : theme === "dark" ? RATING_GOLD : "#000000" }}
+                    style={{ color: isInWatchlist(item.id, item.type) ? IN_WATCHLIST_BLUE : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(item.id, item.type);
@@ -121,7 +124,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
                   size="small"
                   type="primary"
                   ghost
-                  onClick={(e) => { e.stopPropagation(); navigate(path, { state: { from: "/recommendations" } }); }}
+                  onClick={(e) => { e.stopPropagation(); navigate(path, { state: { from } }); }}
                   aria-label={`Details for ${item.title}`}
                 >
                   Details
@@ -152,7 +155,7 @@ const RecCard = memo(function RecCard({ item, navigate }: { item: PersonalizedRe
   );
 });
 
-export function SectionRow({ section, navigate }: { section: PersonalizedRecSection; navigate: (path: string, opts?: object) => void }) {
+export function SectionRow({ section, navigate, from = "/recommendations" }: { section: PersonalizedRecSection; navigate: NavigateFn; from?: string }) {
   return (
     <div key={section.key}>
       <Divider orientation="left">
@@ -161,7 +164,7 @@ export function SectionRow({ section, navigate }: { section: PersonalizedRecSect
       <Row gutter={[16, 20]} style={{ marginBottom: 8 }}>
         {section.items.map((item) => (
           <Col key={`${item.type}-${item.id}`} xs={12} sm={8} md={6} lg={4} xl={4}>
-            <RecCard item={item} navigate={navigate} />
+            <RecCard item={item} navigate={navigate} from={from} />
           </Col>
         ))}
       </Row>
@@ -203,6 +206,7 @@ function readRecCache(): RecCache | null {
 }
 
 function RecommendationsPage() {
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const { watchedList, isDataLoading } = useAppContext();
 
@@ -399,7 +403,7 @@ function RecommendationsPage() {
           ))}
           {!loading && totalItems > 0 && totalFilteredItems === 0 && (
             <Empty
-              image={<SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+              image={<SearchOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />}
               description="No recommendations match your filters."
               style={{ padding: "60px 0" }}
             />
@@ -417,7 +421,7 @@ function RecommendationsPage() {
           )}
           {!loading && totalItems === 0 && !computing && !fetchError && (
             <Empty
-              image={<BulbOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+              image={<BulbOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />}
               description="No recommendations found for your watched titles."
               style={{ padding: "60px 0" }}
             />

@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
-import { Modal, Input, List, Tag, Typography, Checkbox, Empty, Button } from "antd";
+import { useEffect, useState, useMemo } from "react";
+import { Modal, Input, List, Tag, Typography, Checkbox, Empty, Button, Spin } from "antd";
 import { SearchOutlined, PlusOutlined } from "@ant-design/icons";
 import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { FONT_SIZE } from "../constants/typography";
+import { LoadError } from "./LoadError";
 import type { MediaType } from "../types";
 
 interface Props {
@@ -18,11 +19,19 @@ interface Props {
 }
 
 export function AddToListModal({ open, onClose, mediaId, mediaType, title, posterPath, voteAverage }: Props) {
-  const { lists, addToList, removeFromList, isInList, createList } = useListsContext();
+  const { lists, isLoading, error, reloadLists, addToList, removeFromList, isInList, createList } = useListsContext();
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState("");
   const [newListName, setNewListName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // The modal body unmounts on close but this component doesn't, so start
+  // every opening clean.
+  useEffect(() => {
+    if (!open) return;
+    setSearch("");
+    setNewListName("");
+  }, [open]);
 
   const filteredLists = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -83,7 +92,11 @@ export function AddToListModal({ open, onClose, mediaId, mediaType, title, poste
         />
       )}
 
-      {lists.length === 0 ? (
+      {lists.length === 0 && isLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}><Spin /></div>
+      ) : lists.length === 0 && error ? (
+        <LoadError title="Couldn't load your lists" onRetry={() => { reloadLists().catch(() => { /* recorded in `error` */ }); }} />
+      ) : lists.length === 0 ? (
         <Empty description="No lists yet. Create one above to get started." style={{ padding: "24px 0" }} />
       ) : filteredLists.length === 0 ? (
         <Typography.Text type="secondary">No lists match "{search}".</Typography.Text>

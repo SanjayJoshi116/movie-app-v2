@@ -2,6 +2,7 @@ import logging
 import time as _time
 from collections import Counter
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 import requests
 from rest_framework.decorators import api_view, permission_classes
@@ -26,6 +27,28 @@ _GENRE_FALLBACK_TTL = 300
 # cache, so 2 * (connect + read) must stay well under gunicorn's --timeout
 # (docker-entrypoint.sh); test_stats_genres pins the margin.
 GENRE_LOOKUP_TIMEOUT = (3.05, 5)
+
+
+def round_half_up(value: float, places: int = 1) -> float:
+    """Round halves up (7.25 -> 7.3), not to even as round() does (7.25 -> 7.2).
+    Going through str keeps a float like 7.249999 from drifting."""
+    quantum = Decimal(1).scaleb(-places)
+    return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
+def rating_bucket(rating: float) -> int:
+    """Whole-star bucket for a half-step rating, halves up: each of 1..10 holds
+    two half-steps (0.5 and 1.0 -> 1, 6.5 and 7.0 -> 7)."""
+    return min(10, max(1, int(Decimal(str(rating)).quantize(Decimal(1), rounding=ROUND_HALF_UP))))
+
+
+def _month_range(first: tuple[int, int], last: tuple[int, int]) -> list[tuple[int, int]]:
+    year, month = first
+    months = []
+    while (year, month) <= last:
+        months.append((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
 
 
 def _get_cached_genre_names() -> dict[int, str]:
@@ -59,11 +82,11 @@ def stats(request):
 
     all_ratings = list(ratings_qs.values_list("user_rating", flat=True))
     total_ratings = len(all_ratings)
-    avg_user_rating = round(sum(all_ratings) / total_ratings, 1) if all_ratings else 0
+    avg_user_rating = round_half_up(sum(all_ratings) / total_ratings) if all_ratings else 0
 
     dist = {str(i): 0 for i in range(1, 11)}
     for r in all_ratings:
-        bucket = str(min(10, max(1, round(r))))
+        bucket = str(rating_bucket(r))
         dist[bucket] += 1
     rating_distribution = [{"rating": k, "count": v} for k, v in dist.items()]
 
@@ -73,10 +96,17 @@ def stats(request):
         local = entry_local(entry, request)
         month_key = (local.year, local.month)
         monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
-    monthly_activity = [
-        {"month": date(year, month, 1).strftime("%b %Y"), "count": monthly_counts[(year, month)]}
-        for year, month in sorted(monthly_counts)
-    ]
+    # Every month from the first watch through this month (on the requesting
+    # device), zeros included: the chart's category axis would otherwise put
+    # January next to June. A stored watch past "today" (clock skew) extends it.
+    monthly_activity = []
+    if monthly_counts:
+        today = local_today(request)
+        last = max(max(monthly_counts), (today.year, today.month))
+        monthly_activity = [
+            {"month": date(year, month, 1).strftime("%b %Y"), "count": monthly_counts.get((year, month), 0)}
+            for year, month in _month_range(min(monthly_counts), last)
+        ]
 
     genre_counts: dict[int, int] = {}
     for entry in watched_list:
@@ -89,9 +119,10 @@ def stats(request):
         for gid, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
     ]
 
-    avg_tmdb_rating = (
-        round(sum(w.vote_average for w in watched_list) / total_watched, 1) if watched_list else None
-    )
+    # 0 is what's stored for "no score" (unreleased titles, CSV rows without
+    # one), so it would only drag the average down.
+    scored = [w.vote_average for w in watched_list if w.vote_average and w.vote_average > 0]
+    avg_tmdb_rating = round_half_up(sum(scored) / len(scored)) if scored else None
 
     total_runtime_minutes = sum(w.runtime_minutes or 0 for w in watched_list)
     platform_counter = Counter(w.platform for w in watched_list if w.platform)
@@ -148,7 +179,7 @@ def stats(request):
             genre_rating_sum[gid] = genre_rating_sum.get(gid, 0) + ur
             genre_rating_n[gid] = genre_rating_n.get(gid, 0) + 1
     rating_by_genre = sorted([
-        {"genre": genre_names.get(gid, f"Genre {gid}"), "avgRating": round(genre_rating_sum[gid] / n, 1)}
+        {"genre": genre_names.get(gid, f"Genre {gid}"), "avgRating": round_half_up(genre_rating_sum[gid] / n)}
         for gid, n in genre_rating_n.items() if n >= 3
     ], key=lambda x: -x["avgRating"])[:10]
 

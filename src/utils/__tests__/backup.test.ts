@@ -58,6 +58,22 @@ describe("backup v2 round trip", () => {
     ]);
   });
 
+  it("carries each list's createdAt and item addedAt through the manifest", async () => {
+    const data = await roundTrip(buildBackupZip(watchlist, watched, ratings, lists));
+    expect(data.lists.map((l) => l.createdAt)).toEqual(["2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"]);
+    expect(data.lists[1]!.entries[0]).toMatchObject({ addedAt: "2024-02-01T10:00:00Z" });
+  });
+
+  it("reads a manifest without createdAt (older v2 backup)", async () => {
+    const zip = buildBackupZip(watchlist, watched, ratings, lists);
+    const manifest = JSON.parse(await zip.file("manifest.json")!.async("string"));
+    for (const l of manifest.lists) delete l.createdAt;
+    zip.file("manifest.json", JSON.stringify(manifest));
+    const data = await roundTrip(zip);
+    expect(data.lists).toHaveLength(2);
+    expect(data.lists[0]).not.toHaveProperty("createdAt");
+  });
+
   it("still reads a v1 backup (no manifest), naming lists from files", async () => {
     const zip = new JSZip();
     zip.file("watchlist.csv", "tmdb_id,title,type,vote_average,added_at,poster_path\n13,Forrest Gump,movie,8.5,2024-02-01T10:00:00Z,");

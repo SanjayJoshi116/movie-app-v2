@@ -1,4 +1,4 @@
-"""Shared implementation of the bulk import endpoints (watched, watchlist, ratings)."""
+"""Shared implementation of the bulk import endpoints (watched, watchlist, ratings, list items)."""
 
 from django.db import transaction
 from django.utils import timezone
@@ -10,7 +10,9 @@ from .serializers import BulkImportSerializer
 MAX_BULK_ENTRIES = 500
 
 
-def bulk_import(request, *, model, entry_serializer, build, after_create=None, max_entries=MAX_BULK_ENTRIES):
+def bulk_import(
+    request, *, model, entry_serializer, build, after_create=None, max_entries=MAX_BULK_ENTRIES, scope=None,
+):
     """Validate a `{"entries": [...], "mediaType": ...}` body and create the
     entries that don't exist yet.
 
@@ -21,6 +23,8 @@ def bulk_import(request, *, model, entry_serializer, build, after_create=None, m
       untouched and counted as skipped.
 
     `build(user, media_type, validated_entry)` returns an unsaved instance.
+    `scope` is the filter that selects the rows an entry could collide with
+    (default `{"user": request.user}`; list items pass `{"user_list": ...}`).
     `after_create(user, added)` runs inside the transaction, so anything it
     defers with on_commit sees the new rows.
     """
@@ -63,8 +67,9 @@ def bulk_import(request, *, model, entry_serializer, build, after_create=None, m
         # The pre-check runs inside the transaction so the counts reflect
         # everything committed before it. A concurrent single-item create can
         # still slip in between; ignore_conflicts keeps that safe.
+        owner = scope if scope is not None else {"user": user}
         existing = set(
-            model.objects.filter(user=user, media_id__in={mid for mid, _ in unique})
+            model.objects.filter(**owner, media_id__in={mid for mid, _ in unique})
             .values_list("media_id", "media_type")
         )
         to_create = [

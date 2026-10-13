@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.22.0)
+CINE DB — Feature List (v0.23.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -12,16 +12,17 @@ DISCOVERY
 - Hero banner: trending title of the week
 
 DETAIL PAGES
-- Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability, all loaded in one request
+- Movie/TV detail: cast, videos, images, reviews, recommendations, similar titles, streaming availability, all loaded in one request; runtime/season/episode facts show only when known (no stray 0)
+- Where to Watch lists Streaming, Rent and Buy; with nothing available it says so for the US instead of showing empty headings
 - Trailers show a thumbnail with a play button; the YouTube player (privacy-enhanced youtube-nocookie) loads only when you press play
 - Movie and TV detail pages share the same section order/layout; up to 20 recommendation/similar cards; cast wraps to a centered grid (no horizontal scroll)
 - Recommendations and Similar sections are both filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing)
 - Backdrop images in the Images section open a full-size lightbox on click
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
 - Add to / remove from custom lists via a shared modal (search existing lists, inline create-new-list, no dead end at zero lists)
-- Mark as watched goes through a confirm modal that auto-fetches runtime and lets you pick the streaming platform (or "Other") — feeds Hours Watched / Platform Breakdown on Stats
+- Mark as watched goes through a confirm modal with an editable runtime (prefilled: a movie's runtime, or for TV the whole series as episodes × episode runtime) and a streaming-platform pick (or "Other") — feeds Hours Watched / Platform Breakdown on Stats
 - Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle; one-click "Next Episode" advance (handles season rollover, hides at the series finale)
-- Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Photos tabs), follow button; a website is a clickable link only for a real http(s) address
+- Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Crew/Photos tabs, newest first; Crew shows one card per title with the jobs joined; the first tab follows what the person is known for), follow button; a website is a clickable link only for a real http(s) address
 - A malformed movie/TV/person address (e.g. /movie/abc) shows "not found" without loading anything
 - Following page: search + sort followed people, "Recommended From People You Follow" section; a failed load shows an error with Retry, never "not following anyone"
 - In-app notifications: bell icon (Sidebar/BottomNav) with unread badge for new releases (last 30 days) from every person you follow, polled every 3 minutes (each poll stays fast however many people you follow; a large cold follow list fills in over a few polls); keyboard-accessible dropdown that stays fully on screen at every screen size, visible "couldn't check for updates" state if a poll fails
@@ -31,11 +32,11 @@ LIBRARY
 - Watch dates follow your own day: "today" uses this device's time zone, and each watch keeps the time zone it was logged in, so the Watched page, Stats heatmap and monthly charts never shift a day; a watch logged in another time zone shows a short zone label (e.g. 07-10-2026 · IST)
 - Watchlist filters by media type and watched status; Watched filters by media type — both persist filter/search/sort state and have a one-click reset
 - Watchlist's watched status is shared live with the Watched list (mark watched from any page, the Watchlist card reflects it immediately); marking watched opens the same runtime/platform-capture modal used everywhere else
-- Search/sort/CSV export on Watchlist and Watched; exported CSVs are spreadsheet-safe (formula-looking titles open as text) and re-import exactly
-- Full backup (ZIP) and restore: watchlist, watched (runtime/platform/time zone), ratings + reviews, all lists incl. empty ones; restore keeps original dates, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import; a file too large to be a backup is refused before it's unpacked
+- Search/sort/CSV export on Watchlist and Watched; exported CSVs are spreadsheet-safe (formula-looking titles open as text), open with correct accents in Excel (UTF-8 BOM) and re-import exactly
+- Full backup (ZIP) and restore: watchlist, watched (runtime/platform/time zone), ratings + reviews, all lists incl. empty ones; restore keeps original dates (including list creation and item added dates, so lists keep their order) and adds list items 500 at a time, never duplicates or overwrites, reports added/skipped/failed per section; old backups still import; a file too large to be a backup is refused before it's unpacked
 - Ratings (0.5-10) + written reviews (up to 5000 characters, with a live count); remove a rating from the rating dialog; a failed save keeps your stars and review
-- User Lists: create, rename, add/remove items, CSV export, CSV import; create/edit can't double-submit; list cards open from the keyboard; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
-- Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap; genre charts fill in for any library size; readable in both light and dark theme
+- User Lists: create, rename, add/remove items, CSV export, CSV import (a CSV without dates keeps its file order); create/edit can't double-submit; list cards open from the keyboard; each list has its own page (search/sort/type filter for its items) with a poster "theme image" on its grid card
+- Stats dashboard: totals, movie/TV split, rating distribution, monthly activity, genre breakdown, rating-by-genre, platform breakdown, hours watched, reviews written, lists/watchlist-backlog counts, activity heatmap (keyboard-readable: one Tab stop, arrow keys move by day/week, the focused day is announced); half-star ratings fall into even buckets and averages round half up; monthly activity shows every month since your first watch, including empty ones; the TMDB average ignores unscored titles; genre charts fill in for any library size; readable in both light and dark theme
 - Recommendations: personal history + "because you watched X" + followed-people picks; search + media-type filter; mark watched / add-to-watchlist directly from a recommendation card; a failed load retries in place; the "updating" state is accurate across server processes, and a refresh during a TMDB outage keeps your previous recommendations, and a title or person deleted from TMDB never freezes them
 - Release Calendar: 7-day lookahead, grouped by date, title search, sticky date headers, "Jump to Today", standards-compliant iCal export; a failed load shows an error with Retry
 
@@ -63,13 +64,13 @@ AUTH
 UI/UX
 - Skeleton loaders (staggered fade-in), toast notifications (success only after the server confirms; double-clicks send one request, one toast)
 - Every page shows loading, an error with in-place Retry, empty, or content — a failed load never looks like an empty library; detail pages degrade per section and show "not found" for bad ids
-- Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent — Poppins font throughout, unified size scale: caption/body/emphasis/display
+- Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent; icons, empty states and poster placeholders follow the theme — Poppins font throughout, unified size scale: caption/body/emphasis/display
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale; one implausibly old imported date can never break Stats (imports reject dates before 1900)
 - Fast pages: same-origin API in dev (no CORS preflights), identical TMDB requests shared, TMDB answers cached on the server (10 min for lists, 6 h for details, 24 h for genres), library loads 500 rows per request, images sized for display (w342 grid posters, w1280 backdrops)
-- Keyboard accessible: every poster card that opens a page is a real link (Tab, Enter, middle/Ctrl-click opens a new tab) with a visible focus outline in both themes; icon-only buttons have screen-reader labels
+- Keyboard accessible: every poster card that opens a page (including the Movies/TV/Anime grids, the hero's View Details and notification items) is a real link (Tab, Enter, middle/Ctrl-click opens a new tab) with a visible focus outline in both themes; icon-only buttons have screen-reader labels
 - Unknown URLs show a "Page not found" page with a link back to Movies
 - Framer Motion page transitions
-- Installs as "CINE DB" with its own gold "C" app icon and favicon (web app manifest + page description)
+- Installs as "CINE DB" with its own gold "C" app icon and favicon (web app manifest + page description); the browser tab reads "CINE DB" too
 - Responsive across screen sizes: full sidebar (desktop, 992px+), icon-only collapsed rail (tablet, 768-991px), bottom nav (phone, under 768px); no fixed-width overflow on narrow phones (auth cards, filter-bar inputs)
 - Desktop sidebar has a manual collapse toggle (folds to the same icon rail tablet uses); preference remembered; in the rail, the footer controls sit in a compact 2-column icon grid
 - Sidebar stays pinned in place while scrolling; nav icons briefly flash their tooltip label on click, most useful on the icon-only tablet rail and phone bottom nav
@@ -81,8 +82,9 @@ SECURITY & OPERATIONS
 - Password-reset links and TMDB callback tokens never appear in the web server's access log; production refuses to start without a configured email backend, so reset links are never printed to the log
 - Imports of unknown titles can't flood TMDB: missing title details are filled at most 100 at a time, and titles TMDB doesn't know are remembered permanently
 - A redeploy never leaves an open tab on a blank page (the entry page is revalidated; a missing old file is a clean 404)
+- The app's scripts and styles are served compressed, and their hashed files are cached by the browser for a year
 - The database container gets only the database password (kept in its own .env.db), none of the app's other secrets
 - Endpoints that wait on TMDB (proxy, notifications, followed-people recommendations, Stats genre lookup) each answer within a fixed time budget under the server's request timeout
 - Production reuses database connections (60 s) instead of connecting per request
 - TMDB browsing limits apply per signed-in user, so people sharing one network don't share a limit; a malformed time zone never causes an error
-- Node 22 and the Python linter are pinned, so local, CI and Docker builds use the same versions
+- Node 22 and the Python linter are pinned, so local, CI and Docker builds use the same versions; CI never retries a failed test, lints the e2e specs, and builds and checks both Docker images

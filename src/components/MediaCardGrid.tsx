@@ -10,6 +10,8 @@ export interface MediaCardGridItem {
   posterPath: string | null;
   name: string;
   subtitle?: string;
+  /** Overrides the grid's `mediaType`, for grids mixing movies and TV (person Crew tab). */
+  mediaType?: "movie" | "tv";
 }
 
 interface MediaCardGridProps {
@@ -27,8 +29,8 @@ export function MediaCardGrid({ title, items, mediaType, limit = 20 }: MediaCard
       {title && <SectionHeader title={title} />}
       <Row gutter={[12, 16]}>
         {items.slice(0, limit).map((item) => (
-          <Col key={item.id} xs={8} sm={6} md={4} lg={3}>
-            <CardLink to={`/${mediaType}/${item.id}`} label={item.name}>
+          <Col key={`${item.mediaType ?? mediaType}-${item.id}`} xs={8} sm={6} md={4} lg={3}>
+            <CardLink to={`/${item.mediaType ?? mediaType}/${item.id}`} label={item.name}>
             <Card
               hoverable
               size="small"

@@ -37,7 +37,10 @@ function TMDBCallbackPage() {
 
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
-      <Spin size="large" tip="Connecting TMDB account…" />
+      {/* antd 5 renders `tip` only when Spin wraps content. */}
+      <Spin size="large" tip="Connecting TMDB account…">
+        <div style={{ width: 240, height: 120 }} />
+      </Spin>
     </div>
   );
 }

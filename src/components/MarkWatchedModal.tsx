@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal, Form, InputNumber, Select, Input, Spin } from "antd";
-import { fetchMovieDetails, fetchTVDetails, fetchMovieProviders, fetchTVWatchProviders } from "../api/tmdb";
-import type { MediaType } from "../types";
+import { fetchMovieDetails, fetchTVDetails } from "../api/tmdb";
+import type {
+  MediaType, TMDBMovieDetailResponse, TMDBProvider, TMDBProviderRegion, TMDBTVDetailResponse, TMDBWatchProviderResponse,
+} from "../types";
+import { arrayOr, objectOr } from "../utils/appended";
+import { prefillRuntime } from "../utils/watchRuntime";
 
 const OTHER_VALUE = "__other__";
 
@@ -43,28 +47,27 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
     form.resetFields();
     metaRef.current = {};
 
-    const fetchRuntime = mediaType === "movie"
-      ? fetchMovieDetails(mediaId).then((res) => {
-          metaRef.current = { originalLanguage: res.data.original_language || undefined, releaseYear: yearOf(res.data.release_date) };
-          return res.data.runtime;
-        })
-      : fetchTVDetails(mediaId).then((res) => {
-          metaRef.current = { originalLanguage: res.data.original_language || undefined, releaseYear: yearOf(res.data.first_air_date) };
-          return res.data.episode_run_time?.[0];
-        });
-    const providersReq = mediaType === "movie" ? fetchMovieProviders(mediaId) : fetchTVWatchProviders(mediaId);
-
-    Promise.all([fetchRuntime, providersReq])
-      .then(([runtime, providersRes]) => {
+    // One request: the same appended details call the detail page makes (so
+    // usually a shared or cached hit), with `watch/providers` riding along.
+    // A missing or malformed providers part only empties the platform list;
+    // a failed request leaves the form usable with the "Other" choice.
+    const request = mediaType === "movie" ? fetchMovieDetails(mediaId) : fetchTVDetails(mediaId);
+    request
+      .then(({ data }) => {
         if (cancelled) return;
-        form.setFieldsValue({ runtimeMinutes: runtime ?? undefined });
+        const date = mediaType === "movie"
+          ? (data as TMDBMovieDetailResponse).release_date
+          : (data as TMDBTVDetailResponse).first_air_date;
+        metaRef.current = { originalLanguage: data.original_language || undefined, releaseYear: yearOf(date) };
+        form.setFieldsValue({ runtimeMinutes: prefillRuntime(mediaType, data) });
 
-        const region = providersRes.data.results?.["US"];
-        const names = region
-          ? Array.from(new Set(
-              [...(region.flatrate ?? []), ...(region.rent ?? []), ...(region.buy ?? [])].map((p) => p.provider_name),
-            ))
-          : [];
+        const providers = objectOr<TMDBWatchProviderResponse>(data["watch/providers"], { results: {} });
+        const region = objectOr<Partial<TMDBProviderRegion>>(objectOr<Record<string, unknown>>(providers.results, {})["US"], {});
+        const names = Array.from(new Set(
+          [...arrayOr<TMDBProvider>(region.flatrate), ...arrayOr<TMDBProvider>(region.rent), ...arrayOr<TMDBProvider>(region.buy)]
+            .map((p) => p?.provider_name)
+            .filter((name): name is string => typeof name === "string" && name.length > 0),
+        ));
         setOptions(names.map((name) => ({ label: name, value: name })));
       })
       .catch(() => {})
@@ -97,7 +100,8 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
       <Spin spinning={loading}>
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="runtimeMinutes" label="Runtime (minutes)">
-            <InputNumber disabled style={{ width: "100%" }} placeholder={loading ? "Fetching…" : "Not available"} />
+            {/* Editable: a whole-series prefill is an estimate, and TMDB often has none. */}
+            <InputNumber min={0} max={2147483647} precision={0} style={{ width: "100%" }} placeholder={loading ? "Fetching…" : "Minutes (optional)"} />
           </Form.Item>
           <Form.Item name="platform" label="Watched on (optional)">
             <Select

@@ -88,3 +88,23 @@ class FollowedPeopleRecommendationsBudgetTests(APITestCase):
         match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
         self.assertIsNotNone(match, "docker-entrypoint.sh must set gunicorn --timeout explicitly")
         self.assertLessEqual(social_views.FOLLOWED_RECS_BUDGET_SECONDS, int(match.group(1)) - 10)
+
+
+class FollowedRecsSameIdTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="fizz", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.create(user=self.user, person_id=1, name="P1")
+
+    @patch("userdata.tmdb_client._get")
+    def test_movie_and_show_sharing_an_id_both_stay(self, mock_get):
+        mock_get.return_value = {"cast": [
+            {"id": 1399, "media_type": "movie", "title": "A Film", "vote_average": 7.5, "popularity": 10},
+            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "popularity": 10},
+            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "popularity": 10},
+        ]}
+        res = self.client.get("/api/recommendations/followed-people/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        items = res.data[0]["items"]
+        self.assertEqual(sorted((i["id"], i["type"]) for i in items), [(1399, "movie"), (1399, "tv")])

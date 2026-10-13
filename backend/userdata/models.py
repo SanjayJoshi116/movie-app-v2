@@ -71,7 +71,8 @@ class UserList(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="lists")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
+    # A default, not auto_now_add: a backup restore supplies the original time.
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"{self.user.username} — {self.name}"
@@ -84,7 +85,8 @@ class UserListItem(models.Model):
     title = models.CharField(max_length=500)
     poster_path = models.CharField(max_length=500, blank=True, null=True)
     vote_average = models.FloatField(default=0)
-    added_at = models.DateTimeField(auto_now_add=True)
+    # A default, not auto_now_add: bulk imports supply the original time.
+    added_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         unique_together = ("user_list", "media_id", "media_type")

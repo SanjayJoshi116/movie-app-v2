@@ -69,7 +69,7 @@ export interface ListsContextType {
   isLoading: boolean;
   /** Last load failure, or null. Items already loaded are kept on a failed reload. */
   error: unknown;
-  createList(name: string, description: string): Promise<UserList | undefined>;
+  createList(name: string, description: string, createdAt?: string): Promise<UserList | undefined>;
   deleteList(id: number): Promise<void>;
   updateList(id: number, patch: { name?: string; description?: string }): Promise<void>;
   addToList(listId: number, entry: WatchlistInput): Promise<void>;

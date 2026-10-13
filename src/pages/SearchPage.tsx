@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty } from "antd";
+import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty, theme } from "antd";
 import { EyeOutlined, EyeFilled, SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useToast } from "../hooks/useToast";
@@ -15,7 +15,8 @@ import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import { saveSessionCache } from "../api/userApi";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
-import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, pageVariants, WATCHED_GREEN } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
 import { MarkWatchedModal } from "../components/MarkWatchedModal";
@@ -165,7 +166,8 @@ interface TabProps {
 
 function MoviesTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
-  const { isWatched, toggleWatched, theme } = useAppContext();
+  const { isWatched, toggleWatched } = useAppContext();
+  const idleIconColor = useActionIconColor();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
@@ -231,7 +233,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
                             size="small"
                             type="text"
                             icon={isWatched(m.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(m.id, "movie") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
+                            style={{ color: isWatched(m.id, "movie") ? WATCHED_GREEN : idleIconColor }}
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(m.id, "movie")) {
@@ -291,7 +293,8 @@ function MoviesTab({ query, adult, active }: TabProps) {
 
 function TVTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
-  const { isWatched, toggleWatched, theme } = useAppContext();
+  const { isWatched, toggleWatched } = useAppContext();
+  const idleIconColor = useActionIconColor();
   const { showSuccess, showError } = useToast();
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
@@ -357,7 +360,7 @@ function TVTab({ query, adult, active }: TabProps) {
                             size="small"
                             type="text"
                             icon={isWatched(t.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(t.id, "tv") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
+                            style={{ color: isWatched(t.id, "tv") ? WATCHED_GREEN : idleIconColor }}
                             onClick={async (e) => {
                               e.stopPropagation();
                               if (isWatched(t.id, "tv")) {
@@ -452,6 +455,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 function SearchPage() {
+  const { token } = theme.useToken();
   const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "movies";
@@ -482,7 +486,7 @@ function SearchPage() {
 
       {!searchTerm ? (
         <Empty
-          image={<SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />}
+          image={<SearchOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />}
           description="Type something in the search bar to find movies, TV shows, or people."
           style={{ padding: "80px 0" }}
         />

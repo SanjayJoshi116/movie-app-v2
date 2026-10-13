@@ -28,6 +28,7 @@ import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import type { TMDBTVDetail, TMDBProviderRegion, TMDBAggregateCreditsFull } from "../types";
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
@@ -50,7 +51,8 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched, theme } = useAppContext();
+  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched } = useAppContext();
+  const idleIconColor = useActionIconColor();
   const { showSuccess, showError } = useToast();
   const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -161,7 +163,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000", fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? WATCHED_GREEN : idleIconColor, fontSize: "1.5rem" }}
                 >
                   {watched ? <EyeFilled /> : <EyeOutlined />}
                 </motion.button>
@@ -187,12 +189,12 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     prefix={<StarFilled style={{ color: RATING_GOLD }} />}
                   />
                 </Col>
-                {number_of_seasons && (
+                {typeof number_of_seasons === "number" && number_of_seasons > 0 && (
                   <Col>
                     <Statistic title="Seasons" value={number_of_seasons} />
                   </Col>
                 )}
-                {number_of_episodes && (
+                {typeof number_of_episodes === "number" && number_of_episodes > 0 && (
                   <Col>
                     <Statistic title="Episodes" value={number_of_episodes} />
                   </Col>

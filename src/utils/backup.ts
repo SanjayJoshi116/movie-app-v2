@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import type { RatingEntry, UserList, WatchedEntry, WatchlistEntry } from "../types";
-import { buildCSVString } from "./export";
+import { CSV_BOM, buildCSVString } from "./export";
 import { parseBackupCSV, type BackupRow } from "./csvParse";
 
 export const BACKUP_FORMAT = "cinedb-backup";
@@ -11,7 +11,8 @@ export interface BackupManifest {
   version: number;
   exportedAt: string;
   /** Every list, empty ones included, with its original name. */
-  lists: { file: string; name: string; description: string }[];
+  // createdAt was added later (fix-stats-math); older backups lack it.
+  lists: { file: string; name: string; description: string; createdAt?: string }[];
 }
 
 export interface BackupContents {
@@ -20,7 +21,7 @@ export interface BackupContents {
   watchlist: BackupRow[];
   watched: BackupRow[];
   ratings: BackupRow[];
-  lists: { name: string; description: string; entries: BackupRow[] }[];
+  lists: { name: string; description: string; createdAt?: string; entries: BackupRow[] }[];
 }
 
 const LIST_COLUMNS = ["tmdb_id", "title", "type", "vote_average", "added_at", "poster_path"];
@@ -38,7 +39,7 @@ function listFileNames(lists: UserList[]): string[] {
 }
 
 function csvOrHeader(rows: Record<string, unknown>[], columns: string[]): string {
-  return rows.length > 0 ? buildCSVString(rows) : columns.join(",");
+  return rows.length > 0 ? buildCSVString(rows) : CSV_BOM + columns.join(",");
 }
 
 export function buildBackupZip(
@@ -95,7 +96,7 @@ export function buildBackupZip(
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt,
-    lists: lists.map((l, idx) => ({ file: files[idx]!, name: l.name, description: l.description })),
+    lists: lists.map((l, idx) => ({ file: files[idx]!, name: l.name, description: l.description, createdAt: l.createdAt })),
   };
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   return zip;
@@ -179,6 +180,7 @@ export async function readBackupZip(zip: JSZip): Promise<BackupContents> {
     lists.push({
       name: entry.name,
       description: typeof entry.description === "string" ? entry.description : "",
+      ...(typeof entry.createdAt === "string" && entry.createdAt ? { createdAt: entry.createdAt } : {}),
       entries: typeof entry.file === "string" ? await readCSV(zip, entry.file) : [],
     });
   }

@@ -10,7 +10,6 @@ import type {
   TMDBPersonCredits,
   TMDBPersonImages,
   TMDBPersonSummary,
-  TMDBWatchProviderResponse,
   FilterValues,
   SortOption,
 } from "../types";
@@ -116,11 +115,6 @@ export const fetchTVPoster = (
 ): Promise<AxiosResponse<{ poster_path: string | null; vote_average: number }>> =>
   sharedGet(`/tv/${id}`);
 
-export const fetchMovieProviders = (
-  id: number | string,
-): Promise<AxiosResponse<TMDBWatchProviderResponse>> =>
-  sharedGet(`/movie/${id}/watch/providers`);
-
 // ─── TV Shows ─────────────────────────────────────────────────────────────────
 
 export const discoverTV = (
@@ -151,11 +145,6 @@ export const fetchTVDetails = (
         "external_ids,similar,recommendations,videos,aggregate_credits,images,reviews,watch/providers",
     },
   });
-
-export const fetchTVWatchProviders = (
-  id: number | string,
-): Promise<AxiosResponse<TMDBWatchProviderResponse>> =>
-  sharedGet(`/tv/${id}/watch/providers`);
 
 export const fetchTVSeason = (
   tvId: number | string,

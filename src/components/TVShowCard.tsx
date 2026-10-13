@@ -4,16 +4,17 @@ import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/ic
 import { motion } from "framer-motion";
 import type { TMDBTVSummary } from "../types";
 import MarqueeTitle from "./MarqueeTitle";
-import { useUIContext } from "../context/UIContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
 import { MarkWatchedModal } from "./MarkWatchedModal";
 import { PosterPlaceholder } from "./PosterPlaceholder";
-import { POSTER_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { POSTER_URL, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
+import CardLink from "./CardLink";
 
 interface Props {
   tvShow: TMDBTVSummary;
@@ -21,7 +22,7 @@ interface Props {
 }
 
 const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
-  const { theme } = useUIContext();
+  const idleIconColor = useActionIconColor();
   const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
   const { isWatched, toggle: toggleWatched } = useWatchedContext();
   const { showSuccess, showError } = useToast();
@@ -40,16 +41,20 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
         hoverable
         className="glass-card"
         cover={
-          tvShow.poster_path ? (
-            <img
-              src={`${POSTER_URL}${tvShow.poster_path}`}
-              alt={tvShow.name}
-              loading="lazy"
-              className="movie-poster-img"
-            />
-          ) : (
-            <PosterPlaceholder className="movie-poster-img" />
-          )
+          // Poster-only link (the card has its own buttons); the card's mouse
+          // onClick stays, so stop the click there.
+          <CardLink to={`/tv/${tvShow.id}`} onNavigate={() => onKnowMore(tvShow.id)} label={tvShow.name} stopPropagation>
+            {tvShow.poster_path ? (
+              <img
+                src={`${POSTER_URL}${tvShow.poster_path}`}
+                alt=""
+                loading="lazy"
+                className="movie-poster-img"
+              />
+            ) : (
+              <PosterPlaceholder className="movie-poster-img" />
+            )}
+          </CardLink>
         }
         styles={{ body: { padding: "10px 12px" } }}
         style={{ height: "100%" }}
@@ -69,7 +74,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isWatched(tvShow.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(tvShow.id, "tv") ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000" }}
+                    style={{ color: isWatched(tvShow.id, "tv") ? WATCHED_GREEN : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (isWatched(tvShow.id, "tv")) {
@@ -91,7 +96,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                     size="small"
                     type="text"
                     icon={isInWatchlist(tvShow.id, "tv") ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(tvShow.id, "tv") ? "#1677ff" : theme === "dark" ? RATING_GOLD : "#000000" }}
+                    style={{ color: isInWatchlist(tvShow.id, "tv") ? IN_WATCHLIST_BLUE : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const inList = isInWatchlist(tvShow.id, "tv");

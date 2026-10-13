@@ -26,25 +26,11 @@ import { LoadError } from "../components/LoadError";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
-  TMDBPersonCombinedCredit,
   TMDBPersonImages,
 } from "../types";
+import { mergeCredits, mergeCrew, sortCreditsNewestFirst } from "../utils/personCredits";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
-
-/** One entry per title: a person credited twice on the same title gets their roles joined. */
-function mergeCredits(cast: TMDBPersonCombinedCredit[]): TMDBPersonCombinedCredit[] {
-  const byId = new Map<number, TMDBPersonCombinedCredit>();
-  for (const c of cast) {
-    const prev = byId.get(c.id);
-    if (!prev) {
-      byId.set(c.id, c);
-    } else if (c.character && !(prev.character ?? "").split(" / ").includes(c.character)) {
-      byId.set(c.id, { ...prev, character: prev.character ? `${prev.character} / ${c.character}` : c.character });
-    }
-  }
-  return Array.from(byId.values());
-}
 
 function PersonPage() {
   const id = useValidId();
@@ -55,8 +41,8 @@ function PersonPage() {
   const savedScrollY = locationState?.scrollY;
   const savedLoadedPages = locationState?.loadedPages;
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeCreditsTab = searchParams.get("tab") ?? "movies";
-  const { isFollowing, follow, unfollow } = useFollowedPeople();
+  const activeCreditsTab = searchParams.get("tab");
+  const { isFollowing, follow, unfollow, error: followStatusError } = useFollowedPeople();
   const { showSuccess, showError } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
@@ -95,8 +81,11 @@ function PersonPage() {
         const movies = settledData(movieRes);
         const tv = settledData(tvRes);
         setPerson(personRes.value.data);
-        setMovieCredits(movies ? { ...movies, cast: mergeCredits(movies.cast) } : null);
-        setTvCredits(tv ? { ...tv, cast: mergeCredits(tv.cast) } : null);
+        // A malformed credits body (no array) counts as no credits, not a crash.
+        const castOf = (c: TMDBPersonCredits | undefined) => sortCreditsNewestFirst(mergeCredits(Array.isArray(c?.cast) ? c.cast : []));
+        const crewOf = (c: TMDBPersonCredits | undefined) => (Array.isArray(c?.crew) ? c.crew : []);
+        setMovieCredits(movies ? { cast: castOf(movies), crew: crewOf(movies) } : null);
+        setTvCredits(tv ? { cast: castOf(tv), crew: crewOf(tv) } : null);
         setImages(settledData(imagesRes) ?? null);
       }
       setLoading(false);
@@ -121,6 +110,7 @@ function PersonPage() {
   const homepageUrl = safeHttpUrl(person.homepage);
 
   type TabItem = { key: string; label: string; children: ReactNode };
+  const crew = mergeCrew(movieCredits?.crew ?? [], tvCredits?.crew ?? []);
 
   const rawTabItems = ([
     movieCredits && movieCredits.cast.length > 0
@@ -159,6 +149,13 @@ function PersonPage() {
           ),
         }
       : null,
+    crew.length > 0
+      ? {
+          key: "crew",
+          label: `Crew (${crew.length})`,
+          children: <MediaCardGrid items={crew} mediaType="movie" limit={crew.length} />,
+        }
+      : null,
     images && images.profiles.length > 0
       ? {
           key: "images",
@@ -183,6 +180,11 @@ function PersonPage() {
       : null,
   ] as Array<TabItem | null | false>);
   const tabItems = rawTabItems.filter((x): x is TabItem => Boolean(x));
+  // No tab in the URL: open on the person's main department, so a director's
+  // page leads with what they directed rather than their cameos.
+  const defaultTab = person.known_for_department !== "Acting" && crew.length > 0
+    ? "crew"
+    : tabItems.find((t) => t.key !== "images")?.key ?? tabItems[0]?.key;
 
   return (
     <motion.div
@@ -222,6 +224,8 @@ function PersonPage() {
               <Button
                 icon={isFollowing(person.id) ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 type={isFollowing(person.id) ? "default" : "primary"}
+                // Without the followed list, "Follow" would claim "not following".
+                disabled={followStatusError}
                 onClick={async () => {
                   try {
                     if (isFollowing(person.id)) {
@@ -286,7 +290,7 @@ function PersonPage() {
 
         {tabItems.length > 0 ? (
           <Tabs
-            activeKey={tabItems.some(t => t.key === activeCreditsTab) ? activeCreditsTab : tabItems[0]?.key}
+            activeKey={activeCreditsTab && tabItems.some((t) => t.key === activeCreditsTab) ? activeCreditsTab : defaultTab}
             onChange={(key) => setSearchParams({ tab: key }, { replace: true })}
             items={tabItems}
           />

@@ -58,11 +58,12 @@ export function useLists() {
 
   // Keyed by the normalized name: a double-click (or double Enter) on "create"
   // gets the first request's result instead of making a second, identical list.
-  const createList = useCallback((name: string, description: string): Promise<UserList | undefined> =>
+  // `createdAt` only from a backup restore: the server keeps the original time.
+  const createList = useCallback((name: string, description: string, createdAt?: string): Promise<UserList | undefined> =>
     inflight.current.run(`create-${name.trim().toLowerCase()}`, async () => {
       if (!isAuthenticated) return undefined;
       const gen = currentSessionGeneration();
-      const { data } = await userApi.post<UserListDTO>("/lists/", { name, description });
+      const { data } = await userApi.post<UserListDTO>("/lists/", { name, description, ...(createdAt ? { createdAt } : {}) });
       if (!isCurrentSession(gen)) return undefined;
       const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
       setLists((prev) => [...prev, created]);

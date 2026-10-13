@@ -20,9 +20,14 @@ const MOCK_TOKENS = { access: "fake-access", refresh: "fake-refresh" };
 
 const EMPTY_TMDB_PAGE = { results: [], total_pages: 1, total_results: 0, page: 1 };
 
-/** The real list-endpoint response shape (DRF pagination), not a bare array. */
-export function paginated<T>(items: T[]) {
-  return { count: items.length, next: null, previous: null, results: items };
+/** The real list-endpoint response shape (DRF pagination), not a bare array.
+ *  One page by default; pass `next` (and the total `count`) to serve a page of
+ *  a longer list. */
+export function paginated<T>(
+  items: T[],
+  { next = null, count = items.length }: { next?: string | null; count?: number } = {},
+) {
+  return { count, next, previous: null, results: items };
 }
 
 export const test = base.extend<{ unmocked: string[] }>({

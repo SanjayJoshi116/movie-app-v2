@@ -71,3 +71,16 @@ test("unread items stay marked while open; closing marks them seen", async ({ pa
   await expect(popup(page).getByText("Unread One", { exact: true })).toBeVisible();
   expect(await weight(page, "Unread One")).toBe("400");
 });
+
+test("each notification item is a link to its title", async ({ page }) => {
+  await mockNotifications(page);
+  await page.route("**/api/tmdb/movie/1**", (route) => route.fulfill({ json: { id: 1, title: "Unread One" } }));
+  await page.goto("/watchlist");
+  await bell(page).click();
+  const link = popup(page).getByRole("link", { name: /Unread One/ });
+  await expect(link).toHaveAttribute("href", "/movie/1");
+  // A plain click (or Enter) stays in the SPA, closes the popup and opens the title.
+  await link.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL("/movie/1");
+});

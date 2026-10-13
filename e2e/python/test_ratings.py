@@ -112,8 +112,6 @@ class TestRatingFromDetailPage:
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         rate_btn = authed_page.get_by_role("button", name="Rate")
-        if rate_btn.count() == 0:
-            rate_btn = authed_page.locator("button").filter(has_text="Rate").first
         expect(rate_btn).to_be_visible(timeout=5_000)
 
     def test_rate_button_opens_modal_on_detail_page(self, authed_page: Page):
@@ -121,7 +119,5 @@ class TestRatingFromDetailPage:
         authed_page.goto("/movie/100")
         expect(authed_page.get_by_text("Movie 1")).to_be_visible(timeout=10_000)
         rate_btn = authed_page.get_by_role("button", name="Rate")
-        if rate_btn.count() == 0:
-            rate_btn = authed_page.locator("button").filter(has_text="Rate").first
-        rate_btn.first.click()
+        rate_btn.click()
         expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)

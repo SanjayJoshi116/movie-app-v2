@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { useToast } from "../../hooks/useToast";
 import { useAppContext } from "../../context/useAppContext";
 import { useListsContext } from "../../context/useListsContext";
-import userApi, { bulkImport, type BulkImportResult } from "../../api/userApi";
+import userApi, { bulkAddListItems, bulkImport, type BulkImportResult } from "../../api/userApi";
 import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
 import {
   readBackupZip,
@@ -15,6 +15,7 @@ import {
   type BackupContents,
 } from "../../utils/backup";
 import type { BackupRow } from "../../utils/csvParse";
+import { orderForImport } from "../../utils/listImport";
 import { fetchAllPages } from "../../utils/fetchAllPages";
 import type { UserListDTO } from "../../types";
 import { FONT_SIZE } from "../../constants/typography";
@@ -109,11 +110,13 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     const existing = await fetchAllPages<UserListDTO>(userApi, "/lists/");
     const idByName = new Map(existing.map((l) => [l.name, l.id]));
     let created = 0;
-    for (const list of lists) {
+    // Lists without a createdAt (older backups) are created in reverse, so they
+    // keep the backup's order.
+    for (const list of orderForImport(lists, (l) => l.createdAt)) {
       let listId = idByName.get(list.name);
       if (listId === undefined) {
         try {
-          const made = await createList(list.name, list.description);
+          const made = await createList(list.name, list.description, list.createdAt);
           if (!made) throw new Error("not created");
           listId = made.id;
           idByName.set(list.name, listId);
@@ -123,17 +126,18 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
           continue;
         }
       }
-      const BATCH = 20;
-      for (let i = 0; i < list.entries.length; i += BATCH) {
-        const settled = await Promise.allSettled(
-          list.entries.slice(i, i + BATCH).map((r) => userApi.post(`/lists/${listId}/items/`, mediaFields(r))),
-        );
-        for (const s of settled) {
-          if (s.status === "rejected") result.failed += 1;
-          else if (s.value.status === 201) result.added += 1;
-          else result.skipped += 1;
-        }
-      }
+      // 500 per request, each item's added date kept, so the restored list
+      // keeps its order (one POST per item scrambled it and ate the throttle).
+      const r = await bulkAddListItems(
+        listId,
+        orderForImport(
+          list.entries.map((e) => ({ ...mediaFields(e), ...(e.addedAt ? { addedAt: e.addedAt } : {}) })),
+          (e) => e.addedAt,
+        ),
+      );
+      result.added += r.added;
+      result.skipped += r.skipped;
+      result.failed += r.failed;
     }
     result.note = `${created} new list${created === 1 ? "" : "s"}`;
     return result;

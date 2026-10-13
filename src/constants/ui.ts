@@ -28,3 +28,11 @@ export const RATING_GOLD = "#f5c518";
 export const WATCHED_GREEN = "#52c41a";
 export const RATING_WARN = "#faad14";
 export const RATING_BAD = "#ff4d4f";
+
+/** "In watchlist" icon state. A state color like WATCHED_GREEN, not a theme
+ *  token: antd's colorPrimary here is gold, the same as an idle icon in dark mode. */
+export const IN_WATCHLIST_BLUE = "#1677ff";
+/** Text on a RATING_GOLD (or Stats' blue) badge, whose fill is the same in both themes. */
+export const ON_GOLD_TEXT = "#000";
+/** Initials on an `avatarColor()` background, which doesn't change with the theme. */
+export const AVATAR_INITIALS_TEXT = "#fff";

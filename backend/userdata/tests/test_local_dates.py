@@ -163,8 +163,10 @@ class StatsLocalDayTests(APITestCase):
     def test_month_bucket_uses_logged_zone(self, *_):
         # 20:00 UTC on 31 Jan 2026 is 1 Feb in Kolkata.
         self._watch(1, datetime(2026, 1, 31, 20, 0, tzinfo=UTC), KOLKATA)
-        months = [m["month"] for m in self._stats(LONDON)["monthlyActivity"]]
-        self.assertEqual(months, ["Feb 2026"])
+        monthly = self._stats(LONDON)["monthlyActivity"]
+        # The range starts at the watch's month (later months are zero-filled through today).
+        self.assertEqual(monthly[0], {"month": "Feb 2026", "count": 1})
+        self.assertNotIn("Jan 2026", [m["month"] for m in monthly])
 
 
 class NotificationsLocalDayTests(APITestCase):

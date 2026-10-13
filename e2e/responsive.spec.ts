@@ -104,13 +104,22 @@ test.describe("Responsive layout", () => {
         return { dx: p!.x - b!.x, dy: p!.y - b!.y };
       };
       const before = await offset();
-      await page.evaluate(() => {
-        const spacer = document.createElement("div");
-        spacer.style.height = "3000px";
-        document.querySelector(".app-content")?.appendChild(spacer);
-        window.scrollBy(0, 600);
-      });
-      await page.waitForTimeout(200);
+      // Resolves once the scroll event has fired and two frames have passed,
+      // so antd's scroll-driven reposition (done in a frame) has already run.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            const spacer = document.createElement("div");
+            spacer.style.height = "3000px";
+            document.querySelector(".app-content")?.appendChild(spacer);
+            window.addEventListener(
+              "scroll",
+              () => requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+              { once: true },
+            );
+            window.scrollBy(0, 600);
+          }),
+      );
       expect(await offset()).toEqual(before);
     });
   }

@@ -5,6 +5,7 @@ import type { DropdownProps } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { useNotifications } from "../hooks/useNotifications";
 import { PosterPlaceholder } from "./PosterPlaceholder";
+import CardLink from "./CardLink";
 import { POSTER_THUMB_URL } from "../constants/ui";
 import { formatDateDMY } from "../utils/formatDate";
 import { FONT_SIZE } from "../constants/typography";
@@ -43,9 +44,11 @@ function NotificationBell({ buttonClassName, placement = "topLeft", autoAdjustOv
     }
   };
 
+  const itemPath = (item: (typeof items)[number]) => (item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`);
+
   const openItem = (item: (typeof items)[number]) => {
     setOpenState(false);
-    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`);
+    navigate(itemPath(item));
   };
 
   return (
@@ -79,33 +82,24 @@ function NotificationBell({ buttonClassName, placement = "topLeft", autoAdjustOv
             />
           ) : (
             items.map((item) => (
-              <div
-                key={itemKey(item)}
-                role="button"
-                tabIndex={0}
-                onClick={() => openItem(item)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openItem(item);
-                  }
-                }}
-                style={{ display: "flex", gap: 10, padding: 8, cursor: "pointer", borderRadius: 6, alignItems: "center" }}
-              >
-                {item.posterPath ? (
-                  <img src={`${POSTER_THUMB_URL}${item.posterPath}`} alt={item.title} style={THUMB_STYLE} />
-                ) : (
-                  <PosterPlaceholder style={THUMB_STYLE} />
-                )}
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <Typography.Text ellipsis style={{ display: "block", fontWeight: item.isUnread || unreadSnapshot.has(itemKey(item)) ? 700 : 400 }}>
-                    {item.title}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block" }}>
-                    New from {item.personName} · {formatDateDMY(item.releaseDate)}
-                  </Typography.Text>
+              // A real link: Ctrl/middle-click opens the title in a new tab.
+              <CardLink key={itemKey(item)} to={itemPath(item)} onNavigate={() => openItem(item)}>
+                <div style={{ display: "flex", gap: 10, padding: 8, borderRadius: 6, alignItems: "center" }}>
+                  {item.posterPath ? (
+                    <img src={`${POSTER_THUMB_URL}${item.posterPath}`} alt="" style={THUMB_STYLE} />
+                  ) : (
+                    <PosterPlaceholder style={THUMB_STYLE} />
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Typography.Text ellipsis style={{ display: "block", fontWeight: item.isUnread || unreadSnapshot.has(itemKey(item)) ? 700 : 400 }}>
+                      {item.title}
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block" }}>
+                      New from {item.personName} · {formatDateDMY(item.releaseDate)}
+                    </Typography.Text>
+                  </div>
                 </div>
-              </div>
+              </CardLink>
             ))
           )}
         </div>

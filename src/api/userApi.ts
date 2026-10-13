@@ -347,15 +347,27 @@ export interface BulkImportResult {
  * request, sequentially. Each request is all-or-nothing server-side, so a
  * rejected chunk counts all its entries as failed and the rest still go through.
  */
-export async function bulkImport(
+export function bulkImport(
   kind: "watched" | "watchlist" | "ratings",
   entries: BulkImportEntry[],
 ): Promise<BulkImportResult> {
+  return postBulkChunks(`/${kind}/bulk/`, entries);
+}
+
+/**
+ * Bulk-add items to one list (backup restore, CSV list import): 500 per
+ * request instead of one POST per item, with each item's `addedAt` kept.
+ */
+export function bulkAddListItems(listId: number, entries: BulkImportEntry[]): Promise<BulkImportResult> {
+  return postBulkChunks(`/lists/${listId}/items/bulk/`, entries);
+}
+
+async function postBulkChunks(url: string, entries: BulkImportEntry[]): Promise<BulkImportResult> {
   const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
   for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
     const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
     try {
-      const { data } = await userApi.post<{ added: number; skipped: number }>(`/${kind}/bulk/`, { entries: chunk });
+      const { data } = await userApi.post<{ added: number; skipped: number }>(url, { entries: chunk });
       result.added += data.added;
       result.skipped += data.skipped;
     } catch {

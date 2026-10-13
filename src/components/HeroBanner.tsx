@@ -3,20 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button, Tag, Typography, Skeleton } from "antd";
 import { StarFilled } from "@ant-design/icons";
-import { fetchTrending } from "../api/tmdb";
+import { discoverMovies, discoverTV, fetchTrending } from "../api/tmdb";
 import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { FONT_SIZE } from "../constants/typography";
 import { BACKDROP_URL } from "../constants/ui";
+import { isPlainClick } from "./CardLink";
 
 interface Props {
   mediaType: "movie" | "tv";
   excludeGenreId?: number;
-  requireGenreId?: number;
+  /**
+   * Feature the most popular title from discover with these params instead of
+   * this week's trending (Anime: its keyword). Every result matches, so with
+   * none there is no hero rather than an off-topic one.
+   */
+  discoverParams?: Record<string, string | number>;
   /** Runs just before navigating to the detail page (browse pages stash their restore state here). */
   onBeforeNavigate?: () => void;
 }
 
-const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigate }: Props) => {
+const HeroBanner = ({ mediaType, excludeGenreId, discoverParams, onBeforeNavigate }: Props) => {
   const [item, setItem] = useState<TMDBMovieSummary | TMDBTVSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -27,16 +33,19 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
     let cancelled = false;
     setLoading(true);
     setItem(null);
-    fetchTrending(mediaType, "week")
+    const request = discoverParams
+      ? (mediaType === "movie" ? discoverMovies : discoverTV)({ sort_by: "popularity.desc", ...discoverParams })
+      : fetchTrending(mediaType, "week");
+    request
       .then((res) => {
         if (cancelled) return;
         const results = res.data.results;
-        let picked = results[0];
-        if (excludeGenreId) {
-          picked = results.find((r) => !r.genre_ids.includes(excludeGenreId)) ?? results[0];
-        } else if (requireGenreId) {
-          picked = results.find((r) => r.genre_ids.includes(requireGenreId)) ?? results[0];
-        }
+        const picked = discoverParams
+          // Every result matches; take the first one the hero can show.
+          ? results.find((r) => r.backdrop_path)
+          : excludeGenreId
+            ? results.find((r) => !r.genre_ids.includes(excludeGenreId)) ?? results[0]
+            : results[0];
         if (picked) setItem(picked);
       })
       .catch(() => {
@@ -44,7 +53,9 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [mediaType, excludeGenreId, requireGenreId]);
+  // discoverParams is compared by value: callers pass an inline object.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaType, excludeGenreId, JSON.stringify(discoverParams)]);
 
   if (loading) {
     return (
@@ -98,7 +109,15 @@ const HeroBanner = ({ mediaType, excludeGenreId, requireGenreId, onBeforeNavigat
           <Button
             type="primary"
             size="large"
-            onClick={() => { onBeforeNavigate?.(); navigate(detailPath); }}
+            // A real link (href), so modifier/middle clicks open a new tab; a
+            // plain click stays in the SPA and stashes the browse state first.
+            href={detailPath}
+            onClick={(e) => {
+              if (!isPlainClick(e)) return;
+              e.preventDefault();
+              onBeforeNavigate?.();
+              navigate(detailPath);
+            }}
           >
             View Details
           </Button>

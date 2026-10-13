@@ -32,3 +32,10 @@ The browser-tab favicon, the Apple touch icon and every icon listed in the web a
 #### Scenario: Install as an app
 - **WHEN** a user installs the site as an app, or adds it to a phone home screen
 - **THEN** the launcher icon is the CINE DB icon at the declared 192×192 or 512×512 size
+
+### Requirement: Browser tab is titled CINE DB
+The HTML page's title SHALL be "CINE DB", written the same way as the manifest's app name.
+
+#### Scenario: Open the app
+- **WHEN** a user opens the app in a browser tab
+- **THEN** the tab reads "CINE DB", not "CineDB" or "React App"

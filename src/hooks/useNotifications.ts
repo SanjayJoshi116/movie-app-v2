@@ -1,4 +1,4 @@
-import { createContext, createElement, useContext, useMemo, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, createElement, useContext, useMemo, useRef, useState, useEffect, useCallback, ReactNode } from "react";
 import {
   currentSessionGeneration,
   fetchNewReleaseNotifications,
@@ -15,14 +15,18 @@ function useNotificationsState() {
   const [items, setItems] = useState<NewReleaseNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [hasError, setHasError] = useState(false);
+  // Bumped by markSeen. A poll that started before the latest mark-seen would
+  // otherwise bring the badge back with the server's pre-mark answer.
+  const seenEpochRef = useRef(0);
 
   const refresh = useCallback(async () => {
     // A poll still in flight at sign-out answers for the previous account:
     // its items reveal whom that account follows.
     const gen = currentSessionGeneration();
+    const seenEpoch = seenEpochRef.current;
     try {
       const { data } = await fetchNewReleaseNotifications();
-      if (!isCurrentSession(gen)) return;
+      if (!isCurrentSession(gen) || seenEpoch !== seenEpochRef.current) return;
       // Defensive: an unmocked/misconfigured route or unexpected backend
       // response could return something other than {items, unreadCount} —
       // fall back rather than let a downstream .map() throw on undefined.
@@ -51,6 +55,7 @@ function useNotificationsState() {
   }, [isAuthenticated, refresh]);
 
   const markSeen = useCallback(async () => {
+    seenEpochRef.current += 1;
     setUnreadCount(0);
     setItems((prev) => prev.map((i) => ({ ...i, isUnread: false })));
     try {

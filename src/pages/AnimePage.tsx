@@ -179,7 +179,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       exit="exit"
       transition={{ duration: 0.2 }}
     >
-      <HeroBanner mediaType={animeTab === "tv" ? "tv" : "movie"} requireGenreId={16} onBeforeNavigate={stashBrowseState} />
+      <HeroBanner mediaType={animeTab === "tv" ? "tv" : "movie"} discoverParams={{ with_keywords: ANIME_KEYWORD }} onBeforeNavigate={stashBrowseState} />
 
       <Radio.Group
         value={animeTab}

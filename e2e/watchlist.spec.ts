@@ -87,4 +87,32 @@ test.describe("Watched page", () => {
     await expect(page.getByText("Watched (1)")).toBeVisible();
     await expect(page.getByText("Fight Club")).toBeVisible();
   });
+
+  test("a watched history longer than one page loads every entry", async ({ page }) => {
+    const entry = (id: number, title: string) => ({
+      id, mediaId: id, mediaType: "movie", title,
+      posterPath: null, voteAverage: 7, watchedAt: new Date(Date.UTC(2026, 0, id)).toISOString(),
+      watchedTz: "", originalLanguage: "en", releaseYear: 2000, runtimeMinutes: 100, platform: null,
+    } satisfies WatchedEntryDTO);
+    const requested: URLSearchParams[] = [];
+    await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: paginated([]) }));
+    await page.route("**/api/watched/**", (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requested.push(params);
+      return route.fulfill({
+        json: params.get("page") === "2"
+          ? paginated([entry(1, "Page Two Film")], { count: 3 })
+          : paginated([entry(3, "First Film"), entry(2, "Second Film")], {
+              count: 3, next: "/api/watched/?page=2&page_size=500",
+            }),
+      });
+    });
+
+    await page.goto("/watched");
+    await expect(page.getByText("Watched (3)")).toBeVisible();
+    for (const title of ["First Film", "Second Film", "Page Two Film"]) {
+      await expect(page.getByText(title)).toBeVisible();
+    }
+    expect(requested.map((p) => [p.get("page"), p.get("page_size")])).toEqual([["1", "500"], ["2", "500"]]);
+  });
 });

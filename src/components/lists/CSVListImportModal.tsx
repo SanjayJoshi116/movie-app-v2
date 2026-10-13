@@ -6,7 +6,8 @@ import { useToast } from "../../hooks/useToast";
 import { useListsContext } from "../../context/useListsContext";
 import { parseCSVForImport } from "../../utils/csvParse";
 import type { ParsedEntry } from "../../utils/csvParse";
-import userApi from "../../api/userApi";
+import { bulkAddListItems } from "../../api/userApi";
+import { orderForImport } from "../../utils/listImport";
 import { getApiError } from "../../utils/apiError";
 import { FONT_SIZE } from "../../constants/typography";
 
@@ -85,24 +86,21 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
         );
       }
 
-      const allResults: PromiseSettledResult<{ status: number }>[] = [];
-      for (let i = 0; i < enriched.length; i += BATCH) {
-        const batch = await Promise.allSettled(
-          enriched.slice(i, i + BATCH).map((row) =>
-            userApi.post(`/lists/${selectedListId}/items/`, {
-              mediaId: row.mediaId,
-              mediaType: row.type ?? mediaType,
-              title: row.title,
-              posterPath: row.posterPath ?? null,
-              voteAverage: row.voteAverage ?? 0,
-            })
-          )
-        );
-        allResults.push(...batch);
-      }
-      const added = allResults.filter((r) => r.status === "fulfilled" && r.value.status === 201).length;
-      const skipped = allResults.filter((r) => r.status === "fulfilled" && r.value.status !== 201).length;
-      const failed = allResults.filter((r) => r.status === "rejected").length;
+      // One request per 500 rows (not one per row). No dates here, so the
+      // rows go in reverse: the list then shows them in file order.
+      const { added, skipped, failed } = await bulkAddListItems(
+        selectedListId,
+        orderForImport(
+          enriched.map((row) => ({
+            mediaId: row.mediaId,
+            mediaType: row.type ?? mediaType,
+            title: row.title,
+            posterPath: row.posterPath ?? null,
+            voteAverage: row.voteAverage ?? 0,
+          })),
+          () => undefined,
+        ),
+      );
 
       await reloadLists();
       const summary = `${added} added, ${skipped} already in list`;

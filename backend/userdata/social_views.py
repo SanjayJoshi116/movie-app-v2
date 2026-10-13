@@ -189,16 +189,18 @@ def followed_people_recommendations(request):
     sections = []
     for fp, cast in results:
         items = []
-        seen_ids = set()
+        # (id, type): a movie and a TV show can share a TMDB id.
+        seen = set()
         for c in cast:
             if c.get("media_type") not in ("movie", "tv"):
                 continue
             mid = c.get("id")
-            if (mid, c["media_type"]) in watched_set or mid in seen_ids:
+            key = (mid, c["media_type"])
+            if key in watched_set or key in seen:
                 continue
             if (c.get("vote_average") or 0) < 6:
                 continue
-            seen_ids.add(mid)
+            seen.add(key)
             items.append({
                 "id": mid,
                 "type": c["media_type"],

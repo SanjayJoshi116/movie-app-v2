@@ -3,6 +3,85 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.23.0] - 2026-10-13
+
+Bug-audit release, part 8. Implements four OpenSpec changes from `docs/BUG_BACKLOG.md`: `fix-detail-and-nav` (item 19), `fix-stats-math` (item 20), and item 21 split in three, of which `harden-ci-2` (21a) and `polish-colors-docs` (21b) are done. All four are archived under `openspec/changes/archive/`. Still open: 21c `spec-test-gaps`, and items 23–25.
+
+### ⚠️ Notes for deploy
+- **One migration:** `0023_list_timestamps_default` changes the defaults of `UserList.created_at` and `UserListItem.added_at` from `auto_now_add` to `default=timezone.now`. Schema defaults only, no data change. It's applied by the normal migrate step.
+- **New route:** `POST /api/lists/<id>/items/bulk/`. It is additive, and older clients keep working.
+- **nginx changes:**
+  - `gzip` is on for the app's text assets. It is off for `/api/` and `/media/`.
+  - Files under `/static/` get `Cache-Control: public, max-age=31536000, immutable`, but a 404 never does.
+  - The entry page is still revalidated on every load.
+- **CI changes:**
+  - TS e2e tests are no longer retried.
+  - `npm run lint` now covers `e2e/`.
+  - Jest fails when it finds no tests.
+  - A new `docker` job builds both images and checks the frontend image's nginx (`.github/scripts/smoke-frontend.sh`).
+- **Unverified on the dev machine (no Docker):** the `docker` job and the real nginx behaviour. Its first CI run is the real test. `test_nginx_conf.py` checks the config statically.
+
+### Fixed — detail pages and navigation (`fix-detail-and-nav`)
+- **No stray `0`** in detail facts. Runtime, season count and episode count show only when TMDB has a positive number.
+- **Where to Watch** shows Streaming, Rent and Buy. With nothing available it says so for the US, and never shows a header over nothing.
+- **Browse cards are links.** The Movies/TV/Anime grid posters, the hero's "View Details" and the notification items are real links, so Tab/Enter, middle-click and Ctrl-click work, and Back still restores the grid.
+- **Back from a recommendation card** returns to the page it came from (Following, For You).
+- **Person pages have a Crew tab.** It shows one card per title with the jobs joined. The default tab follows what the person is known for, and credits are newest first.
+- **Mark as Watched runtime is editable.** For TV it is prefilled with episodes × episode runtime when TMDB has both. Runtime and providers come from one request, so a providers failure no longer loses the runtime.
+- **Smaller fixes:**
+  - Following recommendations refetch when the followed set changes.
+  - Follow is disabled while followed people failed to load.
+  - The Add to List dialog resets and tells a failed load apart from "No lists yet".
+  - CSV import templates list only the columns the import reads.
+  - A multi-page Back restore never shows a title twice.
+  - A poll in flight can't bring back a badge just marked seen.
+  - Both search boxes share recent searches.
+  - Watchlist scroll is restored only on a return from a detail page.
+  - The Anime hero always shows an anime.
+  - The TMDB callback spinner shows its text.
+  - CSV exports start with a UTF-8 BOM, so Excel shows non-ASCII titles correctly.
+
+### Fixed — Stats and list restores (`fix-stats-math`)
+- **Half-star ratings land in even buckets** (6.5 → 7, 7.5 → 8). Every Stats average rounds half up (7.25 → 7.3). It used to be banker's rounding.
+- **Monthly activity has no gaps.** It covers every month from the first watch through the current month, with `0` for empty ones.
+- **Average TMDB rating leaves out unscored titles** (stored as `0`). With none scored, it is empty.
+- **A followed person's movie and TV show sharing an id both appear** in their recommendations section.
+- **Stats labels:**
+  - The Rating by Genre tooltip says "Avg rating".
+  - Heatmap dates are dd-mm-yyyy, and its info text says it counts watched titles.
+  - The Top Genres empty text no longer sends you to For You.
+- **The activity heatmap is keyboard-readable:** one Tab stop, arrow keys move by day and week, and the focused day is shown and announced.
+- **List restores keep dates and order:**
+  - The backup restore and the per-list CSV import add items in batches of 500 through the new bulk endpoint. Before, they sent one request per item, which also spent the daily request limit.
+  - Lists keep their creation time (the backup manifest gains `createdAt`; older backups still import), and items keep their added time.
+  - A CSV without dates keeps its file order.
+
+### CI and production web server (`harden-ci-2`)
+- **No e2e retries:** a test that fails once fails CI, and its trace is kept in the uploaded report. The dev-server start timeout is now 300 s.
+- **Flaky waits fixed:** the notification-popup scroll check waits for the scroll to be handled instead of 200 ms, and a ratings test lost a non-waiting fallback.
+- **New test:** a two-page watched history loads every entry.
+- **Lint covers `e2e/`**, with three Jest/Testing Library rules that misfire on Playwright code turned off there only.
+- **CI fails on zero Jest tests.** Ruff now targets Python 3.12.
+- **Docker job:** builds both images and checks the frontend image's real nginx (headers, revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle).
+- **Faster CI:** Playwright browsers are cached, and a newer push to a PR cancels its older run (runs on `main` are never cancelled).
+- **nginx:** compression and long-lived caching for static assets (see deploy notes).
+
+### Polish — theme colors and docs (`polish-colors-docs`)
+- **Light mode reads better:**
+  - Idle watched/watchlist icons use the theme's text color instead of pure black (one hook, `useActionIconColor()`, replaces 11 inline copies).
+  - Empty-state icons, the review caption on Watchlist cards, the genre-chip border and the "No Image" placeholder take their colors from the theme. The placeholder is no longer a dark block in light mode.
+- **No color literals left in `src/`** except named constants and Stats' chart palette and heat scale, which are fixed on purpose.
+- The phone avatar initials use the caption size (12 px).
+- **The browser tab says "CINE DB"**, like the installed app.
+- `start.py` accepts `POSTGRES_PASSWORD` like `settings.py`, and `CORS_ALLOWED_ORIGINS` is documented.
+- **Docs fixed:** ARCHITECTURE.md's account of what each page persists, `CLAUDE.md`'s note on `playwright-core`, garbled characters and a stale CORS comment in `settings.py`, and the `api-hardening` spec's wording on proxy parameter order.
+
+### Tests
+- **Backend:** 372 → 395. New: `test_stats_math.py`, list-item bulk import, a followed person's movie and TV show sharing an id, and the nginx gzip/cache checks.
+- **Jest:** 245 → 278.
+- **TS e2e:** 207 across both projects, 3 skipped. New: `detail-and-nav.spec.ts`, `stats.spec.ts`, the two-page watched history and the tab title.
+- **Python e2e:** 192.
+
 ## [0.22.0] - 2026-10-12
 
 Bug-audit release, part 7. Implements three OpenSpec changes from `docs/BUG_BACKLOG.md`: `speed-up-pages` (item 26), `fix-upstream-resilience` (item 17) and `fix-account-edges` (item 18), all archived under `openspec/changes/archive/`. Items 19–21 and 23–25 are still open.

@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ..models import RatingEntry, TMDBProfile, WatchedEntry, WatchlistEntry
+from ..models import RatingEntry, TMDBProfile, UserList, WatchedEntry, WatchlistEntry
 
 PAST = "2024-03-01T20:00:00Z"
 PAST_DT = datetime(2024, 3, 1, 20, 0, tzinfo=UTC)
@@ -237,3 +237,85 @@ class BulkTimestampLowerBoundTests(BulkTestCase):
         self.url = "/api/watched/bulk/"
         res = self.post([{"mediaId": 1, "watchedAt": "1900-01-01T00:00:00Z"}])
         self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+
+
+class BulkListItemsTests(BulkTestCase):
+    def setUp(self):
+        super().setUp()
+        self.user_list = UserList.objects.create(user=self.user, name="L")
+        self.url = f"/api/lists/{self.user_list.id}/items/bulk/"
+
+    def items(self):
+        return list(self.user_list.items.order_by("media_id"))
+
+    def test_keeps_added_at_and_skips_existing(self):
+        res = self.post([{"mediaId": 1, "title": "A", "addedAt": PAST}, {"mediaId": 2, "title": "B"}])
+        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        self.assertEqual(self.items()[0].added_at, PAST_DT)
+        res = self.post([{"mediaId": 1, "title": "A"}, {"mediaId": 3, "title": "C"}])
+        self.assertEqual(res.data, {"added": 1, "skipped": 1})
+
+    def test_malformed_entry_writes_nothing(self):
+        res = self.post([{"mediaId": 1, "title": "A"}, {"mediaId": "abc"}])
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("1", res.data["entries"])
+        self.assertEqual(self.items(), [])
+
+    def test_future_added_at_rejected(self):
+        res = self.post([{"mediaId": 1, "title": "A", "addedAt": future_iso()}])
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_another_users_list_is_404(self):
+        other = User.objects.create_user(username="otto", password="Xk9#mQ2vTz8p")
+        theirs = UserList.objects.create(user=other, name="Theirs")
+        res = self.client.post(
+            f"/api/lists/{theirs.id}/items/bulk/", {"entries": [{"mediaId": 1, "title": "A"}], "mediaType": "movie"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(theirs.items.exists())
+
+    def test_over_500_entries_rejected(self):
+        res = self.post([{"mediaId": i, "title": "x"} for i in range(1, 502)])
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.items(), [])
+
+    def test_items_read_newest_first_by_added_at(self):
+        self.post([
+            {"mediaId": 1, "title": "Old", "addedAt": "2023-01-01T00:00:00Z"},
+            {"mediaId": 2, "title": "New", "addedAt": "2024-01-01T00:00:00Z"},
+        ])
+        res = self.client.get("/api/lists/")
+        self.assertEqual([i["title"] for i in res.data["results"][0]["items"]], ["New", "Old"])
+
+
+    def test_undated_rows_sent_in_reverse_read_in_file_order(self):
+        # The client sends a file's A, B, C as C, B, A (orderForImport).
+        self.post([{"mediaId": 3, "title": "C"}, {"mediaId": 2, "title": "B"}, {"mediaId": 1, "title": "A"}])
+        res = self.client.get("/api/lists/")
+        self.assertEqual([i["title"] for i in res.data["results"][0]["items"]], ["A", "B", "C"])
+
+
+class ListCreatedAtTests(BulkTestCase):
+    def test_create_keeps_a_past_created_at(self):
+        res = self.client.post("/api/lists/", {"name": "L", "createdAt": PAST}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["createdAt"], PAST)
+
+    def test_future_created_at_rejected(self):
+        res = self.client.post("/api/lists/", {"name": "L", "createdAt": future_iso()}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("createdAt", res.data)
+
+    def test_without_created_at_uses_now(self):
+        before = timezone.now()
+        res = self.client.post("/api/lists/", {"name": "L"}, format="json")
+        self.assertGreaterEqual(UserList.objects.get(pk=res.data["id"]).created_at, before)
+
+    def test_update_cannot_change_created_at(self):
+        res = self.client.post("/api/lists/", {"name": "L", "createdAt": PAST}, format="json")
+        self.client.patch(
+            f"/api/lists/{res.data['id']}/", {"name": "M", "createdAt": "2020-01-01T00:00:00Z"}, format="json",
+        )
+        lst = UserList.objects.get(pk=res.data["id"])
+        self.assertEqual((lst.name, lst.created_at), ("M", PAST_DT))

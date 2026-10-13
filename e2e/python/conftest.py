@@ -342,8 +342,6 @@ def mock_movie_detail_routes(page: Page, movie_id: int = 100, detail=None) -> No
     """Mount all routes needed by the movie detail page (one combined detail request)."""
     det = detail or MOCK_MOVIE_DETAIL
     page.route(f"**/api/tmdb/movie/{movie_id}**", lambda r: fulfill_json(r, det))
-    # MarkWatchedModal still asks for providers on its own.
-    page.route(f"**/api/tmdb/movie/{movie_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
     page.route("**/api/tmdb/person/**", lambda r: fulfill_json(r, {"id": 1, "name": "Actor", "profile_path": None}))
     page.route("**/api/followed-people/**", lambda r: fulfill_json(r, paginated([])))
 
@@ -359,8 +357,6 @@ def mock_tv_detail_routes(page: Page, show_id: int = 1396, detail=None) -> None:
              "overview": "Pilot episode", "vote_average": 9.0, "air_date": "2008-01-20"}
         ],
     }))
-    # MarkWatchedModal still asks for providers on its own.
-    page.route(f"**/api/tmdb/tv/{show_id}/watch*", lambda r: fulfill_json(r, {"results": {}}))
     page.route(f"**/api/episode-progress/{show_id}/**", lambda r: fulfill_json(r, None))
     page.route(f"**/api/episode-progress/{show_id}", lambda r: fulfill_json(r, None))
     page.route("**/api/followed-people/**", lambda r: fulfill_json(r, paginated([])))

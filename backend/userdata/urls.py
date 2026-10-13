@@ -50,6 +50,7 @@ urlpatterns = [
     path("lists/<int:pk>/", views.lists_detail),
     path("lists/<int:list_pk>/items/", views.list_items_create),
     path("lists/<int:list_pk>/items/clear/", views.list_items_clear),
+    path("lists/<int:list_pk>/items/bulk/", views.list_items_bulk),
     path("lists/<int:list_pk>/items/<int:item_pk>/", views.list_items_detail),
 
     # Recommendations

@@ -63,6 +63,7 @@ start.ps1
 # root-scoped only (leading /) — docs/screenshots/*.png (README assets) stay tracked
 /verify_*.js
 /verify_*.py
+/verify_*.zip
 /typo_*.png
 /*.png
 

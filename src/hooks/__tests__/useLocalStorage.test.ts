@@ -51,3 +51,37 @@ describe("useLocalStorage", () => {
     expect(b.current[0]).toBe(2);
   });
 });
+
+describe("useLocalStorage same-tab sync", () => {
+  it("updates another instance on the same key", () => {
+    const { result: a } = renderHook(() => useLocalStorage<string[]>("shared-key", []));
+    const { result: b } = renderHook(() => useLocalStorage<string[]>("shared-key", []));
+    act(() => a.current[1](["Dune"]));
+    expect(b.current[0]).toEqual(["Dune"]);
+  });
+
+  it("lets an updater in one instance build on another's write", () => {
+    const { result: a } = renderHook(() => useLocalStorage<string[]>("shared-key", []));
+    const { result: b } = renderHook(() => useLocalStorage<string[]>("shared-key", []));
+    act(() => a.current[1]((prev) => ["Dune", ...prev]));
+    act(() => b.current[1]((prev) => ["Arrival", ...prev]));
+    expect(a.current[0]).toEqual(["Arrival", "Dune"]);
+    expect(JSON.parse(localStorage.getItem("shared-key")!)).toEqual(["Arrival", "Dune"]);
+  });
+
+  it("leaves other keys alone", () => {
+    const { result: a } = renderHook(() => useLocalStorage("key-a", 1));
+    const { result: b } = renderHook(() => useLocalStorage("key-b", 1));
+    act(() => a.current[1](2));
+    expect(b.current[0]).toBe(1);
+  });
+
+  it("chains back-to-back updaters in one tick", () => {
+    const { result } = renderHook(() => useLocalStorage("count", 0));
+    act(() => {
+      result.current[1]((n) => n + 1);
+      result.current[1]((n) => n + 1);
+    });
+    expect(result.current[0]).toBe(2);
+  });
+});

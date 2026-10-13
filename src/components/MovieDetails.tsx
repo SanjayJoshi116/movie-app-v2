@@ -26,6 +26,7 @@ import { PosterPlaceholder } from "./PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { useActionIconColor } from "../hooks/useActionIconColor";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 
 interface ReleaseDateEntry {
@@ -84,7 +85,8 @@ const MovieDetails = ({ movie }: Props) => {
     .filter((c) => c.job === "Director")
     .map((c) => c.name)
     .join(", ");
-  const { isWatched, toggleWatched, theme } = useAppContext();
+  const { isWatched, toggleWatched } = useAppContext();
+  const idleIconColor = useActionIconColor();
   const inWatchlist = isInWatchlist(id, "movie");
   const watched = isWatched(id, "movie");
   const myRating = getRating(id, "movie");
@@ -165,7 +167,7 @@ const MovieDetails = ({ movie }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: watched ? 1.1 : 1 }}
                   aria-label={watched ? "Unmark as watched" : "Mark as watched"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? WATCHED_GREEN : theme === "dark" ? RATING_GOLD : "#000000", fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: watched ? WATCHED_GREEN : idleIconColor, fontSize: "1.5rem" }}
                 >
                   {watched ? <EyeFilled /> : <EyeOutlined />}
                 </motion.button>
@@ -191,7 +193,7 @@ const MovieDetails = ({ movie }: Props) => {
                     prefix={<StarFilled style={{ color: RATING_GOLD }} />}
                   />
                 </Col>
-                {runtime && (
+                {typeof runtime === "number" && runtime > 0 && (
                   <Col>
                     <Statistic title="Runtime" value={`${runtime} min`} />
                   </Col>

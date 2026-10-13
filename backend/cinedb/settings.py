@@ -18,7 +18,7 @@ DEBUG = os.environ.get("DEBUG", "False") == "True"
 
 # An unset ALLOWED_HOSTS env var means no hosts are allowed in production. In
 # DEBUG, wildcard so LAN devices (e.g. phone at 192.168.x.x) hitting the dev
-# server directly aren't rejected by the Host header check â€” same relaxation
+# server directly aren't rejected by the Host header check — same relaxation
 # CORS_ALLOW_ALL_ORIGINS already gets below.
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 if DEBUG:
@@ -143,8 +143,9 @@ if DEBUG:
 else:
     CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 # The app sends the device's IANA time zone on every authenticated request
-# (userdata/timezones.py). Dev is cross-origin (:3000 -> :8000), so the custom
-# header must pass CORS preflight.
+# (userdata/timezones.py). Dev and the Docker stack are same-origin, so no
+# preflight runs there; this keeps the custom header allowed for a frontend
+# whose REACT_APP_* base URL points at another origin.
 CORS_ALLOW_HEADERS = (*default_headers, "x-timezone")
 
 REST_FRAMEWORK = {
@@ -171,7 +172,7 @@ REST_FRAMEWORK = {
     # How many reverse proxies sit in front of Django. DRF then takes the
     # client address from that position in X-Forwarded-For (counting from the
     # right, i.e. the entry our own proxy appended). 0 = ignore XFF entirely and
-    # use REMOTE_ADDR â€” right for `npm run dev`; leaving it unset used to make
+    # use REMOTE_ADDR — right for `npm run dev`; leaving it unset used to make
     # the whole client-supplied XFF string the throttle key, so any made-up
     # header value got a fresh rate-limit bucket.
     "NUM_PROXIES": int(os.environ.get("TRUSTED_PROXY_COUNT", "0")),

@@ -1,4 +1,4 @@
-import { Row, Col, Empty } from "antd";
+import { Row, Col, Empty, theme } from "antd";
 import { SearchOutlined, FilterOutlined, InboxOutlined } from "@ant-design/icons";
 import type { TMDBTVSummary } from "../types";
 import TVShowCard from "./TVShowCard";
@@ -11,15 +11,16 @@ interface Props {
 }
 
 const TVShows = ({ tvShows, onKnowMore, searchTerm, hasFilters }: Props) => {
+  const { token } = theme.useToken();
   if (tvShows.length === 0) {
-    let icon = <InboxOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+    let icon = <InboxOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
     let description = "No TV shows found.";
 
     if (searchTerm) {
-      icon = <SearchOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      icon = <SearchOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
       description = `No results for "${searchTerm}". Try a different search.`;
     } else if (hasFilters) {
-      icon = <FilterOutlined style={{ fontSize: 48, color: "#aaa" }} />;
+      icon = <FilterOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />;
       description = "No TV shows match your filters. Try adjusting them.";
     }
 

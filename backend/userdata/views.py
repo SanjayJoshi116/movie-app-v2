@@ -12,7 +12,9 @@ from .auth_views import (
 from .watchlist_views import watchlist_list, watchlist_detail, watchlist_clear, bulk_watchlist
 from .watched_views import watched_list, watched_detail, watched_clear, bulk_watched
 from .ratings_views import ratings_list, ratings_detail, bulk_ratings
-from .lists_views import lists_list, lists_detail, list_items_create, list_items_detail, list_items_clear
+from .lists_views import (
+    lists_list, lists_detail, list_items_create, list_items_detail, list_items_clear, list_items_bulk,
+)
 from .tmdb_views import tmdb_request_token, tmdb_create_session, tmdb_auth_status, tmdb_disconnect
 from .stats_views import stats
 from .social_views import (
@@ -32,6 +34,7 @@ __all__ = [
     "followed_people_detail",
     "followed_people_list",
     "followed_people_recommendations",
+    "list_items_bulk",
     "list_items_clear",
     "list_items_create",
     "list_items_detail",
