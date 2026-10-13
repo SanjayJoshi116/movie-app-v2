@@ -10,6 +10,8 @@ interface UIContextType {
   setIncludeAdult(v: boolean): void;
   selectedGenres: number[];
   toggleGenre(id: number): void;
+  /** Replace the picks at once (the filter drawer's Apply). */
+  setGenres(ids: number[]): void;
   clearGenres(): void;
   theme: Theme;
   toggleTheme(): void;
@@ -44,6 +46,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const setGenres = useCallback((ids: number[]) => setSelectedGenres(ids), []);
   const clearGenres = useCallback(() => setSelectedGenres([]), []);
   const clearSearch = useCallback(() => setSearchTerm(""), []);
 
@@ -55,13 +58,14 @@ export function UIProvider({ children }: { children: ReactNode }) {
     setIncludeAdult,
     selectedGenres,
     toggleGenre,
+    setGenres,
     clearGenres,
     theme,
     toggleTheme,
   }), [
     searchTerm, clearSearch,
     includeAdult,
-    selectedGenres, toggleGenre, clearGenres,
+    selectedGenres, toggleGenre, setGenres, clearGenres,
     theme, toggleTheme,
   ]);
 

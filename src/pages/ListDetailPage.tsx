@@ -14,6 +14,7 @@ import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import LibraryItemCard from "../components/LibraryItemCard";
 import { LoadError } from "../components/LoadError";
+import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
 import MediaGrid from "../components/MediaGrid";
 import CSVListImportModal from "../components/lists/CSVListImportModal";
@@ -240,7 +241,7 @@ function ListDetailPage() {
                   </>
                 }
                 actionButtons={
-                  <Popconfirm
+                  <ConfirmIconButton
                     title="Remove from list?"
                     onConfirm={async () => {
                       try {
@@ -250,19 +251,11 @@ function ListDetailPage() {
                       }
                     }}
                     okText="Remove"
-                    cancelText="Cancel"
-                  >
-                    <Tooltip title="Remove">
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Remove from list"
-                      />
-                    </Tooltip>
-                  </Popconfirm>
+                    tooltip="Remove"
+                    icon={<DeleteOutlined />}
+                    danger
+                    ariaLabel="Remove from list"
+                  />
                 }
               />
             )}

@@ -22,6 +22,9 @@ export interface FollowedPeopleContextType {
   unfollow(personId: number): Promise<void>;
   /** Called by `useFollowedPeople()` consumers; starts the one-time fetch. */
   request(): void;
+  /** Bumped after each successful follow or unfollow (the notifications poller
+   *  refreshes on it). Reading it doesn't start the lazy fetch. */
+  changes: number;
 }
 
 export const FollowedPeopleContext = createContext<FollowedPeopleContextType | null>(null);
@@ -43,6 +46,7 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const [changes, setChanges] = useState(0);
   const inflight = useRef(createInflight());
 
   useEffect(() => {
@@ -84,7 +88,9 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
         const gen = currentSessionGeneration();
         const res = await followPerson(personId, name, profilePath);
         if (!isCurrentSession(gen)) return;
-        setFollowed((prev) => [...prev.filter((f) => f.personId !== personId), res.data]);
+        // Newest first, like the API (-followed_at), so a reload doesn't move it.
+        setFollowed((prev) => [res.data, ...prev.filter((f) => f.personId !== personId)]);
+        setChanges((c) => c + 1);
       }),
     []
   );
@@ -96,6 +102,7 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
         await unfollowPerson(personId);
         if (!isCurrentSession(gen)) return;
         setFollowed((prev) => prev.filter((f) => f.personId !== personId));
+        setChanges((c) => c + 1);
       }),
     []
   );
@@ -103,8 +110,8 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const loading = isAuthenticated && !loaded;
 
   const value = useMemo<FollowedPeopleContextType>(
-    () => ({ followed, loading, error, retry, isFollowing, follow, unfollow, request }),
-    [followed, loading, error, retry, isFollowing, follow, unfollow, request]
+    () => ({ followed, loading, error, retry, isFollowing, follow, unfollow, request, changes }),
+    [followed, loading, error, retry, isFollowing, follow, unfollow, request, changes]
   );
 
   return <FollowedPeopleContext.Provider value={value}>{children}</FollowedPeopleContext.Provider>;

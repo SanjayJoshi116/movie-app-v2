@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Tooltip, theme } from "antd";
+import { Alert, Row, Col, Card, Tag, Button, Typography, Empty, Spin, Divider, Tooltip, theme } from "antd";
 import { StarFilled, BulbOutlined, SearchOutlined, EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
@@ -173,6 +173,9 @@ export function SectionRow({ section, navigate, from = "/recommendations" }: { s
 }
 
 const REC_CACHE_KEY = "cinedb_recommendations";
+
+/** A polled group: still computing, answered ready, or polling stopped first. */
+type GroupState = "pending" | "ready" | "gaveUp";
 const REC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface RecCache {
@@ -228,11 +231,18 @@ function RecommendationsPage() {
   const [personalizedSections, setPersonalizedSections] = useState<PersonalizedRecSection[]>(cache?.personalizedSections ?? []);
   const [followedSections, setFollowedSections] = useState<PersonalizedRecSection[]>(cache?.followedSections ?? []);
   const [loading, setLoading] = useState(!cache);
-  const [forYouComputing, setForYouComputing] = useState(false);
-  const [personalizedComputing, setPersonalizedComputing] = useState(false);
+  // What each polled group last answered in this visit. Only a complete saved
+  // snapshot starts "ready"; anything else must be answered again first.
+  const initialGroup: GroupState = cache?.complete ? "ready" : "pending";
+  const [forYouState, setForYouState] = useState<GroupState>(initialGroup);
+  const [personalizedState, setPersonalizedState] = useState<GroupState>(initialGroup);
+  const [followedAnswered, setFollowedAnswered] = useState(Boolean(cache?.complete));
   const [fetchError, setFetchError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
-  const computing = forYouComputing || personalizedComputing;
+  // A failed request leaves its group "pending"; the error UI wins then.
+  const computing = !fetchError && (forYouState === "pending" || personalizedState === "pending");
+  const gaveUp = forYouState === "gaveUp" || personalizedState === "gaveUp";
+  const hasWatched = watchedList.length > 0;
   // An incomplete snapshot (left mid-computation) is shown but not trusted:
   // the fetch/poll effect still runs and replaces it once the backend is ready.
   const hasFetched = useRef(Boolean(cache?.complete));
@@ -244,8 +254,10 @@ function RecommendationsPage() {
     return () => cancelAnimationFrame(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep ref to latest data so unmount cleanup captures current values
-  const complete = !loading && !forYouComputing && !personalizedComputing && !fetchError;
+  // Keep ref to latest data so unmount cleanup captures current values.
+  // Complete only once every group answered "ready" in this visit: leaving
+  // before that (or after polling gave up) must not cache partial groups as final.
+  const complete = forYouState === "ready" && personalizedState === "ready" && followedAnswered && !fetchError;
   const latestData = useRef({ sections, personalizedSections, followedSections, complete });
   useEffect(() => { latestData.current = { sections, personalizedSections, followedSections, complete }; });
 
@@ -262,8 +274,10 @@ function RecommendationsPage() {
     };
   }, []);
 
+  // Depends on whether there is any watched title, not how many: marking a
+  // card watched here must not refetch and reshuffle every group.
   useEffect(() => {
-    if (isDataLoading || watchedList.length === 0 || hasFetched.current) return;
+    if (isDataLoading || !hasWatched || hasFetched.current) return;
     hasFetched.current = true;
     setFetchError(false);
     let cancelled = false;
@@ -279,32 +293,35 @@ function RecommendationsPage() {
     function pollRecommendation(
       fetchFn: () => Promise<{ data: { status: string; sections: PersonalizedRecSection[] } }>,
       setter: (s: PersonalizedRecSection[]) => void,
-      setComputingFlag: (v: boolean) => void,
+      setGroupState: (v: GroupState) => void,
       attempt: number,
     ) {
       fetchFn()
         .then(res => {
           if (cancelled) return;
           setter(res.data.sections);
-          if (res.data.status === "pending" && attempt < MAX_POLLS) {
-            setComputingFlag(true);
+          if (res.data.status !== "pending") {
+            setGroupState("ready");
+          } else if (attempt < MAX_POLLS) {
+            setGroupState("pending");
             timeouts.push(setTimeout(
-              () => pollRecommendation(fetchFn, setter, setComputingFlag, attempt + 1),
+              () => pollRecommendation(fetchFn, setter, setGroupState, attempt + 1),
               POLL_INTERVAL_MS,
             ));
           } else {
-            setComputingFlag(false);
+            // Still computing after the last poll: not final, say so.
+            setGroupState("gaveUp");
           }
         })
         .catch(() => { if (!cancelled) setFetchError(true); })
         .finally(() => { if (attempt === 0) done(); });
     }
 
-    pollRecommendation(fetchForYouRecommendations, setSections, setForYouComputing, 0);
-    pollRecommendation(fetchPersonalizedRecommendations, setPersonalizedSections, setPersonalizedComputing, 0);
+    pollRecommendation(fetchForYouRecommendations, setSections, setForYouState, 0);
+    pollRecommendation(fetchPersonalizedRecommendations, setPersonalizedSections, setPersonalizedState, 0);
 
     fetchFollowedPeopleRecommendations()
-      .then(res => { if (!cancelled) setFollowedSections(res.data); })
+      .then(res => { if (!cancelled) { setFollowedSections(res.data); setFollowedAnswered(true); } })
       .catch(() => { if (!cancelled) setFetchError(true); })
       .finally(done);
 
@@ -313,11 +330,14 @@ function RecommendationsPage() {
       hasFetched.current = false; // allow retry on StrictMode re-mount
       timeouts.forEach(clearTimeout);
     };
-  }, [isDataLoading, watchedList.length, retryToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isDataLoading, hasWatched, retryToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retry = () => {
     hasFetched.current = false;
     setFetchError(false);
+    setForYouState("pending");
+    setPersonalizedState("pending");
+    setFollowedAnswered(false);
     setLoading(true);
     setRetryToken((t) => t + 1);
   };
@@ -392,6 +412,16 @@ function RecommendationsPage() {
           {loading && totalItems === 0 && (
             <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
           )}
+          {gaveUp && !fetchError && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Recommendations are taking longer than usual."
+              description="Some groups are still being prepared."
+              action={<Button size="small" onClick={retry}>Retry</Button>}
+            />
+          )}
           {filteredFollowed.map((section) => (
             <SectionRow key={section.key} section={section} navigate={navigate} />
           ))}
@@ -419,7 +449,7 @@ function RecommendationsPage() {
           {!loading && totalItems === 0 && !computing && fetchError && (
             <LoadError title="Couldn't load recommendations" onRetry={retry} />
           )}
-          {!loading && totalItems === 0 && !computing && !fetchError && (
+          {!loading && totalItems === 0 && !computing && !gaveUp && !fetchError && (
             <Empty
               image={<BulbOutlined style={{ fontSize: 48, color: token.colorTextTertiary }} />}
               description="No recommendations found for your watched titles."

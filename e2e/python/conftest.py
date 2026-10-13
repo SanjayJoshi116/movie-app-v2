@@ -252,7 +252,7 @@ EMPTY_RESPONSE = {"results": [], "total_pages": 1, "total_results": 0, "page": 1
 # ---------------------------------------------------------------------------
 
 # Collection URLs of the paginated list endpoints (not detail/bulk/clear routes).
-PAGINATED_LIST_URL = re.compile(r"/api/(watchlist|watched|ratings|lists|followed-people)/(\?|$)")
+PAGINATED_LIST_URL = re.compile(r"/api/(watchlist|watched|ratings|lists|followed-people|episode-progress)/(\?|$)")
 
 # Bare-list bodies sent to a paginated endpoint; the autouse fixture below
 # fails the test at teardown. Raising inside a route handler wouldn't reach

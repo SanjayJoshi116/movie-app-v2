@@ -504,3 +504,80 @@ class OwnStampTests(_RefreshBase):
         self.assertEqual(recommendations._own_stamp[self.user.id], new)
         recommendations._finish_refresh(self.user.id)
         self.assertIsNone(self._stamp())
+
+
+class RatingRefreshTests(APITestCase):
+    """recommendation-refresh: score changes schedule a refresh, review edits don't."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="rita", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        self.refreshes = []
+        patcher = patch.object(recommendations, "request_refresh",
+                               side_effect=lambda uid, **kw: self.refreshes.append(uid))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def rate(self, rating, review=""):
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/ratings/", {
+                "mediaId": 550, "mediaType": "movie", "title": "Fight Club", "userRating": rating, "review": review,
+            }, format="json")
+        self.assertIn(res.status_code, (200, 201), res.data)
+        return res.data
+
+    def test_new_rating_schedules_a_refresh(self):
+        self.rate(9)
+        self.assertEqual(self.refreshes, [self.user.id])
+
+    def test_score_change_schedules_a_refresh(self):
+        self.rate(9)
+        self.rate(6)
+        self.assertEqual(self.refreshes, [self.user.id, self.user.id])
+
+    def test_review_only_edit_schedules_none(self):
+        entry = self.rate(9)
+        self.refreshes.clear()
+        self.rate(9, review="Holds up.")
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.patch(f"/api/ratings/{entry['id']}/", {"review": "Still holds up."}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(self.refreshes, [])
+
+    def test_patch_score_change_schedules_a_refresh(self):
+        entry = self.rate(9)
+        self.refreshes.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.patch(f"/api/ratings/{entry['id']}/", {"userRating": 4}, format="json")
+        self.assertEqual(self.refreshes, [self.user.id])
+
+    def test_delete_schedules_a_refresh(self):
+        entry = self.rate(9)
+        self.refreshes.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.delete(f"/api/ratings/{entry['id']}/")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.refreshes, [self.user.id])
+
+    def test_bulk_import_schedules_one_refresh_only_when_it_adds(self):
+        body = {"entries": [
+            {"mediaId": i, "mediaType": "movie", "title": f"M{i}", "userRating": 8, "review": ""} for i in (1, 2)
+        ]}
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/ratings/bulk/", body, format="json")
+        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        self.assertEqual(self.refreshes, [self.user.id])
+
+        self.refreshes.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/ratings/bulk/", body, format="json")
+        self.assertEqual(res.data, {"added": 0, "skipped": 2})
+        self.assertEqual(self.refreshes, [])
+
+    def test_account_deletion_schedules_none(self):
+        self.rate(9)
+        self.refreshes.clear()
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            self.user.delete()
+        self.assertEqual(callbacks, [])
+        self.assertEqual(self.refreshes, [])

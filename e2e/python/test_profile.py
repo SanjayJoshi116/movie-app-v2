@@ -232,6 +232,8 @@ class TestExportAll:
                 fulfill_json(r, paginated([]))
 
         authed_page.route("**/api/watched/**", watched)
+        # Export reads follows (base mock) and episode progress at click time.
+        authed_page.route("**/api/episode-progress/**", lambda r: fulfill_json(r, paginated([])))
         goto_movies(authed_page)
         open_profile_modal(authed_page)
         open_data_tab(authed_page)

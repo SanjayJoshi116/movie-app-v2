@@ -28,6 +28,7 @@ export function useAppContext(): AppContextType {
     setIncludeAdult: ui.setIncludeAdult,
     selectedGenres: ui.selectedGenres,
     toggleGenre: ui.toggleGenre,
+    setGenres: ui.setGenres,
     clearGenres: ui.clearGenres,
     theme: ui.theme,
     toggleTheme: ui.toggleTheme,

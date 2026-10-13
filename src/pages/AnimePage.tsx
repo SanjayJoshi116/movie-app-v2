@@ -183,7 +183,15 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       <Radio.Group
         value={animeTab}
-        onChange={(e) => setAnimeTab(e.target.value)}
+        onChange={(e) => {
+          // One batched render: App resets the applied filters for the new
+          // scope and the genre picks are gone before the grid refetches.
+          // (Via the effect below alone, one request went out with them.)
+          const tab: "tv" | "movies" = e.target.value;
+          clearGenres();
+          onMediaTypeChange(tab);
+          setAnimeTab(tab);
+        }}
         style={{ marginBottom: 16 }}
       >
         <Radio.Button value="tv">TV Anime</Radio.Button>

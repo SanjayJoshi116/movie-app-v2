@@ -9,7 +9,7 @@ switching tabs, so returning to a page puts the user where they left it.
 ## Requirements
 
 ### Requirement: Browser Back restores browse state
-When the user leaves a Movies, TV or Anime browse page for a detail page and
+When the user leaves a Movies, TV, Anime or People browse page for a detail or person page and
 returns with the browser's Back button or a swipe-back gesture, the browse page
 SHALL restore the same category, Anime TV/Movies mode, number of loaded pages,
 search term, selected genres and scroll position as the in-app Back button
@@ -23,6 +23,10 @@ does. A fresh visit through the navigation SHALL still start with defaults.
 - **WHEN** the user later opens Movies from the sidebar
 - **THEN** Movies shows its default category from the top
 
+#### Scenario: Browser Back to People
+- **WHEN** the user loads 4 pages of People, scrolls down, opens a person and presses the browser Back button
+- **THEN** People shows the same 4 pages at the same scroll position
+
 ### Requirement: Search tabs keep separate scroll positions
 Each Search tab (Movies, TV Shows, People) SHALL save and restore its own
 scroll position. Leaving the Search page SHALL NOT overwrite an inactive tab's
@@ -34,13 +38,26 @@ saved position with the active tab's position.
 
 ### Requirement: Incomplete recommendations are not cached as final
 A saved For You snapshot SHALL record whether any recommendation group was
-still being computed. On the next visit, a snapshot that was incomplete SHALL
-be shown while the page resumes fetching and polling, and polling SHALL
-continue until the backend reports the groups ready.
+still being computed. A snapshot SHALL count as complete only when every group
+answered as ready during that visit. A group whose polling stops before the
+backend reports it ready, and a visit left before the first answers arrive,
+SHALL leave the snapshot incomplete. On the next visit, a snapshot that was
+incomplete SHALL be shown while the page resumes fetching and polling, and
+polling SHALL continue until the backend reports the groups ready. When polling
+stops before that, the page SHALL say the recommendations are still being
+prepared and offer to try again.
 
 #### Scenario: Leave mid-computation
 - **WHEN** the user opens For You while personalized recommendations are still computing, leaves, and returns within 5 minutes
 - **THEN** the page polls again and shows the personalized groups once they are ready
+
+#### Scenario: Polling gives up
+- **WHEN** a group is still computing after the page's last poll
+- **THEN** the page says the recommendations are taking longer than usual and offers Retry, and on the next visit it fetches again instead of showing the saved groups as final
+
+#### Scenario: Leave before the first answer
+- **WHEN** the user returns to an incomplete snapshot and leaves before any group answers
+- **THEN** the snapshot stays incomplete, and the next visit fetches again
 
 ### Requirement: Paginated pages request each page once per load
 Loading a paginated browse or search grid, or restoring one on return, SHALL
@@ -101,3 +118,10 @@ Every search box in a tab SHALL show the same recent searches. A search made in 
 #### Scenario: Phone then desktop width
 - **WHEN** the user searches "Dune" from the bottom navigation's search box, then widens the window and opens the sidebar's search box
 - **THEN** "Dune" is in the sidebar's recent searches
+
+### Requirement: Marking a recommendation watched keeps the page in place
+Marking a title watched or unwatched from For You SHALL update that title's watched state without reloading or reordering the recommendation groups, and SHALL NOT request the recommendations again.
+
+#### Scenario: Mark a card watched
+- **WHEN** the user marks a For You card as watched
+- **THEN** the card shows as watched, the groups stay in the same order, and no recommendation request is sent

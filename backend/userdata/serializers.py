@@ -342,6 +342,19 @@ class EpisodeProgressInputSerializer(serializers.Serializer):
     episode = serializers.IntegerField(min_value=1, max_value=INT32_MAX, default=1)
 
 
+class BulkFollowedPersonSerializer(serializers.Serializer):
+    personId = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
+    name = serializers.CharField(max_length=500, allow_blank=True, default="")
+    profilePath = serializers.CharField(max_length=500, allow_null=True, allow_blank=True, required=False)
+    followedAt = _past_timestamp()
+
+
+class BulkEpisodeProgressSerializer(serializers.Serializer):
+    showId = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
+    season = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
+    episode = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
+
+
 class UserListSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     # Writable only on create (a backup restore sends the original time);

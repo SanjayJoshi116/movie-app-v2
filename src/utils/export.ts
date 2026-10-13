@@ -1,5 +1,5 @@
 import type { WatchlistEntry, WatchedEntry, RatingEntry, UserList } from "../types";
-import { buildBackupZip } from "./backup";
+import { buildBackupZip, type BackupSocial } from "./backup";
 import { localISODate } from "./formatDate";
 
 /**
@@ -37,8 +37,10 @@ export async function downloadAllAsZip(
   watchedList: WatchedEntry[],
   ratings: RatingEntry[],
   lists: UserList[],
+  social: BackupSocial,
 ): Promise<void> {
-  const blob = await buildBackupZip(watchlist, watchedList, ratings, lists).generateAsync({ type: "blob" });
+  const blob = await buildBackupZip(watchlist, watchedList, ratings, lists, undefined, social)
+    .generateAsync({ type: "blob" });
   const date = localISODate(new Date());
   triggerDownload(blob, `cinedb-backup-${date}.zip`, "application/zip");
 }

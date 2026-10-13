@@ -13,6 +13,7 @@ import LibraryItemCard from "../components/LibraryItemCard";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
+import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
@@ -260,7 +261,7 @@ function WatchlistPage() {
                         aria-label={rating ? "Edit rating" : "Rate"}
                       />
                     </Tooltip>
-                    <Popconfirm
+                    <ConfirmIconButton
                       title="Remove from watchlist?"
                       onConfirm={async () => {
                         try {
@@ -271,19 +272,11 @@ function WatchlistPage() {
                         }
                       }}
                       okText="Remove"
-                      cancelText="Cancel"
-                    >
-                      <Tooltip title="Remove">
-                        <Button
-                          type="text"
-                          danger
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Remove from watchlist"
-                        />
-                      </Tooltip>
-                    </Popconfirm>
+                      tooltip="Remove"
+                      icon={<DeleteOutlined />}
+                      danger
+                      ariaLabel="Remove from watchlist"
+                    />
                   </>
                 }
                 footer={

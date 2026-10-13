@@ -1,41 +1,7 @@
 import type { Page } from "@playwright/test";
-import { test, expect, mockAuthedBase, paginated } from "./fixtures";
+import { test, expect, mockAuthedBase, paginated, movieDetail, tvDetail } from "./fixtures";
 import type { FollowedPersonEntry, PersonalizedRecSection } from "../src/api/userApi";
 import type { UserListDTO, WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
-
-/** A movie detail response with every append_to_response part present. */
-function movieDetail(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 100, title: "Movie 1", overview: "Test", release_date: "2024-01-01",
-    poster_path: null, backdrop_path: null, genres: [], runtime: 120,
-    vote_average: 7.5, vote_count: 200, status: "Released",
-    original_language: "en", budget: 0, revenue: 0,
-    credits: { cast: [], crew: [] }, images: { backdrops: [] },
-    videos: { results: [] }, recommendations: { results: [] },
-    reviews: { results: [], total_pages: 1 },
-    similar: { results: [], total_pages: 1 },
-    "watch/providers": { results: {} },
-    release_dates: { results: [] },
-    ...overrides,
-  };
-}
-
-/** A TV detail response with every append_to_response part present. */
-function tvDetail(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 200, name: "Show 1", overview: "Test", first_air_date: "2020-01-01",
-    poster_path: null, backdrop_path: null, genres: [], episode_run_time: [],
-    number_of_seasons: 2, number_of_episodes: 20, seasons: [], networks: [],
-    vote_average: 7.5, vote_count: 200, status: "Returning Series",
-    original_language: "en", created_by: [],
-    external_ids: {}, aggregate_credits: { cast: [], crew: [] }, images: { backdrops: [] },
-    videos: { results: [] }, recommendations: { results: [] },
-    reviews: { results: [], total_pages: 1 },
-    similar: { results: [], total_pages: 1 },
-    "watch/providers": { results: {} },
-    ...overrides,
-  };
-}
 
 /** The row of Statistic facts (rating, runtime, seasons...) under the title. */
 const factsRow = (page: Page) =>
@@ -149,7 +115,7 @@ test.describe("Browse cards are links", () => {
 
 test.describe("Back from a recommendation card", () => {
   test("Following → detail → Back returns to Following", async ({ page }) => {
-    const followed = [{ id: 1, personId: 7, name: "Greta Gerwig", profilePath: null }] satisfies FollowedPersonEntry[];
+    const followed = [{ id: 1, personId: 7, name: "Greta Gerwig", profilePath: null, followedAt: "2026-10-01T10:00:00Z" }] satisfies FollowedPersonEntry[];
     const recs = [{
       key: "person-7", label: "Because you follow Greta Gerwig",
       items: [{ id: 100, type: "movie", title: "Movie 1", posterPath: null, voteAverage: 7.5 }],
@@ -405,5 +371,24 @@ test.describe("Add to List dialog", () => {
     fail = false;
     await dialog.getByRole("button", { name: "Retry" }).click();
     await expect(dialog.getByText("Favourites")).toBeVisible();
+  });
+});
+
+test.describe("Back with no in-app history", () => {
+  test("a detail page opened directly (new tab, bookmark) goes back to its section", async ({ page }) => {
+    await page.route("**/api/tmdb/movie/100**", (route) => route.fulfill({ json: movieDetail() }));
+    await page.goto("/movie/100");
+    await expect(page.getByRole("heading", { name: "Movie 1" }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL("/movies");
+  });
+
+  test("a show opened directly goes back to TV Shows", async ({ page }) => {
+    await page.route("**/api/tmdb/tv/200**", (route) => route.fulfill({ json: tvDetail() }));
+    await page.route("**/api/tmdb/tv/200/season/**", (route) => route.fulfill({ json: { episodes: [] } }));
+    await page.goto("/tv/200");
+    await expect(page.getByRole("heading", { name: "Show 1" }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL("/tv");
   });
 });

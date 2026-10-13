@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from userdata import stats_views
+from userdata.tmdb_client import STATIC_GENRE_NAMES
 from userdata.models import RatingEntry, WatchedEntry
 from userdata.stats_views import rating_bucket, round_half_up
 
@@ -97,3 +98,47 @@ class StatsMathTests(APITestCase):
 
     def test_no_history_gives_no_months(self, _genres):
         self.assertEqual(self.stats()["monthlyActivity"], [])
+
+
+@patch.object(stats_views, "_get_cached_genre_names", return_value=dict(STATIC_GENRE_NAMES))
+class StatsGenreFamilyTests(APITestCase):
+    """watch-stats: a movie genre and its TV counterpart are one genre."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="fam", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        self._next_id = 1
+
+    def watch(self, media_type, genres, rating=None):
+        entry = WatchedEntry.objects.create(
+            user=self.user, media_id=self._next_id, media_type=media_type, title=f"T{self._next_id}",
+            vote_average=7, genre_ids=list(genres), original_language="en", release_year=2000,
+            metadata_settled=True,
+        )
+        self._next_id += 1
+        if rating is not None:
+            RatingEntry.objects.create(user=self.user, media_id=entry.media_id, media_type=media_type,
+                                       title=entry.title, user_rating=rating)
+
+    def stats(self):
+        res = self.client.get("/api/stats/")
+        self.assertEqual(res.status_code, 200)
+        return res.data
+
+    def test_action_movies_and_action_tv_are_one_genre(self, _names):
+        self.watch("movie", [28])
+        self.watch("movie", [28])
+        self.watch("tv", [10759])
+        top = {g["genre"]: g["count"] for g in self.stats()["topGenres"]}
+        self.assertEqual(top, {"Action & Adventure": 3})
+
+    def test_a_movie_tagged_action_and_adventure_counts_once(self, _names):
+        self.watch("movie", [28, 12])
+        top = {g["genre"]: g["count"] for g in self.stats()["topGenres"]}
+        self.assertEqual(top, {"Action & Adventure": 1})
+
+    def test_rating_by_genre_groups_the_same_way(self, _names):
+        self.watch("movie", [878], rating=8)
+        self.watch("movie", [14], rating=6)
+        self.watch("tv", [10765], rating=7)
+        self.assertEqual(self.stats()["ratingByGenre"], [{"genre": "Sci-Fi & Fantasy", "avgRating": 7.0}])

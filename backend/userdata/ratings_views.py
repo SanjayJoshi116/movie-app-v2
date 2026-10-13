@@ -12,6 +12,7 @@ from .models import RatingEntry, TMDBProfile
 from .pagination import DefaultPagination
 from .bulk_import import bulk_import, timestamp_or_now
 from .serializers import BulkRatingEntrySerializer, RatingEntrySerializer
+from .signals import schedule_refresh
 from . import tmdb_client
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,14 @@ def ratings_list(request):
 
     serializer = RatingEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    # The score before this request, to tell a re-rating from a review edit.
+    old_rating = (
+        RatingEntry.objects.filter(
+            user=request.user,
+            media_id=serializer.validated_data["media_id"],
+            media_type=serializer.validated_data["media_type"],
+        ).values_list("user_rating", flat=True).first()
+    )
     entry, created = RatingEntry.objects.update_or_create(
         user=request.user,
         media_id=serializer.validated_data["media_id"],
@@ -61,7 +70,11 @@ def ratings_list(request):
             "rated_at": timezone.now(),
         },
     )
-    _sync_rating_to_tmdb(request.user, entry)
+    # A review-only change is local: TMDB gets scores, and recommendations
+    # weigh scores (loved genres, seeds, clusters). rated_at moves either way.
+    if created or entry.user_rating != old_rating:
+        _sync_rating_to_tmdb(request.user, entry)
+        schedule_refresh(request.user.id)
 
     return Response(
         RatingEntrySerializer(entry).data,
@@ -81,6 +94,7 @@ def ratings_detail(request, pk):
             except (requests.RequestException, ValueError) as e:
                 logger.warning("TMDB rating delete failed for user %s (%s)", request.user.pk, type(e).__name__)
         entry.delete()
+        schedule_refresh(request.user.id)
         return Response(status=status.HTTP_204_NO_CONTENT)
     old_rating, old_review = entry.user_rating, entry.review
     serializer = RatingEntrySerializer(entry, data=request.data, partial=True)
@@ -94,6 +108,7 @@ def ratings_detail(request, pk):
         serializer.save()
     if rating_changed:
         _sync_rating_to_tmdb(request.user, entry)
+        schedule_refresh(request.user.id)
     return Response(serializer.data)
 
 
@@ -115,4 +130,13 @@ def bulk_ratings(request):
             rated_at=timestamp_or_now(item.get("ratedAt")),
         )
 
-    return bulk_import(request, model=RatingEntry, entry_serializer=BulkRatingEntrySerializer, build=build)
+    def after_create(user, added):
+        # bulk_create sends no signals. A backup restore imports watched first;
+        # this refresh (coalesced after that one) is the one that sees ratings.
+        if added:
+            schedule_refresh(user.id)
+
+    return bulk_import(
+        request, model=RatingEntry, entry_serializer=BulkRatingEntrySerializer, build=build,
+        after_create=after_create,
+    )

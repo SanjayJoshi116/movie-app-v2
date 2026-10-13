@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
-import { FollowedPeopleProvider, type FollowedPeopleContextType } from "../FollowedPeopleContext";
+import { FollowedPeopleContext, FollowedPeopleProvider, type FollowedPeopleContextType } from "../FollowedPeopleContext";
 import { useFollowedPeople } from "../../hooks/useFollowedPeople";
 import { AuthContext } from "../AuthContext";
 import { getFollowedPeople, followPerson, unfollowPerson } from "../../api/userApi";
@@ -30,7 +30,7 @@ const auth = {
   setUserData: jest.fn(),
 };
 
-const BRAD = { id: 10, personId: 287, name: "Brad Pitt", profilePath: null };
+const BRAD = { id: 10, personId: 287, name: "Brad Pitt", profilePath: null, followedAt: "2026-10-01T10:00:00Z" };
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -51,7 +51,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGet.mockResolvedValue([BRAD]);
   mockFollow.mockImplementation((personId: number, name: string) =>
-    Promise.resolve({ data: { id: personId, personId, name, profilePath: null } })
+    Promise.resolve({ data: { id: personId, personId, name, profilePath: null, followedAt: "2026-10-01T10:00:00Z" } })
   );
   mockUnfollow.mockResolvedValue({});
 });
@@ -75,7 +75,7 @@ describe("FollowedPeopleProvider", () => {
     await waitFor(() => expect(screen.getByTestId("b")).toHaveTextContent("Brad Pitt"));
 
     await act(async () => { await a.follow(31, "Tom Hanks", null); });
-    expect(screen.getByTestId("b")).toHaveTextContent("Brad Pitt,Tom Hanks");
+    expect(screen.getByTestId("b")).toHaveTextContent("Tom Hanks,Brad Pitt");
     expect(a.isFollowing(31)).toBe(true);
 
     await act(async () => { await a.unfollow(287); });
@@ -113,7 +113,7 @@ describe("FollowedPeopleProvider", () => {
     mockFollow.mockImplementation(
       (personId: number, name: string) =>
         new Promise((resolve) => {
-          release = () => resolve({ data: { id: personId, personId, name, profilePath: null } });
+          release = () => resolve({ data: { id: personId, personId, name, profilePath: null, followedAt: "2026-10-01T10:00:00Z" } });
         })
     );
     render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
@@ -130,7 +130,7 @@ describe("FollowedPeopleProvider", () => {
       await Promise.all([first, second]);
     });
     expect(mockFollow).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt,Tom Hanks");
+    expect(screen.getByTestId("a")).toHaveTextContent("Tom Hanks,Brad Pitt");
   });
 
   it("follows of different people are independent", async () => {
@@ -143,5 +143,31 @@ describe("FollowedPeopleProvider", () => {
       void a.follow(32, "Meryl Streep", null);
     });
     expect(mockFollow).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("follow order and change counter", () => {
+  it("puts a new follow first and bumps `changes` on follow and unfollow", async () => {
+    let a!: FollowedPeopleContextType;
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+    expect(a.changes).toBe(0);
+
+    await act(async () => { await a.follow(7, "Greta Gerwig", null); });
+    expect(screen.getByTestId("a")).toHaveTextContent("Greta Gerwig,Brad Pitt");
+    expect(a.changes).toBe(1);
+
+    await act(async () => { await a.unfollow(287); });
+    expect(a.changes).toBe(2);
+  });
+
+  it("reading `changes` straight from the context doesn't start the fetch", () => {
+    function Reader() {
+      const ctx = React.useContext(FollowedPeopleContext);
+      return <div data-testid="changes">{ctx?.changes}</div>;
+    }
+    render(<Shell><Reader /></Shell>);
+    expect(screen.getByTestId("changes")).toHaveTextContent("0");
+    expect(mockGet).not.toHaveBeenCalled();
   });
 });

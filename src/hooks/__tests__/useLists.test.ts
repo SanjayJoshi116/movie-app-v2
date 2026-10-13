@@ -110,6 +110,14 @@ describe("useLists", () => {
     expect(result.current.lists.filter((l) => l.name === "Horror")).toHaveLength(1);
   });
 
+  it("a created list goes first, like the server's newest-first order", async () => {
+    mockPost.mockResolvedValue({ data: { ...listDTO, id: 9, name: "Horror" } });
+    const { result } = renderHook(() => useLists(), { wrapper });
+    await waitFor(() => expect(result.current.lists).toHaveLength(1));
+    await act(async () => { await result.current.createList("Horror", ""); });
+    expect(result.current.lists.map((l) => l.name)).toEqual(["Horror", "Faves"]);
+  });
+
   it("creates with different names are independent", async () => {
     mockPost.mockImplementation(() => new Promise(() => {}));
     const { result } = renderHook(() => useLists(), { wrapper });

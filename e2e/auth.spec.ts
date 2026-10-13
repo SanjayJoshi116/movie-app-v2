@@ -24,6 +24,24 @@ test.describe("Login page", () => {
     await expect(page).toHaveTitle("CINE DB");
   });
 
+  test("manifest and meta description name CINE DB, with no CRA leftovers (app-identity)", async ({ page, request }) => {
+    const manifestRes = await request.get("/manifest.json");
+    expect(manifestRes.ok()).toBe(true);
+    const manifest = await manifestRes.json();
+    expect(manifest.name).toBe("CINE DB");
+    expect(manifest.short_name).toBe("CINE DB");
+
+    const indexHtml = await (await request.get("/")).text();
+    for (const text of [JSON.stringify(manifest), indexHtml]) {
+      expect(text).not.toMatch(/create-react-app|React App/i);
+    }
+
+    await page.goto("/login");
+    const description = await page.locator('meta[name="description"]').getAttribute("content");
+    expect(description).toMatch(/movies/i);
+    expect(description).toMatch(/TV shows/i);
+  });
+
   test("shows error on invalid credentials", async ({ page }) => {
     // Use 400 not 401: a 401 triggers the JWT refresh interceptor which redirects to /login
     await page.route("**/api/auth/login/", (route) =>
@@ -52,6 +70,8 @@ test.describe("Login page", () => {
     await expect(page.locator(".ant-message-notice-content")).toContainText("Invalid username or password.", { timeout: 8_000 });
     await expect(page.getByLabel("Username")).toHaveValue("wronguser");
     await expect(page.getByLabel("Password")).toHaveValue("");
+    // login-page "Wrong password": focus moves to the emptied password field.
+    await expect(page.getByLabel("Password")).toBeFocused();
   });
 
   test("shows a connection error when the server is unreachable", async ({ page }) => {
@@ -161,6 +181,23 @@ test.describe("Login page", () => {
     await expect(page).toHaveURL("/search?q=nolan&tab=people");
     await expect(page.locator(".ant-tabs-tab-active")).toHaveText("People");
     await expect(page.getByText('No people found for "nolan"')).toBeVisible();
+  });
+
+  test("signed out, an unknown path lands on not-found after sign-in, address kept", async ({ page }) => {
+    await page.route("**/api/auth/login/", (route) =>
+      route.fulfill({ json: { access: "fake-access-token", refresh: "fake-refresh-token", user: MOCK_USER } })
+    );
+    await mockAppApi(page);
+
+    await page.goto("/moviez");
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByLabel("Username").fill("testuser");
+    await page.getByLabel("Password").fill("testpass");
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    await expect(page.getByText("Page not found")).toBeVisible();
+    await expect(page).toHaveURL("/moviez");
+    await expect(page.getByRole("link", { name: "Go to Movies" })).toHaveAttribute("href", "/movies");
   });
 
   test("unauthenticated /movies redirects to /login", async ({ page }) => {

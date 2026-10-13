@@ -94,10 +94,12 @@ class TestBrowseFilters:
         authed_page.goto("/tv")
         expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
         self._open_filters(authed_page)
+        # Genre picks are a draft until Apply (browse-filters "edits apply together").
+        authed_page.get_by_role("group", name="Genre filters").get_by_text("Action & Adventure", exact=True).click()
         with authed_page.expect_request(
             lambda req: "/api/tmdb/discover/tv" in req.url and "with_genres=10759" in req.url
         ):
-            authed_page.get_by_role("group", name="Genre filters").get_by_text("Action & Adventure", exact=True).click()
+            authed_page.get_by_role("button", name="Apply Filters").click()
 
     def test_category_buttons_work_after_empty_apply(self, authed_page: Page):
         mock_tmdb_movies(authed_page)

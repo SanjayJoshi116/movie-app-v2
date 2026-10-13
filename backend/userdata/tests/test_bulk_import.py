@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ..models import RatingEntry, TMDBProfile, UserList, WatchedEntry, WatchlistEntry
+from ..models import RatingEntry, TMDBProfile, UserList, UserListItem, WatchedEntry, WatchlistEntry
 
 PAST = "2024-03-01T20:00:00Z"
 PAST_DT = datetime(2024, 3, 1, 20, 0, tzinfo=UTC)
@@ -319,3 +319,52 @@ class ListCreatedAtTests(BulkTestCase):
         )
         lst = UserList.objects.get(pk=res.data["id"])
         self.assertEqual((lst.name, lst.created_at), ("M", PAST_DT))
+
+
+class ExactCountTests(BulkTestCase):
+    """data-backup: counts match what the database actually inserted, even
+    when another request created the same entry after the pre-check."""
+
+    def _race(self, model, url, existing_kwargs, entries):
+        """Create the row, but hide it from bulk_import's pre-check, as if a
+        concurrent request committed it between the check and the insert."""
+        model.objects.create(**existing_kwargs)
+        real_filter = model.objects.filter
+        with mock.patch.object(type(model.objects), "filter",
+                               lambda self_, *a, **k: real_filter(*a, **k).none()):
+            res = self.client.post(url, {"entries": entries, "mediaType": "movie"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        return res.data
+
+    def test_watchlist_row_created_concurrently_counts_as_skipped(self):
+        data = self._race(WatchlistEntry, "/api/watchlist/bulk/",
+                          {"user": self.user, "media_id": 550, "media_type": "movie", "title": "Fight Club"},
+                          [{"mediaId": 550, "title": "Fight Club"}, {"mediaId": 603, "title": "The Matrix"}])
+        self.assertEqual(data, {"added": 1, "skipped": 1})
+        self.assertEqual(WatchlistEntry.objects.filter(user=self.user).count(), 2)
+
+    def test_counts_are_exact_for_every_media_bulk_endpoint(self):
+        user_list = UserList.objects.create(user=self.user, name="L")
+        cases = [
+            (WatchedEntry, "/api/watched/bulk/",
+             {"user": self.user, "media_id": 1, "media_type": "movie", "title": "A"}),
+            (RatingEntry, "/api/ratings/bulk/",
+             {"user": self.user, "media_id": 1, "media_type": "movie", "title": "A", "user_rating": 7}),
+            (UserListItem, f"/api/lists/{user_list.id}/items/bulk/",
+             {"user_list": user_list, "media_id": 1, "media_type": "movie", "title": "A"}),
+        ]
+        for model, url, existing in cases:
+            with self.subTest(model=model.__name__):
+                entry = {"mediaId": 1, "title": "A", "userRating": 7, "review": ""}
+                data = self._race(model, url, existing, [entry, {**entry, "mediaId": 2, "title": "B"}])
+                self.assertEqual(data, {"added": 1, "skipped": 1})
+
+    def test_json_and_timestamps_round_trip_through_the_insert(self):
+        self.url = "/api/watched/bulk/"
+        res = self.post([{"mediaId": 7, "title": "G", "watchedAt": PAST, "watchedTz": "Asia/Kolkata",
+                          "runtimeMinutes": 90, "platform": "Netflix"}])
+        self.assertEqual(res.data, {"added": 1, "skipped": 0})
+        entry = WatchedEntry.objects.get(user=self.user, media_id=7)
+        self.assertEqual(entry.watched_at, PAST_DT)
+        self.assertEqual(entry.genre_ids, [])
+        self.assertEqual((entry.watched_tz, entry.runtime_minutes, entry.platform), ("Asia/Kolkata", 90, "Netflix"))

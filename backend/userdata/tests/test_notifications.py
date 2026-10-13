@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from userdata import notifications_views
-from userdata.models import FollowedPerson, NotificationCheckpoint
+from userdata.models import FollowedPerson, NotificationCheckpoint, WatchedEntry
 
 
 class NewReleaseNotificationsTests(APITestCase):
@@ -65,6 +65,27 @@ class NewReleaseNotificationsTests(APITestCase):
         self.assertEqual(len(res.data["items"]), 1)
         self.assertEqual(res.data["unreadCount"], 0)
         self.assertFalse(res.data["items"][0]["isUnread"])
+
+
+class WatchedTitlesAreNotNotifiedTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="wen", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.create(user=self.user, person_id=1, name="Some Actor")
+
+    @patch("userdata.tmdb_client._get")
+    def test_watched_release_is_left_out(self, mock_get):
+        recent = (timezone.now().date() - timedelta(days=3)).isoformat()
+        mock_get.return_value = {"cast": [
+            {"id": 11, "media_type": "movie", "title": "Seen It", "poster_path": None, "release_date": recent},
+            {"id": 12, "media_type": "movie", "title": "Not Yet", "poster_path": None, "release_date": recent},
+            # Same id, other type: still news.
+            {"id": 11, "media_type": "tv", "title": "Show 11", "poster_path": None, "first_air_date": recent},
+        ]}
+        WatchedEntry.objects.create(user=self.user, media_id=11, media_type="movie", title="Seen It")
+        res = self.client.get("/api/notifications/new-releases/")
+        self.assertEqual(sorted(i["title"] for i in res.data["items"]), ["Not Yet", "Show 11"])
 
 
 def _cast(title, days_ago):

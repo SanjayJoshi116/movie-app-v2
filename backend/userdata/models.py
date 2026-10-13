@@ -159,7 +159,7 @@ class FollowedPerson(models.Model):
     person_id = models.IntegerField()
     name = models.CharField(max_length=500)
     profile_path = models.CharField(max_length=500, blank=True, null=True)
-    followed_at = models.DateTimeField(auto_now_add=True)
+    followed_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         unique_together = ("user", "person_id")

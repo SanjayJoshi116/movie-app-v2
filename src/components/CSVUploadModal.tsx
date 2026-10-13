@@ -2,11 +2,12 @@ import React, { useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { bulkImport } from "../api/userApi";
-import { fetchMoviePoster, fetchTVPoster } from "../api/tmdb";
+import { lookupImportPosters, missingPostersNote } from "../utils/importPosters";
+import { ImportProgress } from "./ImportProgress";
 import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
 import { parseCSVForImport, type ParsedEntry } from "../utils/csvParse";
-import { getApiError } from "../utils/apiError";
+import { getApiError, IMPORT_REFRESH_ERROR } from "../utils/apiError";
 import { downloadCSV } from "../utils/export";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -35,13 +36,14 @@ function downloadTemplate(type: "movie" | "tv") {
 }
 
 const CSVUploadModal = ({ open, onClose }: Props) => {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
   const { reloadWatched } = useAppContext();
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
   const [parsed, setParsed] = useState<ParsedEntry[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,45 +72,43 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     if (parsed.length === 0) return;
     setLoading(true);
     try {
-      // Batch-fetch TMDB poster data (20 concurrent) to enrich entries before saving
-      const enriched = [...parsed];
-      const BATCH = 20;
-      for (let i = 0; i < enriched.length; i += BATCH) {
-        await Promise.allSettled(
-          enriched.slice(i, i + BATCH).map(async (row, offset) => {
-            const idx = i + offset;
-            try {
-              const rowType = row.type ?? mediaType;
-              const { data } = await (rowType === "tv" ? fetchTVPoster(row.mediaId) : fetchMoviePoster(row.mediaId));
-              enriched[idx] = { ...row, posterPath: data.poster_path, voteAverage: data.vote_average };
-            } catch {
-              // leave without poster data on failure
-            }
-          })
-        );
-      }
+      // Posters and scores, paced to the TMDB proxy's rate limit.
+      const { found, missing } = await lookupImportPosters(
+        parsed.map((row) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
+        (done, total) => setProgress({ done, total }),
+      );
+      setProgress(null);
 
       const result = await bulkImport(
         "watched",
-        enriched.map((row) => ({
+        parsed.map((row, i) => ({
           mediaId: row.mediaId,
           mediaType: row.type ?? mediaType,
           title: row.title,
-          posterPath: row.posterPath ?? null,
-          voteAverage: row.voteAverage,
+          posterPath: found[i]?.posterPath ?? null,
+          voteAverage: found[i]?.voteAverage,
+          // The Watched page's own export carries these; keep them on re-import.
+          ...(row.watchedAt ? { watchedAt: row.watchedAt } : {}),
+          ...(row.watchedTz ? { watchedTz: row.watchedTz } : {}),
         })),
       );
-      await reloadWatched();
+      // The entries are saved even if this fails; only what's on screen is stale.
+      const refreshed = await reloadWatched().then(() => true, () => false);
       const summary = `${result.added} added, ${result.skipped} already watched`;
       if (result.failed > 0) {
-        showError(`Import finished: ${summary}, ${result.failed} failed.`);
+        showError(`Import finished: ${summary}, ${result.failed} failed.${missingPostersNote(missing)}`);
+      } else if (missing > 0) {
+        showInfo(`Import complete: ${summary}.${missingPostersNote(missing)}`);
+        handleClose();
       } else {
         showSuccess(`Import complete: ${summary}.`);
         handleClose();
       }
+      if (!refreshed && result.added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
       showError(getApiError(err, "Failed to import watched movies. Please try again."));
     } finally {
+      setProgress(null);
       setLoading(false);
     }
   };
@@ -191,6 +191,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
             ]}
             style={{ marginBottom: 16 }}
           />
+          <ImportProgress progress={progress} />
           <Button type="primary" block loading={loading} onClick={handleSubmit}>
             Import {parsed.length} entr{parsed.length !== 1 ? "ies" : "y"}
           </Button>

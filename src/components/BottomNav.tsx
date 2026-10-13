@@ -247,6 +247,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
                 cursor: "pointer",
                 color: "inherit",
               }}
+              aria-label="Edit profile"
               onClick={() => {
                 setMoreOpen(false);
                 setProfileOpen(true);
@@ -289,6 +290,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
                 cursor: "pointer",
                 color: "inherit",
               }}
+              aria-label="Sign out"
               onClick={() => {
                 setMoreOpen(false);
                 logout();

@@ -66,7 +66,8 @@ export function useLists() {
       const { data } = await userApi.post<UserListDTO>("/lists/", { name, description, ...(createdAt ? { createdAt } : {}) });
       if (!isCurrentSession(gen)) return undefined;
       const created: UserList = { id: data.id, name: data.name, description: data.description, createdAt: data.createdAt, items: [] };
-      setLists((prev) => [...prev, created]);
+      // Newest first, like the API (-created_at), so a reload doesn't move it.
+      setLists((prev) => [created, ...prev]);
       return created;
     }), [isAuthenticated]);
 

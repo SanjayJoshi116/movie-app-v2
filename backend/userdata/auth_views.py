@@ -7,7 +7,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.files.base import ContentFile
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 from rest_framework import status
@@ -257,14 +257,38 @@ def password_reset_confirm(request):
     return Response({"detail": "Password reset successfully."})
 
 
+EMAIL_TAKEN = "An account with this email already exists."
+
+
+def _email_taken_under_lock(email, exclude_pk=None):
+    """Re-check an email's uniqueness with writers of that address serialized.
+
+    auth_user.email has no unique index (older accounts may already share
+    one), so the serializers' check alone races: two requests for the same new
+    address can both pass it. A transaction-scoped advisory lock on the
+    lowercased address makes the second wait and then see the first's row.
+    Call inside transaction.atomic(); PostgreSQL only.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(lower(%s)))", [email])
+    others = User.objects.filter(email__iexact=email)
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    return others.exists()
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([RegisterThrottle])
 def register(request):
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    email = serializer.validated_data.get("email") or ""
     try:
-        user = serializer.save()
+        with transaction.atomic():
+            if email and _email_taken_under_lock(email):
+                return Response({"email": [EMAIL_TAKEN]}, status=status.HTTP_400_BAD_REQUEST)
+            user = serializer.save()
     except IntegrityError:
         return Response({"detail": "Username is already taken."}, status=status.HTTP_400_BAD_REQUEST)
     tokens = _tokens_for_user(user)
@@ -334,6 +358,8 @@ def profile(request):
 
     user = request.user
     old_email = user.email
+    new_email = data.get("email") or ""
+    email_changed = bool(new_email) and new_email.lower() != (old_email or "").lower()
     for field in ("first_name", "last_name", "username", "email"):
         if field in data:
             setattr(user, field, data[field])
@@ -344,6 +370,8 @@ def profile(request):
         # commits first; the DB constraint can. atomic() keeps the connection
         # usable after the failed INSERT/UPDATE.
         with transaction.atomic():
+            if email_changed and _email_taken_under_lock(new_email, exclude_pk=user.pk):
+                return Response({"email": [EMAIL_TAKEN]}, status=status.HTTP_400_BAD_REQUEST)
             user.save()
     except IntegrityError:
         return Response(

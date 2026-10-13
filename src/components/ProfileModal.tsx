@@ -20,7 +20,10 @@ import CSVImportAllModal from "./lists/CSVImportAllModal";
 import PasswordStrengthMeter from "./PasswordStrengthMeter";
 import { InfoTooltip } from "./InfoTooltip";
 import { downloadAllAsZip } from "../utils/export";
-import { getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB, uploadAvatar, removeAvatar } from "../api/userApi";
+import {
+  getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB, uploadAvatar, removeAvatar,
+  getFollowedPeople, getAllEpisodeProgress,
+} from "../api/userApi";
 import userApi from "../api/userApi";
 import { getApiError } from "../utils/apiError";
 import { FONT_SIZE } from "../constants/typography";
@@ -39,6 +42,9 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
  * starts from the saved profile: no typed password, unsaved edit or form-store
  * value survives (rc-field-form merges a kept store over initialValues).
  */
+/** Backup parts read at export time, named in the "couldn't load" message. */
+const SOCIAL_PARTS = { followed: "followed people", progress: "episode progress" };
+
 function ProfileModalBody({ onClose }: { onClose: () => void }) {
   const { user, updateProfile, setUserData, logout } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -89,11 +95,29 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
     setExportBlocked(null);
     setExporting(true);
     try {
+      // Follows and episode progress have no always-loaded context (the
+      // followed-people provider is lazy on purpose): read them now, and
+      // refuse to write a backup without them, like the parts above.
+      const [followed, progress] = await Promise.allSettled([getFollowedPeople(), getAllEpisodeProgress()]);
+      const socialFailed = [
+        ...(followed.status === "rejected" ? [SOCIAL_PARTS.followed] : []),
+        ...(progress.status === "rejected" ? [SOCIAL_PARTS.progress] : []),
+      ];
+      if (followed.status === "rejected" || progress.status === "rejected") {
+        setExportBlocked(socialFailed);
+        return;
+      }
       await downloadAllAsZip(
         watchlistCtx.watchlist,
         watchedCtx.watchedList,
         Object.values(ratingsCtx.ratings),
         listsCtx.lists,
+        {
+          followed: followed.value.map((p) => ({
+            personId: p.personId, name: p.name, profilePath: p.profilePath, followedAt: p.followedAt,
+          })),
+          episodeProgress: progress.value,
+        },
       );
     } catch {
       showError("Couldn't create the backup file.");
@@ -103,10 +127,12 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
   };
 
   const retryFailedParts = () => {
+    const blockedOnSocial = exportBlocked?.some((name) => Object.values(SOCIAL_PARTS).includes(name));
     setExportBlocked(null);
-    libraryParts
-      .filter((p) => p.ctx.error != null)
-      .forEach((p) => p.reload().catch(() => { /* recorded in that context's `error` */ }));
+    const failedParts = libraryParts.filter((p) => p.ctx.error != null);
+    failedParts.forEach((p) => p.reload().catch(() => { /* recorded in that context's `error` */ }));
+    // Follows/progress are read at export time, so trying again is exporting again.
+    if (blockedOnSocial && failedParts.length === 0) handleExportAll();
   };
 
   const handleSubmit = async (values: {

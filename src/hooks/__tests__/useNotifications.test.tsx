@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { fetchNewReleaseNotifications, markNotificationsSeen } from "../../api/userApi";
 import { NotificationsProvider, useNotifications } from "../useNotifications";
 import { AuthContext } from "../../context/AuthContext";
+import { FollowedPeopleContext, type FollowedPeopleContextType } from "../../context/FollowedPeopleContext";
 
 jest.mock("../../api/userApi", () => {
   const actual = jest.requireActual("../../api/userApi");
@@ -55,5 +56,28 @@ describe("useNotifications", () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
     await waitFor(() => expect(result.current.unreadCount).toBe(1));
     expect(result.current.items[0]?.isUnread).toBe(true);
+  });
+});
+
+describe("refresh after a follow change", () => {
+  beforeEach(() => mockPoll.mockReset().mockResolvedValue({ data: { items: [], unreadCount: 0 } }));
+
+  it("polls again when the followed-people change counter moves, not on mount", async () => {
+    const followCtx = (changes: number) => ({ changes } as unknown as FollowedPeopleContextType);
+    let changes = 0;
+    const withFollows = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(
+        AuthContext.Provider, { value: auth },
+        React.createElement(
+          FollowedPeopleContext.Provider, { value: followCtx(changes) },
+          React.createElement(NotificationsProvider, null, children),
+        ),
+      );
+    const { rerender } = renderHook(() => useNotifications(), { wrapper: withFollows });
+    await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(1));
+
+    changes = 1;
+    rerender();
+    await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(2));
   });
 });

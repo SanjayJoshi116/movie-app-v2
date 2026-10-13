@@ -3,6 +3,9 @@ import axios from "axios";
 /** Shown whenever the server can't be reached at all (network down, CORS, timeout). */
 export const CONNECTION_ERROR = "Can't reach the server. Check your connection and try again.";
 
+/** An import saved entries, but reloading the library afterwards failed. */
+export const IMPORT_REFRESH_ERROR = "Imported, but couldn't refresh your library. Reload the page to see the new entries.";
+
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 

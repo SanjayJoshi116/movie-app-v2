@@ -30,14 +30,14 @@ const lists: UserList[] = [
   { id: 2, name: "Sci-Fi : Horror", description: "", createdAt: "2024-01-01T00:00:00Z", items: [watchlist[0]!] },
 ];
 
-describe("backup v2 round trip", () => {
+describe("backup round trip", () => {
   it("preserves every field, empty lists and colliding list names", async () => {
     const zip = buildBackupZip(watchlist, watched, ratings, lists, "2024-04-01T00:00:00Z");
     const files = Object.keys(zip.files).filter((f) => f.startsWith("lists/") && f.endsWith(".csv"));
     expect(new Set(files.map((f) => f.toLowerCase())).size).toBe(2);
 
     const data = await roundTrip(zip);
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.watchlist).toEqual([
       { mediaId: 13, title: "Forrest Gump", type: "movie", voteAverage: 8.5, posterPath: "/fg.jpg", addedAt: "2024-02-01T10:00:00Z" },
     ]);
@@ -86,6 +86,48 @@ describe("backup v2 round trip", () => {
     expect(data.watched[0]).not.toHaveProperty("watchedTz");
     expect(data.ratings).toEqual([]);
     expect(data.lists).toEqual([{ name: "Faves", description: "", entries: [expect.objectContaining({ mediaId: 1396, type: "tv" })] }]);
+    expect(data.followed).toEqual([]);
+    expect(data.episodeProgress).toEqual([]);
+  });
+
+  it("v3 keeps follows (order, profile, followed time) and episode progress", async () => {
+    const social = {
+      followed: [
+        { personId: 287, name: "Brad Pitt", profilePath: "/bp.jpg", followedAt: "2024-05-01T10:00:00Z" },
+        { personId: 7, name: "Greta, \"the\" Gerwig", profilePath: null, followedAt: "2024-01-02T10:00:00Z" },
+      ],
+      episodeProgress: [{ showId: 1396, season: 2, episode: 5 }],
+    };
+    const data = await roundTrip(buildBackupZip(watchlist, watched, ratings, lists, undefined, social));
+    expect(data.followed).toEqual(social.followed);
+    expect(data.episodeProgress).toEqual(social.episodeProgress);
+  });
+
+  it("writes header-only follow and progress files when there are none", async () => {
+    const zip = buildBackupZip(watchlist, watched, ratings, lists);
+    // CSV_BOM first, so spreadsheets read the file as UTF-8.
+    expect(await zip.file("followed.csv")!.async("string")).toMatch(/^﻿?person_id,name,profile_path,followed_at$/);
+    expect(await zip.file("episode_progress.csv")!.async("string")).toMatch(/^﻿?show_id,season,episode$/);
+  });
+
+  it("reads a v2 backup (no follow or progress files) with both empty", async () => {
+    const zip = buildBackupZip(watchlist, watched, ratings, lists);
+    zip.remove("followed.csv");
+    zip.remove("episode_progress.csv");
+    const manifest = JSON.parse(await zip.file("manifest.json")!.async("string"));
+    zip.file("manifest.json", JSON.stringify({ ...manifest, version: 2 }));
+    const data = await roundTrip(zip);
+    expect(data.version).toBe(2);
+    expect(data.followed).toEqual([]);
+    expect(data.episodeProgress).toEqual([]);
+    expect(data.watched).toHaveLength(2);
+  });
+
+  it("accepts a backup that holds only follows", async () => {
+    const zip = new JSZip();
+    zip.file("followed.csv", "person_id,name,profile_path,followed_at\n7,Greta Gerwig,,");
+    const data = await roundTrip(zip);
+    expect(data.followed).toEqual([{ personId: 7, name: "Greta Gerwig", profilePath: null }]);
   });
 
   it("rejects a ZIP with nothing recognizable", async () => {

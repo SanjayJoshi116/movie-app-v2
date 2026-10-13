@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from .metadata_backfill import entry_needs_metadata, request_backfill
 from .models import WatchedEntry, RatingEntry, UserList, UserListItem, WatchlistEntry
-from . import tmdb_client
+from . import genre_families, tmdb_client
 from .timezones import entry_day, entry_local, local_today
 
 logger = logging.getLogger(__name__)
@@ -108,15 +108,17 @@ def stats(request):
             for year, month in _month_range(min(monthly_counts), last)
         ]
 
-    genre_counts: dict[int, int] = {}
+    # Families, not raw ids: a movie's Action and a show's Action & Adventure
+    # are one genre here, the same as in recommendations (genre_families).
+    genre_counts: dict[str, int] = {}
     for entry in watched_list:
-        for gid in (entry.genre_ids or []):
-            genre_counts[gid] = genre_counts.get(gid, 0) + 1
+        for family in genre_families.families(entry.genre_ids, entry.media_type):
+            genre_counts[family] = genre_counts.get(family, 0) + 1
 
     genre_names = _get_cached_genre_names()
     top_genres = [
-        {"genre": genre_names.get(gid, f"Genre {gid}"), "count": cnt}
-        for gid, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
+        {"genre": genre_families.family_name(family, genre_names), "count": cnt}
+        for family, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]
     ]
 
     # 0 is what's stored for "no score" (unreleased titles, CSV rows without
@@ -169,18 +171,19 @@ def stats(request):
         for r in ratings_qs.only("media_id", "media_type", "user_rating")
     }
 
-    genre_rating_sum: dict[int, float] = {}
-    genre_rating_n: dict[int, int] = {}
+    genre_rating_sum: dict[str, float] = {}
+    genre_rating_n: dict[str, int] = {}
     for entry in watched_list:
         ur = rating_map.get((entry.media_id, entry.media_type))
         if ur is None:
             continue
-        for gid in (entry.genre_ids or []):
-            genre_rating_sum[gid] = genre_rating_sum.get(gid, 0) + ur
-            genre_rating_n[gid] = genre_rating_n.get(gid, 0) + 1
+        for family in genre_families.families(entry.genre_ids, entry.media_type):
+            genre_rating_sum[family] = genre_rating_sum.get(family, 0) + ur
+            genre_rating_n[family] = genre_rating_n.get(family, 0) + 1
     rating_by_genre = sorted([
-        {"genre": genre_names.get(gid, f"Genre {gid}"), "avgRating": round_half_up(genre_rating_sum[gid] / n)}
-        for gid, n in genre_rating_n.items() if n >= 3
+        {"genre": genre_families.family_name(family, genre_names),
+         "avgRating": round_half_up(genre_rating_sum[family] / n)}
+        for family, n in genre_rating_n.items() if n >= 3
     ], key=lambda x: -x["avgRating"])[:10]
 
     reviews_written = ratings_qs.exclude(review="").count()

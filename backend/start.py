@@ -7,6 +7,8 @@ import psycopg2
 from psycopg2 import sql
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from warmup import run_warmup  # start.py's own directory is on sys.path
+
 base = Path(__file__).resolve().parent
 load_dotenv(base / ".env")
 # settings.py defaults DEBUG off (fail closed); this is the local-dev launcher,
@@ -42,10 +44,7 @@ subprocess.run([sys.executable, manage, "createcachetable"], check=True)
 
 # Step 3: Pre-compute recommendation cache (best-effort — failure or a hung
 # TMDB call won't block startup)
-try:
-    subprocess.run([sys.executable, manage, "compute_recommendations"], check=False, timeout=30)
-except subprocess.TimeoutExpired:
-    print("[cinedb] compute_recommendations timed out after 30s, skipping (best-effort)")
+run_warmup([sys.executable, manage, "compute_recommendations"], timeout=30)
 
 # Step 4: Start server
 subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)

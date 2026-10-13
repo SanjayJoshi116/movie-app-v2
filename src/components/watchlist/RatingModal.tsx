@@ -42,7 +42,13 @@ export function RatingModal({ title, existing, onSave, onRemove, onClose }: Prop
       open
       title={`Rate: ${title}`}
       onOk={handleOk}
-      onCancel={onClose}
+      // While saving or removing, nothing closes the dialog: its result (or
+      // error, with the input kept) has to land in front of the user.
+      onCancel={busy ? undefined : onClose}
+      maskClosable={!busy}
+      keyboard={!busy}
+      closable={!busy}
+      cancelButtonProps={{ disabled: busy !== null }}
       okText="Save"
       cancelText="Cancel"
       confirmLoading={busy === "save"}

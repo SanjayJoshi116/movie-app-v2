@@ -28,6 +28,7 @@ import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
+import { goBack } from "../utils/goBack";
 
 interface ReleaseDateEntry {
   iso_3166_1: string;
@@ -113,7 +114,7 @@ const MovieDetails = ({ movie }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { ...locationState, isReturn: true } }) : navigate(-1)}
+          onClick={() => goBack(navigate, { from, state: { ...locationState, isReturn: true }, fallback: "/movies" })}
           style={{ marginBottom: 16 }}
         >
           Back

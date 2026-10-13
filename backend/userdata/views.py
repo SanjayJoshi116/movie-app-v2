@@ -19,6 +19,9 @@ from .tmdb_views import tmdb_request_token, tmdb_create_session, tmdb_auth_statu
 from .stats_views import stats
 from .social_views import (
     episode_progress,
+    episode_progress_bulk,
+    episode_progress_list,
+    followed_people_bulk,
     followed_people_detail,
     followed_people_list,
     followed_people_recommendations,
@@ -31,6 +34,9 @@ __all__ = [
     "bulk_watchlist",
     "delete_account",
     "episode_progress",
+    "episode_progress_bulk",
+    "episode_progress_list",
+    "followed_people_bulk",
     "followed_people_detail",
     "followed_people_list",
     "followed_people_recommendations",

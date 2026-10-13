@@ -108,3 +108,40 @@ class FollowedRecsSameIdTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         items = res.data[0]["items"]
         self.assertEqual(sorted((i["id"], i["type"]) for i in items), [(1399, "movie"), (1399, "tv")])
+
+
+class FollowedPeopleBulkTests(APITestCase):
+    """data-backup v3: follows restore create-only and keep their followed time."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="fol", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def bulk(self, entries):
+        return self.client.post("/api/followed-people/bulk/", {"entries": entries}, format="json")
+
+    def test_restore_keeps_followed_time_and_order(self):
+        res = self.bulk([
+            {"personId": 7, "name": "Greta Gerwig", "profilePath": "/g.jpg", "followedAt": "2024-01-02T10:00:00Z"},
+            {"personId": 287, "name": "Brad Pitt", "followedAt": "2024-05-01T10:00:00Z"},
+        ])
+        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        listed = self.client.get("/api/followed-people/").data["results"]
+        self.assertEqual([p["personId"] for p in listed], [287, 7])
+        self.assertEqual(listed[1]["followedAt"].isoformat().replace("+00:00", "Z"), "2024-01-02T10:00:00Z")
+        self.assertEqual(listed[1]["profilePath"], "/g.jpg")
+
+    def test_existing_follow_is_skipped(self):
+        FollowedPerson.objects.create(user=self.user, person_id=7, name="Greta Gerwig")
+        res = self.bulk([{"personId": 7, "name": "Someone Else"}, {"personId": 8, "name": "New"}])
+        self.assertEqual(res.data, {"added": 1, "skipped": 1})
+        self.assertEqual(FollowedPerson.objects.get(user=self.user, person_id=7).name, "Greta Gerwig")
+
+    def test_future_followed_time_is_rejected(self):
+        res = self.bulk([{"personId": 7, "name": "G", "followedAt": "2999-01-01T00:00:00Z"}])
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(FollowedPerson.objects.filter(user=self.user).exists())
+
+    def test_list_and_follow_responses_carry_followed_at(self):
+        res = self.client.post("/api/followed-people/", {"personId": 9, "name": "N"}, format="json")
+        self.assertIn("followedAt", res.data)

@@ -48,10 +48,11 @@ def get_genre_ids(media_id, media_type):
     return [g["id"] for g in data.get("genres", [])]
 
 
-def discover(media_type, genre_ids, page=1):
-    """Discover movies or TV by genre IDs. Returns raw result list."""
+def discover(media_type, with_genres, page=1):
+    """Discover movies or TV by a prepared `with_genres` value (this media
+    type's own ids, from genre_families.with_genres). Returns raw result list."""
     params = {
-        "with_genres": ",".join(str(g) for g in genre_ids),
+        "with_genres": with_genres,
         "sort_by": "vote_average.desc",
         "vote_count.gte": 100 if media_type == "movie" else 50,
         "page": page,

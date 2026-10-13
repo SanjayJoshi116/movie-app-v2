@@ -362,7 +362,25 @@ export function bulkAddListItems(listId: number, entries: BulkImportEntry[]): Pr
   return postBulkChunks(`/lists/${listId}/items/bulk/`, entries);
 }
 
-async function postBulkChunks(url: string, entries: BulkImportEntry[]): Promise<BulkImportResult> {
+/** A followed person in a backup restore. */
+export interface BulkFollowEntry {
+  personId: number;
+  name: string;
+  profilePath?: string | null;
+  followedAt?: string;
+}
+
+/** Restore follows, create-only, keeping each follow's time. */
+export function bulkImportFollowed(entries: BulkFollowEntry[]): Promise<BulkImportResult> {
+  return postBulkChunks("/followed-people/bulk/", entries);
+}
+
+/** Restore episode progress, create-only: a show already tracked keeps its position. */
+export function bulkImportEpisodeProgress(entries: EpisodeProgressData[]): Promise<BulkImportResult> {
+  return postBulkChunks("/episode-progress/bulk/", entries);
+}
+
+async function postBulkChunks<T>(url: string, entries: T[]): Promise<BulkImportResult> {
   const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
   for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
     const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
@@ -424,6 +442,10 @@ export interface EpisodeProgressData {
   episode: number;
 }
 
+/** Every show's progress (backup export). */
+export const getAllEpisodeProgress = () =>
+  fetchAllPages<EpisodeProgressData>(userApi, "/episode-progress/");
+
 export const getEpisodeProgress = (showId: number) =>
   userApi.get<EpisodeProgressData | null>(`/episode-progress/${showId}/`);
 
@@ -438,6 +460,8 @@ export interface FollowedPersonEntry {
   personId: number;
   name: string;
   profilePath: string | null;
+  /** When the follow was made (kept by a backup restore). */
+  followedAt: string;
 }
 
 export const getFollowedPeople = () =>

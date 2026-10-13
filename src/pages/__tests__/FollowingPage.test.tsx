@@ -17,7 +17,7 @@ jest.mock("../RecommendationsPage", () => ({ SectionRow: () => null }));
 const mockRecs = fetchFollowedPeopleRecommendations as jest.Mock;
 const mockFollowed = useFollowedPeople as jest.Mock;
 
-const person = (personId: number): FollowedPersonEntry => ({ id: personId, personId, name: `P${personId}`, profilePath: null });
+const person = (personId: number): FollowedPersonEntry => ({ id: personId, personId, name: `P${personId}`, profilePath: null, followedAt: "2026-10-01T10:00:00Z" });
 const followedState = (followed: FollowedPersonEntry[]) => ({ followed, loading: false, error: false, retry: jest.fn() });
 
 beforeAll(() => {

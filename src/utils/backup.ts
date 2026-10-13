@@ -1,10 +1,32 @@
 import JSZip from "jszip";
 import type { RatingEntry, UserList, WatchedEntry, WatchlistEntry } from "../types";
 import { CSV_BOM, buildCSVString } from "./export";
-import { parseBackupCSV, type BackupRow } from "./csvParse";
+import { parseBackupCSV, parseCSVRecords, type BackupRow } from "./csvParse";
 
 export const BACKUP_FORMAT = "cinedb-backup";
-export const BACKUP_VERSION = 2;
+// v3 added followed.csv and episode_progress.csv; older backups just lack them.
+export const BACKUP_VERSION = 3;
+
+/** A follow as stored in a backup. */
+export interface BackupFollow {
+  personId: number;
+  name: string;
+  profilePath: string | null;
+  followedAt?: string;
+}
+
+/** One show's episode progress as stored in a backup. */
+export interface BackupProgress {
+  showId: number;
+  season: number;
+  episode: number;
+}
+
+/** Account data beyond the media library (backup v3). */
+export interface BackupSocial {
+  followed: BackupFollow[];
+  episodeProgress: BackupProgress[];
+}
 
 export interface BackupManifest {
   format: typeof BACKUP_FORMAT;
@@ -22,6 +44,9 @@ export interface BackupContents {
   watched: BackupRow[];
   ratings: BackupRow[];
   lists: { name: string; description: string; createdAt?: string; entries: BackupRow[] }[];
+  /** Empty for v1/v2 backups. */
+  followed: BackupFollow[];
+  episodeProgress: BackupProgress[];
 }
 
 const LIST_COLUMNS = ["tmdb_id", "title", "type", "vote_average", "added_at", "poster_path"];
@@ -48,6 +73,7 @@ export function buildBackupZip(
   ratings: RatingEntry[],
   lists: UserList[],
   exportedAt = new Date().toISOString(),
+  social: BackupSocial = { followed: [], episodeProgress: [] },
 ): JSZip {
   const zip = new JSZip();
 
@@ -78,6 +104,24 @@ export function buildBackupZip(
     csvOrHeader(
       ratings.map((r) => ({ tmdb_id: r.id, title: r.title, type: r.type, user_rating: r.userRating, review: r.review, rated_at: r.ratedAt })),
       ["tmdb_id", "title", "type", "user_rating", "review", "rated_at"],
+    ),
+  );
+
+  zip.file(
+    "followed.csv",
+    csvOrHeader(
+      social.followed.map((p) => ({
+        person_id: p.personId, name: p.name, profile_path: p.profilePath ?? "", followed_at: p.followedAt ?? "",
+      })),
+      ["person_id", "name", "profile_path", "followed_at"],
+    ),
+  );
+
+  zip.file(
+    "episode_progress.csv",
+    csvOrHeader(
+      social.episodeProgress.map((p) => ({ show_id: p.showId, season: p.season, episode: p.episode })),
+      ["show_id", "season", "episode"],
     ),
   );
 
@@ -148,6 +192,42 @@ function listCSVFiles(zip: JSZip): string[] {
   );
 }
 
+const positiveInt = (v: string | undefined): number | null => {
+  const n = parseInt(v ?? "", 10);
+  return Number.isNaN(n) || n <= 0 ? null : n;
+};
+
+async function readRecords(zip: JSZip, path: string): Promise<Record<string, string>[]> {
+  const file = zip.file(path);
+  return file ? parseCSVRecords(await file.async("string")) : [];
+}
+
+async function readFollowed(zip: JSZip): Promise<BackupFollow[]> {
+  const out: BackupFollow[] = [];
+  for (const r of await readRecords(zip, "followed.csv")) {
+    const personId = positiveInt(r.person_id);
+    if (personId === null) continue;
+    out.push({
+      personId,
+      name: r.name ?? "",
+      profilePath: r.profile_path ?? null,
+      ...(r.followed_at ? { followedAt: r.followed_at } : {}),
+    });
+  }
+  return out;
+}
+
+async function readEpisodeProgress(zip: JSZip): Promise<BackupProgress[]> {
+  const out: BackupProgress[] = [];
+  for (const r of await readRecords(zip, "episode_progress.csv")) {
+    const showId = positiveInt(r.show_id);
+    const season = positiveInt(r.season);
+    const episode = positiveInt(r.episode);
+    if (showId !== null && season !== null && episode !== null) out.push({ showId, season, episode });
+  }
+  return out;
+}
+
 async function readCSV(zip: JSZip, path: string): Promise<BackupRow[]> {
   const file = zip.file(path);
   return file ? parseBackupCSV(await file.async("string")) : [];
@@ -167,7 +247,9 @@ export async function readBackupZip(zip: JSZip): Promise<BackupContents> {
   }
 
   const csvFiles = listCSVFiles(zip);
-  const hasData = ["watchlist.csv", "watched.csv", "ratings.csv"].some((f) => zip.file(f)) || csvFiles.length > 0;
+  const hasData =
+    ["watchlist.csv", "watched.csv", "ratings.csv", "followed.csv", "episode_progress.csv"].some((f) => zip.file(f)) ||
+    csvFiles.length > 0;
   if (!hasData && !manifest) {
     throw new Error("No recognizable CSV files found. Expected watchlist.csv, watched.csv, or lists/*.csv.");
   }
@@ -198,5 +280,7 @@ export async function readBackupZip(zip: JSZip): Promise<BackupContents> {
     watched: await readCSV(zip, "watched.csv"),
     ratings: await readCSV(zip, "ratings.csv"),
     lists,
+    followed: await readFollowed(zip),
+    episodeProgress: await readEpisodeProgress(zip),
   };
 }

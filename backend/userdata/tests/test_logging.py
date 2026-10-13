@@ -57,6 +57,19 @@ class LoggingRedactionTests(APITestCase):
         self.assertIn("RuntimeError: boom api_key=***", out)
         self.assertNotIn(FAKE_KEY, out)
 
+    @override_settings(DEBUG=True)
+    @patch("userdata.tmdb_client.get_request_token", side_effect=RuntimeError(f"boom api_key={FAKE_KEY}"))
+    def test_unhandled_500_is_logged_redacted_with_debug_on(self, _):
+        # Same logging config in both modes; the spec requires redaction in both.
+        self.client.raise_request_exception = False
+        with captured_console() as buf:
+            res = self.client.get("/api/tmdb-auth/request-token/")
+        self.assertEqual(res.status_code, 500)
+        out = buf.getvalue()
+        self.assertIn("Traceback", out)
+        self.assertIn("RuntimeError: boom api_key=***", out)
+        self.assertNotIn(FAKE_KEY, out)
+
     def test_client_errors_are_not_logged(self):
         with captured_console() as buf:
             not_found = self.client.get("/api/no-such-endpoint/")

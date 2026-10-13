@@ -85,6 +85,30 @@ class NginxConfTests(SimpleTestCase):
                 self.assertRegex(outside_locations, rf"add_header\s+{header}\s")
 
 
+class HstsTests(SimpleTestCase):
+    """container-deployment: HSTS only when the TLS terminator reports HTTPS."""
+
+    def setUp(self):
+        self.conf = _strip_comments(NGINX_CONF.read_text())
+        self.hsts_map = _blocks(self.conf, "map")["$http_x_forwarded_proto $hsts_header"]
+
+    def test_https_gets_at_least_180_days(self):
+        m = re.search(r'^\s*https\s+"max-age=(\d+)[^"]*"\s*;', self.hsts_map, re.M)
+        self.assertIsNotNone(m, self.hsts_map)
+        self.assertGreaterEqual(int(m.group(1)), 180 * 24 * 3600)
+
+    def test_everything_else_gets_none(self):
+        # nginx skips an add_header whose value is empty.
+        self.assertRegex(self.hsts_map, r'(?m)^\s*default\s+""\s*;')
+        self.assertEqual(len(re.findall(r"^\s*\S+\s+\S.*;", self.hsts_map, re.M)), 2, self.hsts_map)
+
+    def test_sent_from_server_level_with_always(self):
+        server = _blocks(self.conf, "server")[""]
+        outside_locations = re.sub(r"\blocation\b[^{]*\{[^{}]*\}", "", server)
+        self.assertRegex(outside_locations, r"add_header\s+Strict-Transport-Security\s+\$hsts_header\s+always\s*;")
+        self.assertEqual(self.conf.count("Strict-Transport-Security"), 1)
+
+
 class AccessLogRedactionTests(SimpleTestCase):
     """Reset tokens and TMDB request tokens never reach the access log."""
 

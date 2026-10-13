@@ -74,4 +74,50 @@ describe("useEpisodeProgress", () => {
     await act(async () => { await result.current.clear(); });
     expect(result.current.progress).toBeNull();
   });
+
+  it("a failed load is an error, not 'no progress', and retry loads it", async () => {
+    mockGet.mockRejectedValueOnce(new Error("500")).mockResolvedValueOnce(progress(1396, 3, 4));
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.progress).toBeNull();
+
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.progress).toEqual({ showId: 1396, season: 3, episode: 4 }));
+    expect(result.current.error).toBe(false);
+  });
+
+  it("a failed update clears busy and rejects", async () => {
+    mockGet.mockResolvedValue({ data: null });
+    mockSet.mockRejectedValue(new Error("500"));
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await expect(result.current.update(2, 4)).rejects.toThrow("500");
+    });
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("a double update sends one request and both settle with it", async () => {
+    mockGet.mockResolvedValue({ data: null });
+    const write = deferred<ReturnType<typeof progress>>();
+    mockSet.mockReturnValue(write.promise);
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.update(1, 2);
+      second = result.current.update(1, 2);
+    });
+    expect(mockSet).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.busy).toBe(true));
+
+    await act(async () => {
+      write.resolve(progress(1396, 1, 2));
+      await Promise.all([first, second]);
+    });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.progress).toEqual({ showId: 1396, season: 1, episode: 2 });
+  });
 });

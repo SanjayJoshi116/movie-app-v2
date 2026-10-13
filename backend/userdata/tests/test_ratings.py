@@ -70,6 +70,31 @@ class RatingWriteTests(APITestCase):
         self.entry.refresh_from_db()
         self.assertEqual(self.entry.user_rating, 9)
 
+    def _post(self, rating, review=""):
+        return self.client.post("/api/ratings/", {
+            "mediaId": 550, "mediaType": "movie", "title": "Fight Club", "userRating": rating, "review": review,
+        }, format="json")
+
+    @patch("userdata.tmdb_client.post_rating")
+    def test_post_review_only_change_skips_tmdb_but_bumps_rated_at(self, post):
+        # The dialog always POSTs; a review edit there must not resend the score.
+        res = self._post(6, review="better on rewatch")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        post.assert_not_called()
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.review, "better on rewatch")
+        self.assertGreater(self.entry.rated_at, self.old)
+
+    @patch("userdata.tmdb_client.post_rating")
+    def test_post_score_change_and_new_rating_sync(self, post):
+        self._post(8)
+        post.assert_called_once_with("movie", 550, "sess", 8)
+        post.reset_mock()
+        self.client.post("/api/ratings/", {
+            "mediaId": 13, "mediaType": "movie", "title": "Forrest Gump", "userRating": 7, "review": "",
+        }, format="json")
+        post.assert_called_once_with("movie", 13, "sess", 7)
+
     @patch("userdata.tmdb_client.post_rating")
     def test_rerate_via_post_moves_to_top(self, _):
         # Rated yesterday: newer than the 200-day-old rating, older than a re-rate

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks the built frontend image's real nginx (container-deployment spec):
 # security headers, a revalidated entry page, 404 for a missing chunk, and a
-# gzip'd, immutably cached hashed bundle.
+# gzip'd, immutably cached hashed bundle, and HSTS only over HTTPS.
 # Usage: smoke-frontend.sh [base-url] [container-name]
 set -uo pipefail
 
@@ -57,6 +57,12 @@ else
   has "$h" "Cache-Control" "public, max-age=31536000, immutable" "$bundle"
   security_headers "$h" "$bundle"
 fi
+
+# HSTS only when the TLS terminator in front says the request came over HTTPS.
+h="$(headers / -H "X-Forwarded-Proto: https")"
+has "$h" "Strict-Transport-Security" "max-age=[0-9]+" "/ over https"
+h="$(headers /)"
+lacks "$h" "Strict-Transport-Security" "" "/ over plain http"
 
 h="$(headers /static/js/main.deadbeef.js)"
 [ "$(status_of "$h")" = "404" ] || fail "missing chunk: status $(status_of "$h"), expected 404"

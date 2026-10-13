@@ -7,6 +7,7 @@ import {
 } from "../api/userApi";
 import type { NewReleaseNotification } from "../api/userApi";
 import { useAuth } from "../context/AuthContext";
+import { FollowedPeopleContext } from "../context/FollowedPeopleContext";
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 
@@ -53,6 +54,17 @@ function useNotificationsState() {
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [isAuthenticated, refresh]);
+
+  // A follow or unfollow changes what's news: refresh now, not at the next
+  // 3-minute tick. Read straight from the context, because useFollowedPeople()
+  // would start that provider's lazy fetch.
+  const followChanges = useContext(FollowedPeopleContext)?.changes ?? 0;
+  const seenFollowChanges = useRef(followChanges);
+  useEffect(() => {
+    if (followChanges === seenFollowChanges.current) return;
+    seenFollowChanges.current = followChanges;
+    if (isAuthenticated) refresh();
+  }, [followChanges, isAuthenticated, refresh]);
 
   const markSeen = useCallback(async () => {
     seenEpochRef.current += 1;

@@ -31,6 +31,7 @@ import type {
 import { mergeCredits, mergeCrew, sortCreditsNewestFirst } from "../utils/personCredits";
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
+import { goBack } from "../utils/goBack";
 
 function PersonPage() {
   const id = useValidId();
@@ -197,7 +198,9 @@ function PersonPage() {
       <div className="detail-container" style={{ paddingBottom: 16 }}>
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true } }) : navigate(-1)}
+          onClick={() => goBack(navigate, {
+            from, state: { scrollY: savedScrollY, loadedPages: savedLoadedPages, isReturn: true }, fallback: "/people",
+          })}
           style={{ marginBottom: 16 }}
         >
           Back

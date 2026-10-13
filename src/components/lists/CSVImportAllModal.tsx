@@ -2,10 +2,15 @@ import React, { useState, useRef } from "react";
 import { Modal, Button, Typography, Alert, Tag, Space } from "antd";
 import JSZip from "jszip";
 import { useToast } from "../../hooks/useToast";
+import { IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { useAppContext } from "../../context/useAppContext";
 import { useListsContext } from "../../context/useListsContext";
-import userApi, { bulkAddListItems, bulkImport, type BulkImportResult } from "../../api/userApi";
-import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
+import userApi, {
+  bulkAddListItems, bulkImport, bulkImportEpisodeProgress, bulkImportFollowed, type BulkImportResult,
+} from "../../api/userApi";
+import { useFollowedPeople } from "../../hooks/useFollowedPeople";
+import { lookupImportPosters } from "../../utils/importPosters";
+import { ImportProgress } from "../ImportProgress";
 import {
   readBackupZip,
   checkBackupFileSize,
@@ -29,22 +34,19 @@ interface SectionResult extends BulkImportResult {
   note?: string;
 }
 
-/** Fill in posters the backup doesn't have (v1 or hand-made files), 10 at a time. */
-async function enrichPosterPaths(rows: BackupRow[]): Promise<void> {
-  const missing = rows.filter((r) => !r.posterPath);
-  const BATCH = 10;
-  for (let i = 0; i < missing.length; i += BATCH) {
-    await Promise.allSettled(
-      missing.slice(i, i + BATCH).map(async (r) => {
-        try {
-          const { data } = await (r.type === "tv" ? fetchTVPoster(r.mediaId) : fetchMoviePoster(r.mediaId));
-          r.posterPath = data.poster_path ?? null;
-        } catch {
-          // leave it empty: a missing poster isn't worth failing the import over
-        }
-      }),
-    );
-  }
+/** Fill in posters the backup doesn't have (v1 or hand-made files), paced to
+ *  the TMDB proxy's rate limit. Returns how many are still missing. */
+async function enrichPosterPaths(
+  rows: BackupRow[],
+  onProgress: (done: number, total: number) => void,
+): Promise<number> {
+  const without = rows.filter((r) => !r.posterPath);
+  const { found, missing } = await lookupImportPosters(without, onProgress);
+  without.forEach((r, i) => {
+    const info = found[i];
+    if (info) r.posterPath = info.posterPath;
+  });
+  return missing;
 }
 
 const mediaFields = (r: BackupRow) => ({
@@ -71,11 +73,14 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
   const { reloadWatchlist, reloadWatched, reloadRatings } = useAppContext();
   const { createList, reloadLists } = useListsContext();
+  const { retry: reloadFollowed } = useFollowedPeople();
   const [contents, setContents] = useState<BackupContents | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SectionResult[] | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [postersMissing, setPostersMissing] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,6 +93,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     setContents(null);
     setParseError(null);
     setResults(null);
+    setPostersMissing(0);
     try {
       // Size checks come before anything is decompressed (loadAsync only reads the directory).
       checkBackupFileSize(file.size);
@@ -108,18 +114,30 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     // A fresh read, not the context: it may be stale, and this has to be exact
     // for re-running an import to never create a second list with the same name.
     const existing = await fetchAllPages<UserListDTO>(userApi, "/lists/");
-    const idByName = new Map(existing.map((l) => [l.name, l.id]));
+    // Only lists that existed before this import, each matched at most once:
+    // two backup lists that share a name stay two lists. A restored list keeps
+    // its creation time, so importing the same backup again finds each one's
+    // own copy by that time; otherwise the oldest unmatched one is used.
+    const unmatchedByName = new Map<string, UserListDTO[]>();
+    for (const l of [...existing].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id)) {
+      unmatchedByName.set(l.name, [...(unmatchedByName.get(l.name) ?? []), l]);
+    }
+    const takeExisting = (name: string, createdAt?: string): number | undefined => {
+      const candidates = unmatchedByName.get(name);
+      if (!candidates?.length) return undefined;
+      const sameTime = createdAt ? candidates.findIndex((l) => Date.parse(l.createdAt) === Date.parse(createdAt)) : -1;
+      return candidates.splice(sameTime === -1 ? 0 : sameTime, 1)[0]?.id;
+    };
     let created = 0;
     // Lists without a createdAt (older backups) are created in reverse, so they
     // keep the backup's order.
     for (const list of orderForImport(lists, (l) => l.createdAt)) {
-      let listId = idByName.get(list.name);
+      let listId = takeExisting(list.name, list.createdAt);
       if (listId === undefined) {
         try {
           const made = await createList(list.name, list.description, list.createdAt);
           if (!made) throw new Error("not created");
           listId = made.id;
-          idByName.set(list.name, listId);
           created += 1;
         } catch {
           result.failed += list.entries.length;
@@ -158,7 +176,12 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     };
 
     try {
-      await enrichPosterPaths([...contents.watchlist, ...contents.watched, ...contents.lists.flatMap((l) => l.entries)]);
+      const postersMissing = await enrichPosterPaths(
+        [...contents.watchlist, ...contents.watched, ...contents.lists.flatMap((l) => l.entries)],
+        (done, total) => setProgress({ done, total }),
+      );
+      setProgress(null);
+      setPostersMissing(postersMissing);
 
       if (contents.watchlist.length > 0) {
         await run("Watchlist", () =>
@@ -201,14 +224,33 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       if (contents.lists.length > 0) {
         await run("Lists", () => importLists(contents.lists));
       }
+      if (contents.followed.length > 0) {
+        await run("Following", () =>
+          bulkImportFollowed(
+            contents.followed.map((p) => ({
+              personId: p.personId, name: p.name, profilePath: p.profilePath,
+              ...(p.followedAt ? { followedAt: p.followedAt } : {}),
+            })),
+          ),
+        );
+      }
+      if (contents.episodeProgress.length > 0) {
+        await run("Episode progress", () => bulkImportEpisodeProgress(contents.episodeProgress));
+      }
 
-      await Promise.allSettled([reloadWatchlist(), reloadWatched(), reloadRatings(), reloadLists()]);
+      const reloads = await Promise.allSettled([reloadWatchlist(), reloadWatched(), reloadRatings(), reloadLists()]);
+      // Fetches again only if something on screen already uses follows.
+      if (contents.followed.length > 0) reloadFollowed();
 
       setResults(sections);
       const anyFailed = sections.some((s) => s.error || s.failed > 0);
       if (anyFailed) showError("Import finished with some failures. See the details.");
       else showSuccess("Import complete.");
+      // The entries are saved; only what's on screen is stale.
+      const anyAdded = sections.some((s) => s.added > 0);
+      if (anyAdded && reloads.some((r) => r.status === "rejected")) showError(IMPORT_REFRESH_ERROR);
     } finally {
+      setProgress(null);
       setLoading(false);
     }
   };
@@ -218,6 +260,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     setParseError(null);
     setFileName(null);
     setResults(null);
+    setPostersMissing(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClose();
   };
@@ -259,6 +302,9 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
                 {results.map((r) => (
                   <div key={r.label}>{describeResult(r)}</div>
                 ))}
+                {postersMissing > 0 && (
+                  <div>{postersMissing} saved without a poster (TMDB had none, or the lookup kept failing).</div>
+                )}
               </div>
             )
           }
@@ -281,13 +327,19 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
               <Tag color="blue">{contents.watchlist.length} watchlist items</Tag>
               <Tag color="green">{contents.watched.length} watched items</Tag>
               <Tag color="gold">{contents.ratings.length} ratings</Tag>
-              {contents.lists.map((l) => (
-                <Tag key={l.name} color="purple">
+              {contents.followed.length > 0 && <Tag color="cyan">{contents.followed.length} followed people</Tag>}
+              {contents.episodeProgress.length > 0 && (
+                <Tag color="geekblue">{contents.episodeProgress.length} shows in progress</Tag>
+              )}
+              {contents.lists.map((l, i) => (
+                // Index key: two lists in one backup can share a name.
+                <Tag key={i} color="purple">
                   {l.name} ({l.entries.length})
                 </Tag>
               ))}
             </Space>
           </div>
+          <ImportProgress progress={progress} />
           <Button type="primary" block loading={loading} onClick={handleSubmit}>
             Import All
           </Button>

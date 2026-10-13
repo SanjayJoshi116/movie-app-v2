@@ -79,3 +79,37 @@ export async function mockAuthedBase(page: Page) {
   await seedAuth(page);
   await mockAppApi(page);
 }
+
+/** A movie detail response with every append_to_response part present. */
+export function movieDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 100, title: "Movie 1", overview: "Test", release_date: "2024-01-01",
+    poster_path: null, backdrop_path: null, genres: [], runtime: 120,
+    vote_average: 7.5, vote_count: 200, status: "Released",
+    original_language: "en", budget: 0, revenue: 0,
+    credits: { cast: [], crew: [] }, images: { backdrops: [] },
+    videos: { results: [] }, recommendations: { results: [] },
+    reviews: { results: [], total_pages: 1 },
+    similar: { results: [], total_pages: 1 },
+    "watch/providers": { results: {} },
+    release_dates: { results: [] },
+    ...overrides,
+  };
+}
+
+/** A TV detail response with every append_to_response part present. */
+export function tvDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 200, name: "Show 1", overview: "Test", first_air_date: "2020-01-01",
+    poster_path: null, backdrop_path: null, genres: [], episode_run_time: [],
+    number_of_seasons: 2, number_of_episodes: 20, seasons: [], networks: [],
+    vote_average: 7.5, vote_count: 200, status: "Returning Series",
+    original_language: "en", created_by: [],
+    external_ids: {}, aggregate_credits: { cast: [], crew: [] }, images: { backdrops: [] },
+    videos: { results: [] }, recommendations: { results: [] },
+    reviews: { results: [], total_pages: 1 },
+    similar: { results: [], total_pages: 1 },
+    "watch/providers": { results: {} },
+    ...overrides,
+  };
+}

@@ -73,6 +73,19 @@ class FailClosedSettingsTests(TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("ALLOWED_HOSTS", res.stderr)
 
+    def test_default_secret_key_refused_without_debug(self):
+        # SECRET_KEY unset → the built-in development default, which signs JWTs.
+        unset = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "SECRET_KEY")
+        env = {k: v for k, v in os.environ.items() if k not in unset}
+        env.update(EMAIL_BACKEND=PROD["EMAIL_BACKEND"], ALLOWED_HOSTS="localhost")
+        res = subprocess.run(
+            [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=env,
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("ImproperlyConfigured", res.stderr)
+        self.assertIn("SECRET_KEY", res.stderr)
+
     def test_debug_keeps_lan_wildcard(self):
         res = _import_settings(DEBUG="True")
         self.assertEqual(res.returncode, 0, res.stderr)

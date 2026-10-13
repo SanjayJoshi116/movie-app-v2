@@ -61,10 +61,13 @@ urlpatterns = [
     path("stats/", views.stats),
 
     # Episode Progress
+    path("episode-progress/", views.episode_progress_list),
+    path("episode-progress/bulk/", views.episode_progress_bulk),
     path("episode-progress/<int:show_id>/", views.episode_progress),
 
     # Followed People
     path("followed-people/", views.followed_people_list),
+    path("followed-people/bulk/", views.followed_people_bulk),
     path("followed-people/<int:person_id>/", views.followed_people_detail),
     path("recommendations/followed-people/", views.followed_people_recommendations),
 

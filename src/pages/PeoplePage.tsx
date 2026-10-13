@@ -13,6 +13,7 @@ import { fetchPopularPeople, searchPeople } from "../api/tmdb";
 import type { TMDBPersonSummary } from "../types";
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
+import { stashReturnState } from "../utils/browseReturnState";
 
 function PeoplePage() {
   const navigate = useNavigate();
@@ -46,6 +47,8 @@ function PeoplePage() {
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
   const handlePersonClick = (person: TMDBPersonSummary) => {
+    // Lets browser Back (not just the in-app Back button) restore this page.
+    stashReturnState({ scrollY: window.scrollY, loadedPages: currentPage, isReturn: true });
     navigate(`/person/${person.id}`, {
       state: {
         from: "/people",

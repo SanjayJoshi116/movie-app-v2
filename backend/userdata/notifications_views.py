@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from .models import NotificationCheckpoint
+from .models import NotificationCheckpoint, WatchedEntry
 from .social_views import _fetch_followed_people_credits
 from .timezones import local_today, request_tz
 
@@ -36,6 +36,9 @@ def new_release_notifications(request):
     results = _fetch_followed_people_credits(
         request.user, max_fetch=NOTIFICATIONS_MAX_FETCH, budget_seconds=NOTIFICATIONS_BUDGET_SECONDS,
     )
+    # Titles the user already watched aren't news (followed-people
+    # recommendations skip them too). One query, on the request thread.
+    watched = set(WatchedEntry.objects.filter(user=request.user).values_list("media_id", "media_type"))
     # "Today" and the last-check day are the requesting device's, not the server's.
     today = local_today(request)
     cutoff = today - timedelta(days=NEW_RELEASE_WINDOW_DAYS)
@@ -57,7 +60,7 @@ def new_release_notifications(request):
             if release_date > today or release_date < cutoff:
                 continue
             key = (c.get("id"), c["media_type"])
-            if key in seen_ids:
+            if key in seen_ids or key in watched:
                 continue
             seen_ids.add(key)
             items.append({

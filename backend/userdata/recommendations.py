@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 
-from . import tmdb_client
+from . import genre_families, tmdb_client
 from .metadata_backfill import backfill_entries
 from .models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
 
@@ -250,10 +250,12 @@ def _compute_for_you(user, health=None) -> list:
         if not row:
             continue
         user_rating = rating_map.get(key, 0)
-        for gid in (row.genre_ids or []):
-            genre_count[gid] = genre_count.get(gid, 0) + 1
+        # Families, not raw ids: a movie's Action (28) and a show's Action &
+        # Adventure (10759) are one taste (genre_families).
+        for family in genre_families.families(row.genre_ids, w.media_type):
+            genre_count[family] = genre_count.get(family, 0) + 1
             if user_rating >= 7:
-                loved_genre_count[gid] = loved_genre_count.get(gid, 0) + 1
+                loved_genre_count[family] = loved_genre_count.get(family, 0) + 1
         if key in cast_sample_keys:
             for c in (row.top_cast or []):
                 actor_id = c["id"]
@@ -265,12 +267,17 @@ def _compute_for_you(user, health=None) -> list:
     top_loved_genres = sorted(loved_genre_count, key=lambda g: -loved_genre_count[g])[:2]
     top_actors = sorted(cast_count.items(), key=lambda x: -x[1]["count"])[:3]
 
-    # Seeds for "Because you watched X"
-    by_rating = sorted_watched[:3]
+    # Seeds for "Because you watched X". A title the user rated 4 or below
+    # never seeds one; unrated titles stay eligible.
+    def liked_enough(w):
+        rating = rating_map.get(f"{w.media_type}-{w.media_id}")
+        return rating is None or rating > 4
+
+    by_rating = [w for w in sorted_watched if liked_enough(w)][:3]
     by_recency_ids = {f"{w.media_type}-{w.media_id}" for w in by_rating}
     by_recency = [
         w for w in sorted(watched, key=lambda w: -w.watched_at.timestamp())
-        if f"{w.media_type}-{w.media_id}" not in by_recency_ids
+        if f"{w.media_type}-{w.media_id}" not in by_recency_ids and liked_enough(w)
     ][:2]
     because_source = by_rating + by_recency
 
@@ -298,17 +305,19 @@ def _compute_for_you(user, health=None) -> list:
     except TypeError:
         genre_name_map = {}
 
-    def discover_mixed(genre_id):
-        mov, tv = [], []
-        try:
-            mov = [_tmdb_item(r, "movie") for r in tmdb_client.discover("movie", [genre_id])]
-        except (requests.RequestException, ValueError):
-            health.mark_failed()
-        try:
-            tv = [_tmdb_item(r, "tv") for r in tmdb_client.discover("tv", [genre_id])]
-        except (requests.RequestException, ValueError):
-            health.mark_failed()
-        return _interleave(mov, tv)
+    def discover_mixed(family):
+        # Each type gets its own ids for the family; a type without the genre
+        # (Horror on TV) isn't asked at all.
+        found = {"movie": [], "tv": []}
+        for media_type in ("movie", "tv"):
+            genres = genre_families.with_genres(media_type, [family])
+            if genres is None:
+                continue
+            try:
+                found[media_type] = [_tmdb_item(r, media_type) for r in tmdb_client.discover(media_type, genres)]
+            except (requests.RequestException, ValueError):
+                health.mark_failed()
+        return _interleave(found["movie"], found["tv"])
 
     # ── 1. More like what you love ───────────────────────────────────────────
     if top_loved_genres:
@@ -336,12 +345,12 @@ def _compute_for_you(user, health=None) -> list:
     # ── 3. Genre sections ─────────────────────────────────────────────────────
     with ThreadPoolExecutor(max_workers=6) as ex:
         genre_results = list(ex.map(discover_mixed, top_genres))
-    for genre_id, items in zip(top_genres, genre_results, strict=False):
+    for family, items in zip(top_genres, genre_results, strict=False):
         filtered = filter_new(items)[:12]
         if filtered:
-            genre_name = genre_name_map.get(genre_id, f"Genre {genre_id}")
+            genre_name = genre_families.family_name(family, genre_name_map)
             sections.append({
-                "key": f"genre-{genre_id}",
+                "key": f"genre-{family}",
                 "label": f"Based on your taste in {genre_name}",
                 "items": filtered,
             })
@@ -460,21 +469,21 @@ def _compute_personalized(user, health=None) -> list:
     if not backfill_entries(watched):
         health.mark_failed()
 
-    # --- Build genre vocabulary ---
-    all_genre_ids = sorted({g for entry in watched for g in (entry.genre_ids or [])})
-    if not all_genre_ids:
+    # --- Build genre vocabulary: families, so movie and TV ids line up ---
+    entry_families = [genre_families.families(e.genre_ids, e.media_type) for e in watched]
+    all_families = sorted({f for fams in entry_families for f in fams})
+    if not all_families:
         return []
-    genre_index = {g: i for i, g in enumerate(all_genre_ids)}
-    n_genres = len(all_genre_ids)
+    genre_index = {f: i for i, f in enumerate(all_families)}
+    n_genres = len(all_families)
 
     # --- Build rating-weighted feature matrix (N_items x N_genres) ---
     X = np.zeros((len(watched), n_genres))
     for i, entry in enumerate(watched):
         key = f"{entry.media_type}-{entry.media_id}"
         weight = rating_map.get(key, 5.0) / 10.0  # default 0.5 if unrated
-        for g in (entry.genre_ids or []):
-            if g in genre_index:
-                X[i, genre_index[g]] = weight
+        for f in entry_families[i]:
+            X[i, genre_index[f]] = weight
 
     # --- K-Means: k scales with watchlist size ---
     k = max(2, min(4, len(watched) // 3))
@@ -497,19 +506,22 @@ def _compute_personalized(user, health=None) -> list:
 
         # Top 2 genres by centroid weight
         top_indices = np.argsort(centroid)[::-1][:2]
-        top_genre_ids = [all_genre_ids[i] for i in top_indices if centroid[i] > 0]
-        if not top_genre_ids:
+        top_families = [all_families[i] for i in top_indices if centroid[i] > 0]
+        if not top_families:
             continue
 
         label = "Your Taste: " + " & ".join(
-            genre_name_map.get(g, str(g)) for g in top_genre_ids
+            genre_families.family_name(f, genre_name_map) for f in top_families
         )
 
         # Fetch candidates from TMDB Discover (movie + tv)
         candidates = []
         for media_type in ("movie", "tv"):
+            genres = genre_families.with_genres(media_type, top_families)
+            if genres is None:
+                continue
             try:
-                results = tmdb_client.discover(media_type, top_genre_ids)
+                results = tmdb_client.discover(media_type, genres)
             except (requests.RequestException, ValueError):
                 health.mark_failed()
                 results = []
@@ -526,7 +538,7 @@ def _compute_personalized(user, health=None) -> list:
                     "posterPath": r.get("poster_path"),
                     "voteAverage": r.get("vote_average", 0),
                     "popularity": r.get("popularity", 0),
-                    "genre_ids": r.get("genre_ids", []),
+                    "families": genre_families.families(r.get("genre_ids", []), media_type),
                 })
 
         if not candidates:
@@ -537,9 +549,9 @@ def _compute_personalized(user, health=None) -> list:
         scored = []
         for c in candidates:
             c_vec = np.zeros(n_genres)
-            for g in c["genre_ids"]:
-                if g in genre_index:
-                    c_vec[genre_index[g]] = 1.0
+            for f in c["families"]:
+                if f in genre_index:
+                    c_vec[genre_index[f]] = 1.0
             sim = (
                 float(cosine_similarity(c_vec.reshape(1, -1), centroid.reshape(1, -1))[0][0])
                 if c_vec.sum() > 0 and centroid.sum() > 0
@@ -552,7 +564,7 @@ def _compute_personalized(user, health=None) -> list:
 
         scored.sort(key=lambda x: x[0], reverse=True)
         items = [
-            {k: v for k, v in c.items() if k != "genre_ids"}
+            {k: v for k, v in c.items() if k != "families"}
             for _, c in scored[:12]
         ]
 

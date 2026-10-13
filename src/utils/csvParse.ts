@@ -7,6 +7,10 @@ export interface ParsedEntry {
   type?: MediaType;
   posterPath?: string | null;
   voteAverage?: number;
+  /** From a `watched_at` column (the Watched page's export), when readable and not in the future. */
+  watchedAt?: string;
+  /** From a `watched_tz` column; the server stores an unknown zone as blank. */
+  watchedTz?: string;
 }
 
 /** One row of a CINE DB backup CSV (watchlist, watched, ratings or a list). */
@@ -107,6 +111,22 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
+/** Rows keyed by normalized header name, with each value trimmed; blank cells
+ *  are left out. For simple backup files that aren't title rows. */
+export function parseCSVRecords(text: string): Record<string, string>[] {
+  const [header, ...lines] = parseCSV(text);
+  if (!header) return [];
+  const headers = header.map(normalizeHeader);
+  return lines.map((cols) => {
+    const record: Record<string, string> = {};
+    headers.forEach((h, i) => {
+      const v = (cols[i] ?? "").trim();
+      if (v !== "") record[h] = v;
+    });
+    return record;
+  });
+}
+
 function parseMediaType(raw: string | undefined): MediaType | undefined {
   const v = (raw ?? "").trim().toLowerCase();
   return v === "movie" || v === "tv" ? v : undefined;
@@ -116,6 +136,9 @@ function parsePositiveInt(raw: string | undefined): number | null {
   const n = parseInt((raw ?? "").trim(), 10);
   return Number.isNaN(n) || n <= 0 ? null : n;
 }
+
+/** The bulk endpoints reject timestamps before 1900 (serializers.py). */
+const EARLIEST_WATCHED = Date.UTC(1900, 0, 1);
 
 export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: string | null } {
   const [header, ...lines] = parseCSV(text);
@@ -131,6 +154,8 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     (h) => h === "title" || h === "name" || h === "original_title" || h === "movie_name",
   );
   const typeCol = headers.findIndex((h) => h === "type" || h === "media_type");
+  const watchedAtCol = headers.indexOf("watched_at");
+  const watchedTzCol = headers.indexOf("watched_tz");
 
   if (idCol === -1) {
     return {
@@ -152,6 +177,13 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     const row: ParsedEntry = { mediaId, title: (cols[titleCol] ?? "").trim() };
     const type = typeCol === -1 ? undefined : parseMediaType(cols[typeCol]);
     if (type) row.type = type;
+    // A bad, future or pre-1900 time is dropped for this row only (the server
+    // would reject the whole batch for it); the row then gets the import time.
+    const watchedAt = watchedAtCol === -1 ? "" : (cols[watchedAtCol] ?? "").trim();
+    const when = Date.parse(watchedAt);
+    if (watchedAt && when >= EARLIEST_WATCHED && when <= Date.now()) row.watchedAt = watchedAt;
+    const watchedTz = watchedTzCol === -1 ? "" : (cols[watchedTzCol] ?? "").trim();
+    if (watchedTz) row.watchedTz = watchedTz;
     rows.push(row);
   }
 

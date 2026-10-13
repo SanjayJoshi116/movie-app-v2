@@ -90,6 +90,32 @@ test.describe("account controls and converted cards", () => {
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   });
 
+  test("phone drawer: Edit profile and Sign out are named and work from the keyboard", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.route("**/api/tmdb-auth/status/**", (r) => r.fulfill({ json: { connected: false } }));
+    let loggedOut = false;
+    await page.route("**/api/auth/logout/**", (r) => {
+      loggedOut = true;
+      return r.fulfill({ status: 205, body: "" });
+    });
+    await page.goto("/watchlist");
+
+    await page.getByRole("button", { name: "More navigation options" }).click();
+    const editProfile = page.getByRole("button", { name: "Edit profile" });
+    await tabTo(page, editProfile);
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".ant-modal").getByText("Edit Profile")).toBeVisible();
+    await page.locator(".ant-modal").getByRole("button", { name: "Close" }).click();
+    await expect(page.locator(".ant-modal").getByText("Edit Profile")).toBeHidden();
+
+    await page.getByRole("button", { name: "More navigation options" }).click();
+    const signOut = page.getByRole("button", { name: "Sign out" });
+    await tabTo(page, signOut);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/login/);
+    expect(loggedOut).toBe(true);
+  });
+
   test("Lists: Tab to a list and press Enter to open it", async ({ page }) => {
     const list = { id: 5, name: "Faves", description: "", createdAt: "2026-10-01T10:00:00Z", items: [] };
     await page.route("**/api/lists/**", (r) =>

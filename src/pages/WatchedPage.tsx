@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Tooltip,
+  Button, Tag, Typography, Empty, Space, Popconfirm, Pagination,
 } from "antd";
 import { StarFilled, EyeFilled, EyeOutlined, ClearOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
@@ -16,6 +16,7 @@ import LibraryItemCard from "../components/LibraryItemCard";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
+import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
@@ -214,7 +215,7 @@ function WatchedPage() {
                   </>
                 }
                 actionButtons={
-                  <Popconfirm
+                  <ConfirmIconButton
                     title="Mark as unwatched?"
                     onConfirm={async () => {
                       try {
@@ -225,19 +226,11 @@ function WatchedPage() {
                       }
                     }}
                     okText="Mark Unwatched"
-                    cancelText="Cancel"
-                  >
-                    <Tooltip title="Mark unwatched">
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EyeFilled />}
-                        style={{ color: WATCHED_GREEN }}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Mark as unwatched"
-                      />
-                    </Tooltip>
-                  </Popconfirm>
+                    tooltip="Mark unwatched"
+                    icon={<EyeFilled />}
+                    style={{ color: WATCHED_GREEN }}
+                    ariaLabel="Mark as unwatched"
+                  />
                 }
                 footer={
                   <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>

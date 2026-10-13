@@ -39,11 +39,11 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 20 | `fix-stats-math` | ✅ 2026-10-13 | Banker's rounding buckets, skipped months, 0-score average, tooltip labels |
 | 21a | `harden-ci-2` | ✅ 2026-10-13 | Playwright retries, e2e lint, Jest no-tests pass, Docker build + nginx smoke job, gzip/cache, flaky waits, app-level pagination test |
 | 21b | `polish-colors-docs` | ✅ 2026-10-13 | Hex sweep, docs drift, proxy param-order wording |
-| 21c | `spec-test-gaps` | ⏳ | Missing tests from the spec conformance check (import modals, theme-readability, container checks, …) |
+| 21c | `spec-test-gaps` | ✅ 2026-10-13 | Missing tests from the spec conformance check (import modals, theme-readability, container checks, …) |
 | 22 | `harden-security-3` | ✅ 2026-10-09 | Forgeable TMDB connect; import-driven TMDB amplification; unbounded review/description; reset token in nginx logs |
-| 23 | `fix-recs-correctness` | ⏳ | Movie/TV genre ids mixed in For You; ratings never refresh recs; gave-up poll cached as complete |
-| 24 | `fix-import-export-2` | ⏳ | Backup omits follows/episode progress; same-name lists merge; Watched CSV loses dates; import posters throttled |
-| 25 | `fix-write-guards-2` | ⏳ | Episode progress load error → overwrite; review-only edit syncs TMDB; dialogs closable mid-save; stale panels |
+| 23 | `fix-recs-correctness` | ✅ 2026-10-13 | Movie/TV genre ids mixed in For You; ratings never refresh recs; gave-up poll cached as complete |
+| 24 | `fix-import-export-2` | ✅ 2026-10-13 | Backup omits follows/episode progress; same-name lists merge; Watched CSV loses dates; import posters throttled |
+| 25 | `fix-write-guards-2` | ✅ 2026-10-13 | Episode progress load error → overwrite; review-only edit syncs TMDB; dialogs closable mid-save; stale panels |
 | 26 | `speed-up-pages` | ✅ 2026-10-10 | Every page slow: `localhost` IPv6 fallback (~300 ms/connection in dev), preflight on every call, sequential library pages, per-request DB connect, uncached TMDB proxy, 5–6 calls per detail page, `original` backdrops, eager trailers |
 
 Suggested order: **0 → commit → 1 → 2 → 3 → 4 → 6 → 7 → 5** (all done by 2026-10-07). Only 8 remains.
@@ -507,12 +507,17 @@ Every bullet below is fixed in that change. Already fixed by 26 before this chan
 - **[low] Stats page labels:** the Rating-by-Genre tooltip reads "7.3 avgRating" (`StatsPage.tsx:571`, raw dataKey); the heatmap tooltip shows raw `yyyy-mm-dd` instead of `formatDateDMY` (`:225`); heatmap cells are mouse-only; the Top Genres empty text (`:556-557`) still says to visit For You, though `stats_views.py` backfills itself.
 - **[low] A backup restore loses list dates and order.** `UserListItem.added_at`/`UserList.created_at` are `auto_now_add` (`models.py:71,84`), and `CSVImportAllModal.tsx:115-118` restores items one POST at a time in parallel batches of 20, so items get restore-time dates and a scrambled newest-first order. With one request per item, a few thousand list items in a day also use up the `5000/day` user throttle for the whole app.
 
-### 21. `harden-ci-2` + polish (split 2026-10-13: 21a ✅, 21b ✅, 21c ⏳)
+### 21. `harden-ci-2` + polish (split 2026-10-13: 21a ✅, 21b ✅, 21c ✅)
 
 Split by theme, like item 7:
 - **21a `harden-ci-2`** (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-harden-ci-2`) covers the CI, nginx and test-hygiene findings: retries, the CI gaps, gzip/cache, the flaky wait, and the `test_ratings.py` guard.
 - **21b `polish-colors-docs`** (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-polish-colors-docs`) covers the hardcoded colors, both docs-drift lists and the `api-hardening` param-order wording. Two findings were dropped on re-check: the `browseFilters.ts` comment is accurate (it's about genres, which are cleared in an effect), and the Stats chart palette and heat scale stay fixed on purpose (now noted in CLAUDE.md).
-- **21c `spec-test-gaps`** covers the conformance-check test list under "Additions to earlier items (fourth round)".
+- **21c `spec-test-gaps`** (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-spec-test-gaps`) covers the conformance-check test list under "Additions to earlier items (fourth round)".
+- **Found while writing 21c's tests (2026-10-13):**
+  - **[low] Light-theme secondary text is below WCAG AA.** `colorTextSecondary` `#8c8168` (`antdTheme.ts`) measures 3.79:1 on `#fffdf8` and 3.48:1 on `#f8f3e8`. AA needs 4.5:1 for small text, and the Stats labels and other captions are 12px. `colorTextTertiary` is lighter still. `e2e/theme-readability.spec.ts` asserts 3:1 (the white-on-white regression it guards is about 1:1). Raise it to 4.5 once the palette is darkened.
+  - The Tooltip-over-Popconfirm bug under the live run below also blocks taps, not just mouse clicks (see that bullet).
+  - Fixed in 21c (trivial): the Anime TV↔Movies toggle sent one grid request with the previous media type's `with_genres` before the reset landed (`AnimePage.tsx`).
+  - Fixed in 21c: a failed library refresh after an import was silent (backup) or reported as a failed import (CSV dialogs); the phone drawer's account buttons weren't named "Edit profile"/"Sign out".
 - The `fetchAllPages` unit test below already exists (`src/utils/__tests__/fetchAllPages.test.ts`, from `speed-up-pages`). 21a adds the app-level two-page test.
 - The dependency note stays info-only.
 
@@ -541,8 +546,8 @@ Same-day follow-up to the third audit, cross-cutting rather than per-layer (see 
 
 **Open decisions:**
 - **(22)** Hide whether an email has an account? Registration says "An account with this email already exists", while password reset deliberately doesn't. Either accept the leak (document it) or give a generic signup error / email confirmation.
-- **(24)** Backup format v3: add `followed.csv` and `episode_progress.csv` (needs a list endpoint for progress), or keep v2 and say in the export UI what's not included. The `data-backup` spec ("A backup contains the whole library") must match whichever is chosen.
-- **(23)** Should a rating change trigger a recommendations refresh (it weights seeds, loved genres and KMeans), or is the 12h TTL acceptable?
+- **(24)** Backup format v3: add `followed.csv` and `episode_progress.csv` (needs a list endpoint for progress), or keep v2 and say in the export UI what's not included. The `data-backup` spec ("A backup contains the whole library") must match whichever is chosen. **Decided 2026-10-13:** backup v3 with `followed.csv` and `episode_progress.csv`. Separately, CSV poster lookups are paced and retried in the browser rather than filled on the server.
+- **(23)** Should a rating change trigger a recommendations refresh (it weights seeds, loved genres and KMeans), or is the 12h TTL acceptable? **Decided 2026-10-13:** yes, on create, score change, delete and a bulk import that adds ratings (not on review-only edits). Also, titles rated 4 or below no longer seed "Because you watched".
 
 ### 22. `harden-security-3` (backend + nginx) (✅ archived 2026-10-09)
 
@@ -564,7 +569,7 @@ See `openspec/changes/archive/2026-10-09-harden-security-3/`. All items below ar
 - **[info] The client-side backup import has no ZIP size cap** (`CSVImportAllModal.tsx:84`, `backup.ts:110-112`). A zip bomb only crashes the importing tab.
 - **Design note (not a defect):** `/api/tmdb/<path>` is `AllowAny` with 3 sync gunicorn workers, so a few anonymous IPs at 120/min each can keep every worker busy and use up the server's TMDB per-IP limit. It's the accepted public-proxy design, but it's the main unauthenticated availability risk.
 
-### 23. `fix-recs-correctness` (backend + frontend) (⏳)
+### 23. `fix-recs-correctness` (backend + frontend) (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-fix-recs-correctness`; specs synced into recommendation-refresh, recommendation-sections, view-state-restore and watch-stats)
 
 - **[med] ✔ For You mixes movie and TV genre ids.** `recommendations.py:287-297` (`discover_mixed`) sends one genre id to both `/discover/movie` and `/discover/tv`, and `genre_count`, `loved_genre_count` and the KMeans vocabulary (`:437-491`) pool movie and TV genres in one id space. TMDB genre ids are type-specific (Action 28 is movie-only; Action & Adventure 10759 is TV-only).
   - "More like what you love" / "Based on your taste" lose half of each mixed section.
@@ -575,7 +580,7 @@ See `openspec/changes/archive/2026-10-09-harden-security-3/`. All items below ar
 - **[low-med] Ratings never trigger a recommendations refresh.** `signals.py:130-141` covers only `WatchedEntry`, and `ratings_views.py` doesn't call `schedule_refresh`. Ratings drive "More like what you love" (≥7), the "Because you watched" seed order and KMeans weights, so a change waits up to 12h. On a backup restore, watched is imported first and its refresh reads `RatingEntry` (`recommendations.py:207`) before the ratings bulk request commits, so a restored account has no "loved" section for 12h. `by_recency` (`:256-261`) can also seed "Because you watched X" from a title rated 1/10. (Open decision above.)
 - **[low-med] Every watched toggle on For You re-runs the whole fetch and poll.** `RecommendationsPage.tsx:261-310` depends on `watchedList.length`, and its cleanup resets `hasFetched.current`. Marking a card refetches all three groups (including the TMDB-heavy followed-people call) and restarts polling; sections reshuffle. On a cache-hit mount the effect returns early, so the same action does nothing there.
 
-### 24. `fix-import-export-2` (frontend + backend) (⏳)
+### 24. `fix-import-export-2` (frontend + backend) (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-fix-import-export-2`, specs synced into data-backup, adds migration 0024; the reload-failure bullet was already fixed in 21c)
 
 - **[med] 2× "Export All Data" omits followed people and episode progress.** `backup.ts:44-102` writes only watchlist, watched, ratings and lists. There's no list endpoint for episode progress (`social_views.py:22` is per show). Export → delete account → re-register → import loses every follow (so all notifications and followed-people sections) and every SxxEyy position, with no notice. (Open decision above.)
 - **[med] ✔ CSV imports hit `TmdbProxyThrottle` and silently drop posters.** `CSVUploadModal.tsx:79-93` and `CSVListImportModal.tsx:72-86` fetch a poster for every row, 20 at a time; `CSVImportAllModal.tsx:25-40` does the same for rows with no poster. The proxy allows `120/min` per user (`settings.py:163`), `tmdb.ts` doesn't retry a 429, and `catch {}` swallows it. A 300-row import saves ~180 rows with `posterPath: null` and `voteAverage` 0 (also dragging the Stats average down), the toast says "Import complete", and other browsing 429s for a minute. Fix: pace to the throttle, or treat a 429 as retry-later.
@@ -584,7 +589,7 @@ See `openspec/changes/archive/2026-10-09-harden-security-3/`. All items below ar
 - **[low-med] A reload failure after a successful import is reported as an import failure.** `CSVUploadModal.tsx:105` awaits `reloadWatched()` inside the same `try` as `bulkImport`, so the user sees "Failed to import" without the added/skipped counts, though the rows were saved. `CSVImportAllModal.tsx:190` instead discards its reload `allSettled` result and says "Import complete". (`load-states` "Background refresh fails after a successful load" is silent app-wide.)
 - **[low] `bulk_import` counts rows lost to a concurrent create as added** (`bulk_import.py:74-76`, `added = len(to_create)` under `ignore_conflicts=True`). Known race, acknowledged in a comment; the `data-backup` spec says counts match what was created.
 
-### 25. `fix-write-guards-2` (frontend + backend) (⏳)
+### 25. `fix-write-guards-2` (frontend + backend) (✅ archived 2026-10-13, `openspec/changes/archive/2026-10-13-fix-write-guards-2`, specs synced into account-security, browse-filters, load-states, notifications, routing, view-state-restore and write-feedback; also takes the live run's People Back, double genre fetch and Tooltip-over-Popconfirm; the BottomNav label and the password refocus were already fixed in 21c)
 
 - **[low-med] A failed episode-progress load looks like "no progress", and saving then overwrites the real progress.** `useEpisodeProgress.ts:18-20` (`.catch(() => setProgress(null))`) → `TVShowDetails.tsx:322-335` shows "Track episode progress", the editor starts at S1E1, and Save `update_or_create`s over the stored position. Breaks the `surface-failures` rule. Fix: an `error` state with Retry, and hide "Track" while it's set.
 - **[low-med] Episode progress has no in-flight guard.** `useEpisodeProgress.ts:27-38` has no `createInflight` slot, and "Next Episode →" (`TVShowDetails.tsx:258-266`) and Save (`:309-321`) stay enabled, so a double-click sends two PUTs (`write-feedback` "At most one in-flight write per item", CLAUDE.md).
@@ -606,7 +611,7 @@ First live check of the app in this audit series: `npm run dev` + headless Chrom
 
 - **[med] ✔ People page: browser Back loses the loaded pages and scroll.** `PeoplePage.tsx:46-55` `handlePersonClick` calls `navigate(...)` with restore state but never `stashReturnState(...)` first (only `HomePage.tsx:148` and `AnimePage.tsx:158` do), against CLAUDE.md's browse-filters rule. Observed: 80 cards at `scrollY` 1200 → person → browser Back → 20 cards at `scrollY` 0; the in-app Back button restores correctly. Also affects phone swipe-back and Alt+Left. Belongs with 25.
 - **[low] Applying a genre filter fetches the same discover page twice**, about 340 ms apart (not StrictMode, whose replays are synchronous). The chip applies at once, then Apply sets a new `activeFilters` object, which changes `HomePage`'s `fetchPage` identity and makes `usePaginatedFetch` reload an unchanged query: one wasted TMDB call against `TmdbProxyThrottle` and a second grid clear. Fold into 25's FilterPanel bullet.
-- **[low] An open Tooltip covers the Popconfirm's OK button on library cards.** `WatchedPage.tsx:217-240` (and likely `ListDetailPage.tsx:243-265`, `WatchlistPage.tsx:255-278`): while the pointer stays on the "Mark unwatched" icon, its Tooltip sits over the Popconfirm's "Mark Unwatched" button and intercepts clicks. Mostly visual for a mouse, but it can block touch flows. Fix: hide the tooltip while the Popconfirm is open. Belongs with 25.
+- **[low] An open Tooltip covers the Popconfirm's OK button on library cards.** `WatchedPage.tsx:217-240` (and likely `ListDetailPage.tsx:243-265`, `WatchlistPage.tsx:255-278`): while the pointer stays on the "Mark unwatched" icon, its Tooltip sits over the Popconfirm's "Mark Unwatched" button and intercepts clicks. Mostly visual for a mouse, but it can block touch flows. Fix: hide the tooltip while the Popconfirm is open. Belongs with 25. **Confirmed on touch (2026-10-13, `spec-test-gaps`):** in Playwright's Pixel 5 emulation the tooltip stays open after the tap, so the OK button can't be tapped at all. `e2e/library-filters.spec.ts` confirms from the keyboard until this is fixed.
 
 Checked clean in the live run: no horizontal overflow on 18 routes at 375/820/1366 in both themes, including the phone drawers and modals; sidebar `scrollHeight == clientHeight` at 1366×768 and in the 820 rail; no app console errors; Movies/TV/Anime/Search/Calendar restore on both kinds of Back; every detail-page write, list, follow, notifications, Stats, iCal and ZIP export flow works; token-refresh recovery and auth redirects behave; every other duplicate request was a StrictMode dev-only pair.
 

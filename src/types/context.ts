@@ -20,6 +20,7 @@ export interface AppContextType {
   // Genre filters
   selectedGenres: number[];
   toggleGenre(id: number): void;
+  setGenres(ids: number[]): void;
   clearGenres(): void;
 
   // Theme

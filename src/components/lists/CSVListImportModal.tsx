@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space, Select } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
-import { fetchMoviePoster, fetchTVPoster } from "../../api/tmdb";
+import { lookupImportPosters, missingPostersNote } from "../../utils/importPosters";
+import { ImportProgress } from "../ImportProgress";
 import { useToast } from "../../hooks/useToast";
 import { useListsContext } from "../../context/useListsContext";
 import { parseCSVForImport } from "../../utils/csvParse";
 import type { ParsedEntry } from "../../utils/csvParse";
 import { bulkAddListItems } from "../../api/userApi";
 import { orderForImport } from "../../utils/listImport";
-import { getApiError } from "../../utils/apiError";
+import { getApiError, IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { FONT_SIZE } from "../../constants/typography";
 
 const { Text } = Typography;
@@ -34,7 +35,7 @@ function downloadTemplate(type: "movie" | "tv") {
 }
 
 const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
   const { lists, reloadLists } = useListsContext();
   const [selectedListId, setSelectedListId] = useState<number | null>(lockedListId ?? null);
 
@@ -46,6 +47,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,50 +71,46 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
     if (parsed.length === 0 || selectedListId === null) return;
     setLoading(true);
     try {
-      const enriched = [...parsed];
-      const BATCH = 20;
-      for (let i = 0; i < enriched.length; i += BATCH) {
-        await Promise.allSettled(
-          enriched.slice(i, i + BATCH).map(async (row, offset) => {
-            try {
-              const { data } = await ((row.type ?? mediaType) === "tv"
-                ? fetchTVPoster(row.mediaId)
-                : fetchMoviePoster(row.mediaId));
-              enriched[i + offset] = { ...row, posterPath: data.poster_path, voteAverage: data.vote_average };
-            } catch {
-              // leave without enrichment
-            }
-          })
-        );
-      }
+      // Posters and scores, paced to the TMDB proxy's rate limit.
+      const { found, missing } = await lookupImportPosters(
+        parsed.map((row) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
+        (done, total) => setProgress({ done, total }),
+      );
+      setProgress(null);
 
       // One request per 500 rows (not one per row). No dates here, so the
       // rows go in reverse: the list then shows them in file order.
       const { added, skipped, failed } = await bulkAddListItems(
         selectedListId,
         orderForImport(
-          enriched.map((row) => ({
+          parsed.map((row, i) => ({
             mediaId: row.mediaId,
             mediaType: row.type ?? mediaType,
             title: row.title,
-            posterPath: row.posterPath ?? null,
-            voteAverage: row.voteAverage ?? 0,
+            posterPath: found[i]?.posterPath ?? null,
+            voteAverage: found[i]?.voteAverage ?? 0,
           })),
           () => undefined,
         ),
       );
 
-      await reloadLists();
+      // The items are saved even if this fails; only what's on screen is stale.
+      const refreshed = await reloadLists().then(() => true, () => false);
       const summary = `${added} added, ${skipped} already in list`;
       if (failed > 0) {
-        showError(`Import finished: ${summary}, ${failed} failed.`);
+        showError(`Import finished: ${summary}, ${failed} failed.${missingPostersNote(missing)}`);
+      } else if (missing > 0) {
+        showInfo(`Import complete: ${summary}.${missingPostersNote(missing)}`);
+        handleClose();
       } else {
         showSuccess(`Import complete: ${summary}.`);
         handleClose();
       }
+      if (!refreshed && added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
       showError(getApiError(err, "Import failed. Please try again."));
     } finally {
+      setProgress(null);
       setLoading(false);
     }
   };
@@ -200,6 +198,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
             ]}
             style={{ marginBottom: 16 }}
           />
+          <ImportProgress progress={progress} />
           <Button
             type="primary"
             block

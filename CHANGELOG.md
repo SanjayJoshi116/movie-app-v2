@@ -3,6 +3,79 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.24.0] - 2026-10-13
+
+Bug-audit release, part 9. Implements the last four OpenSpec changes from `docs/BUG_BACKLOG.md`: `spec-test-gaps` (21c), `fix-recs-correctness` (item 23), `fix-import-export-2` (item 24) and `fix-write-guards-2` (item 25). All are archived under `openspec/changes/archive/`, and every backlog item is now done.
+
+### ⚠️ Notes for deploy
+- **One migration:** `0024_followedperson_followed_at_default` changes `FollowedPerson.followed_at` from `auto_now_add` to `default=timezone.now`, so a restore can keep follow dates. Schema default only, no data change.
+- **New routes**, all additive:
+  - `GET /api/episode-progress/`: every show's progress, paginated
+  - `POST /api/episode-progress/bulk/` and `POST /api/followed-people/bulk/`: create-only, all-or-nothing restores
+- **Response change:** the followed-people list adds `followedAt`. Older clients ignore it.
+- **Email uniqueness** is now re-checked under a Postgres advisory lock (`pg_advisory_xact_lock`). No unique index was added, because existing accounts may already share an address.
+- **No nginx or Docker changes.**
+
+### Fixed — recommendations (`fix-recs-correctness`)
+- **Genres are matched per media type.** A new `genre_families.py` maps TMDB's movie and TV genre ids into shared families. Action and Adventure count with TV's "Action & Adventure", Sci-Fi and Fantasy with "Sci-Fi & Fantasy", War with "War & Politics". For You counts, "More like what you love", the "Based on your taste" sections and the KMeans vocabulary all count families. Every discover call converts back to that type's own ids, so a movie genre is never sent to TV discover, and a mixed cluster no longer matches nothing and makes its section vanish.
+- **Stats' Top Genres and Rating by Genre** use the same families, so one taste is no longer split in two.
+- **Ratings refresh recommendations.** Creating a rating, changing its score, deleting it, or a bulk import that adds ratings schedules a refresh, coalesced per user. A review-only edit doesn't.
+- **Disliked titles don't seed "Because you watched".** Titles rated 4 or below are skipped. Unrated titles stay eligible.
+- **For You saves only complete results.** A group still computing after polling ends shows "taking longer than usual" with Retry, and leaving before every group answered saves the snapshot as incomplete.
+- **Marking a card watched on For You** updates its icon without refetching and reshuffling the groups.
+
+### Fixed — imports and backups (`fix-import-export-2`)
+- **Backup format v3** adds followed people (with follow dates) and episode progress. "Export All" fetches both when it runs, and refuses to produce a file if either fails. "Import All" restores both and reports their counts. v1 and v2 backups still import.
+- **Imports are paced.** Poster and score lookups share one schedule (90 per minute, 4 at a time), wait out a 429 for its `Retry-After`, treat a 404 as final, and show progress ("Looking up posters: 40 / 300"). The result says how many rows ended up without a poster. Before, a 300-row import hit the proxy limit and silently saved about 40% of its rows without posters.
+- **The Watched CSV round-trips.** Importing the Watched page's own CSV keeps each watch's date and time zone. A blank or unreadable date falls back to "now" for that row only, and a future date is dropped for that row only.
+- **Lists that share a name stay separate.** A backup's list joins an existing list only if that list existed before the import, and two same-name lists in one backup each keep their own items and description.
+- **Accurate bulk counts:** a row that a concurrent request created first counts as skipped, not added.
+
+### Fixed — writes and controls (`fix-write-guards-2`)
+- **Episode progress:**
+  - A failed load shows "Couldn't load your episode progress" with Retry, and hides Track/Edit/Next. Before, it looked like "not tracked", and saving overwrote the real position with S1E1.
+  - Next, Save and Remove send one write per double click.
+- **Ratings:** saving with only a changed review no longer pushes the score to TMDB. The rating dialog can't be closed (Cancel, ×, Escape, outside click) while a save or removal is in flight.
+- **Confirm buttons:** a new `ConfirmIconButton` hides the icon's tooltip while its confirmation is open. It's used for the unmark and remove actions on Watched, Watchlist and List detail cards. On touch screens, the tooltip used to stay up and block the confirm button.
+- **Back:**
+  - A detail or person page's Back goes back in history only when there's an in-app page to return to. Otherwise it goes to Movies, TV Shows or People (`goBack()`).
+  - Browser Back to the People page restores its loaded pages and scroll.
+- **Filter drawer:** edits are a draft, genre chips included, re-seeded each time the drawer opens. Apply commits everything at once, so the grid fetches once, not twice.
+- **Notifications** refresh right after a follow or unfollow, and leave out titles you've already watched.
+- **New items first:** a new list or follow shows first, as the server orders it.
+- **Email:** two concurrent sign-ups or email changes can no longer claim the same address.
+- **Provider links:** TMDB's watch-provider link is used only if it's http(s). Otherwise the logo shows without a link.
+
+### Tests and fixes from the spec check (`spec-test-gaps`)
+- **New tests for spec scenarios that had none:**
+  - the three import dialogs, driven through real file inputs (`e2e/import.spec.ts`)
+  - For You left mid-computation
+  - rating remove, and no Remove on an unrated title
+  - failed mark-as-watched and failed episode-progress save
+  - a failed background refresh
+  - per-list search and unmarking the last item on the last page (`e2e/library-filters.spec.ts`)
+  - focus after a failed login, and the phone drawer's account controls
+  - fail-closed on the default `SECRET_KEY`, and key redaction with `DEBUG` on
+  - Anime "Airing Today" dates, and genres dropped on a media-type switch
+  - every `theme-readability` scenario (`e2e/theme-readability.spec.ts`)
+  - a warm-up hang or non-zero exit during startup
+  - container config: HSTS only over HTTPS, the db reads only `.env.db`, `backend/.dockerignore`
+  - app identity, and an unknown path opened while signed out
+- **Bugs the new tests found, fixed:**
+  - The phone drawer's profile and sign-out buttons were announced as initials plus name, and "Sign Out". They're now "Edit profile" and "Sign out".
+  - A failed library reload after a successful import was silent. The import dialogs now show an error notification.
+  - Switching Anime between TV and Movies sent one request with the old genre.
+- `start.py`'s warm-up moved into `backend/warmup.py` so it can be tested. Behavior is unchanged.
+
+### Developer
+- `npm run lint` uses `--cache` (`.eslintcache`, now in `.gitignore`).
+
+### Tests
+- **Backend:** 395 → 448 (1 skipped). New: `test_genre_families.py`, `test_recommendation_genres.py`, `test_email_uniqueness.py`, `test_startup_warmup.py`, `test_compose_config.py`, plus bulk follows/progress, rating-triggered refresh, review-only sync and watched-filtered notifications.
+- **Jest:** 278 → 304. New: `goBack`, `pacedLookup`, `WatchProviders`, episode-progress errors and in-flight guard, new-first ordering, follow-triggered notification refresh.
+- **TS e2e:** 207 → 300 across both projects. New: `import.spec.ts`, `library-filters.spec.ts`, `theme-readability.spec.ts`, `browse-restore.spec.ts`, plus new write-feedback and Back cases.
+- **Python e2e:** 192.
+
 ## [0.23.0] - 2026-10-13
 
 Bug-audit release, part 8. Implements four OpenSpec changes from `docs/BUG_BACKLOG.md`: `fix-detail-and-nav` (item 19), `fix-stats-math` (item 20), and item 21 split in three, of which `harden-ci-2` (21a) and `polish-colors-docs` (21b) are done. All four are archived under `openspec/changes/archive/`. Still open: 21c `spec-test-gaps`, and items 23–25.

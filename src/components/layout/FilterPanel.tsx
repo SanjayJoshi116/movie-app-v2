@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Drawer,
   Form,
@@ -69,21 +69,40 @@ interface Props {
 }
 
 export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, onApply, onReset }: Props) {
-  const { selectedGenres, toggleGenre, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
+  const { selectedGenres, setGenres, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
   const { token } = theme.useToken();
+  // Everything here is a draft until Apply, genre picks included: a chip that
+  // applied on its own refetched the grid, then Apply fetched it again.
   const [filters, setFilters] = useState<FilterValues>(() => ({ ...DEFAULT_FILTERS, ...appliedFilters }));
   const [sortBy, setSortBy] = useState<SortOption>(appliedSortBy);
+  const [draftGenres, setDraftGenres] = useState<number[]>(selectedGenres);
+
+  // Each opening starts from what's applied, so closing without Apply
+  // discards the edits instead of showing them as if they were in effect.
+  useEffect(() => {
+    if (!open) return;
+    setFilters({ ...DEFAULT_FILTERS, ...appliedFilters });
+    setSortBy(appliedSortBy);
+    setDraftGenres(selectedGenres);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (key: keyof FilterValues, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
 
+  const toggleDraftGenre = (id: number) =>
+    setDraftGenres((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+
   const handleApply = () => {
+    // One handler, so React batches both: the page re-renders once and the
+    // grid sends one request for the new genres and filters together.
+    setGenres(draftGenres);
     onApply({ ...filters, includeAdult }, sortBy);
   };
 
   const handleReset = () => {
     setFilters(DEFAULT_FILTERS);
     setSortBy("popularity.desc");
+    setDraftGenres([]);
     clearGenres();
     setIncludeAdult(false);
     onReset();
@@ -193,12 +212,12 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
           style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, marginBottom: 16 }}
         >
           {(isMovie ? movieGenres : tvGenres).map((genre) => {
-            const selected = selectedGenres.includes(genre.id);
+            const selected = draftGenres.includes(genre.id);
             return (
               <CheckableTag
                 key={genre.id}
                 checked={selected}
-                onChange={() => toggleGenre(genre.id)}
+                onChange={() => toggleDraftGenre(genre.id)}
                 aria-pressed={selected}
                 style={{
                   fontSize: FONT_SIZE.caption,

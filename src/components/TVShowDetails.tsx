@@ -31,6 +31,7 @@ import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREE
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
+import { goBack } from "../utils/goBack";
 
 export type TVShowDetailData = TMDBTVDetail & {
   watchProviders?: Record<string, TMDBProviderRegion>;
@@ -54,7 +55,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched } = useAppContext();
   const idleIconColor = useActionIconColor();
   const { showSuccess, showError } = useToast();
-  const { progress: epProgress, update: updateEpProgress, clear: clearEpProgress } = useEpisodeProgress(tvShow?.id ?? 0);
+  const {
+    progress: epProgress, loading: epLoading, error: epError, retry: retryEpProgress, busy: epBusy,
+    update: updateEpProgress, clear: clearEpProgress,
+  } = useEpisodeProgress(tvShow?.id ?? 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
@@ -109,7 +113,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
       >
         <Button
           icon={<LeftOutlined />}
-          onClick={() => from ? navigate(from, { state: { ...locationState, isReturn: true } }) : navigate(-1)}
+          onClick={() => goBack(navigate, { from, state: { ...locationState, isReturn: true }, fallback: "/tv" })}
           style={{ marginBottom: 16 }}
         >
           Back
@@ -235,7 +239,15 @@ const TVShowDetails = ({ tvShow }: Props) => {
               {/* Episode progress tracker */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <PlayCircleOutlined style={{ color: WATCHED_GREEN, fontSize: 16 }} />
-                {epProgress && !epEditing ? (
+                {epError ? (
+                  // Not "no progress": offering Track here could overwrite the real position.
+                  <>
+                    <Typography.Text type="secondary">Couldn't load your episode progress.</Typography.Text>
+                    <Button size="small" type="link" style={{ padding: 0 }} onClick={retryEpProgress}>
+                      Retry
+                    </Button>
+                  </>
+                ) : epLoading ? null : epProgress && !epEditing ? (
                   <>
                     <Typography.Text>
                       Currently on{" "}
@@ -255,6 +267,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                           size="small"
                           type="link"
                           style={{ padding: 0 }}
+                          disabled={epBusy}
                           onClick={async () => {
                             try {
                               await updateEpProgress(nextSeason, nextEpisode);
@@ -289,7 +302,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                       okType="danger"
                       cancelText="Cancel"
                     >
-                      <Button size="small" type="link" danger style={{ padding: 0 }} icon={<DeleteOutlined />} aria-label="Remove episode progress" />
+                      <Button size="small" type="link" danger style={{ padding: 0 }} icon={<DeleteOutlined />} disabled={epBusy} aria-label="Remove episode progress" />
                     </Popconfirm>
                   </>
                 ) : epEditing ? (
@@ -307,6 +320,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     <Button
                       size="small"
                       type="primary"
+                      disabled={epBusy}
                       onClick={async () => {
                         try {
                           await updateEpProgress(epSeason, epEpisode);

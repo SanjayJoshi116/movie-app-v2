@@ -5,7 +5,7 @@ import type { FollowedPersonEntry } from "../src/api/userApi";
 // load-states spec: a failed load shows an error with Retry, never the empty
 // state, and Retry really refetches.
 
-const GRETA = { id: 1, personId: 7, name: "Greta Gerwig", profilePath: null } satisfies FollowedPersonEntry;
+const GRETA = { id: 1, personId: 7, name: "Greta Gerwig", profilePath: null, followedAt: "2026-10-01T10:00:00Z" } satisfies FollowedPersonEntry;
 
 /** A route that fails until `heal()` is called, counting hits. */
 function flaky(ok: (route: Route) => Promise<void>) {
