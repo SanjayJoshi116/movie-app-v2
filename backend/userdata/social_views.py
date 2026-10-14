@@ -1,9 +1,11 @@
 import logging
 import time
+from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-from django.core.cache import cache
+from django.core.cache import caches
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
@@ -162,8 +164,50 @@ _CREDIT_FIELDS = (
 )
 
 
+# A person's summary keeps only credits dated this close to "now" (UTC, at
+# fetch time): notifications look 30 days back in the device's zone (at most a
+# day from UTC) and a summary is at most PERSON_CREDITS_TTL old, so these
+# margins cover every poll that can read it, a title dated tomorrow included.
+RECENT_PAST_DAYS = 32
+RECENT_FUTURE_DAYS = 2
+
+
+def credits_cache():
+    """Person credits have their own cache alias (settings.PERSON_CREDITS_*):
+    in `default` they culled throttle counters, in `tmdb` the proxy's entries."""
+    return caches["person_credits"]
+
+
 def _credits_key(person_id):
-    return f"tmdb:person_credits:{person_id}"
+    return f"person_credits:{person_id}"
+
+
+def _recent_key(person_id):
+    return f"person_recent:{person_id}"
+
+
+def credit_date(credit):
+    """A credit's release or first-air date, or None if missing or malformed."""
+    value = credit.get("release_date") or credit.get("first_air_date")
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _recent_summary(cast, today: date):
+    start = today - timedelta(days=RECENT_PAST_DAYS)
+    end = today + timedelta(days=RECENT_FUTURE_DAYS)
+    return [c for c in cast if (d := credit_date(c)) is not None and start <= d <= end]
+
+
+def cached_recent_credits(person_ids):
+    """{person_id: recent summary} for the people whose summary is cached. Cache
+    only, no TMDB call."""
+    found = credits_cache().get_many([_recent_key(pid) for pid in person_ids])
+    return {pid: found[_recent_key(pid)] for pid in person_ids if _recent_key(pid) in found}
 
 
 def _fetch_person_credits(person_id):
@@ -174,7 +218,7 @@ def _fetch_person_credits(person_id):
     return [{k: c[k] for k in _CREDIT_FIELDS if k in c} for c in data.get("cast", []) if isinstance(c, dict)]
 
 
-def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seconds=None):
+def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seconds=None, summary_only=False):
     """Fetch TMDB cast credits for a user's followed people (all of them, or the
     `limit` most recently followed). Returns [(FollowedPerson, cast_list)];
     cast_list is [] for a person whose TMDB fetch failed (or wasn't fetched this
@@ -186,14 +230,21 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     so the next call retries; a TMDB 404 is cached as no credits. `max_fetch` caps how many uncached people one
     call fetches (in followed order, so the next call's first uncached ones are
     new people), and `budget_seconds` caps how long it waits for them. Fetches
-    still running at the deadline are abandoned: they only do HTTP."""
+    still running at the deadline are abandoned: they only do HTTP.
+
+    With `summary_only` the lists are each person's recent summary (credits
+    dated around now) instead of the full list: notifications read only those,
+    so a poll's load doesn't grow with how many credits people have. Both are
+    written together on every fetch, so either caller's fetch serves the other."""
     followed = FollowedPerson.objects.filter(user=user).order_by("-followed_at", "-id")
     followed = list(followed[:limit] if limit is not None else followed)
     if not followed:
         return []
 
-    cached = cache.get_many([_credits_key(fp.person_id) for fp in followed])
-    to_fetch = list(dict.fromkeys(fp.person_id for fp in followed if _credits_key(fp.person_id) not in cached))
+    key = _recent_key if summary_only else _credits_key
+    store = credits_cache()
+    cached = store.get_many([key(fp.person_id) for fp in followed])
+    to_fetch = list(dict.fromkeys(fp.person_id for fp in followed if key(fp.person_id) not in cached))
     if max_fetch is not None:
         to_fetch = to_fetch[:max_fetch]
 
@@ -219,8 +270,9 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
                 pid, cast = future.result()
                 if cast is not None:
                     # On this thread: the production cache is DB-backed.
-                    cache.set(_credits_key(pid), cast, PERSON_CREDITS_TTL)
-                    cached[_credits_key(pid)] = cast
+                    recent = _recent_summary(cast, timezone.now().date())
+                    store.set_many({_credits_key(pid): cast, _recent_key(pid): recent}, PERSON_CREDITS_TTL)
+                    cached[key(pid)] = recent if summary_only else cast
         except TimeoutError:
             logger.warning(
                 "Followed-people credits budget (%ss) ran out with %s of %s fetches unfinished",
@@ -229,7 +281,7 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
 
-    return [(fp, cached.get(_credits_key(fp.person_id), [])) for fp in followed]
+    return [(fp, cached.get(key(fp.person_id), [])) for fp in followed]
 
 
 class FollowedRecsThrottle(UserRateThrottle):

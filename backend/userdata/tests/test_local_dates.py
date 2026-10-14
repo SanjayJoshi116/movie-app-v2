@@ -175,8 +175,11 @@ class NotificationsLocalDayTests(APITestCase):
         self.user = User.objects.create_user(username="nt", password="Xk9#mQ2vTz8p")
         self.client.force_authenticate(user=self.user)
         FollowedPerson.objects.create(user=self.user, person_id=1, name="Some Actor")
-        # Last check 23:00 on 6 Oct in New York (03:00 UTC on 7 Oct).
-        NotificationCheckpoint.objects.create(user=self.user, last_seen_at=datetime(2026, 10, 7, 3, 0, tzinfo=UTC))
+        # Last check 23:00 on 6 Oct in New York (03:00 UTC on 7 Oct), when the
+        # 7 Oct premiere was already listed: read on the 7th, new on a later day.
+        NotificationCheckpoint.objects.create(
+            user=self.user, last_seen_at=datetime(2026, 10, 7, 3, 0, tzinfo=UTC), seen_same_day=[[9, "movie"]],
+        )
 
     @patch("userdata.tmdb_client._get")
     def test_release_on_next_local_day_is_unread(self, mock_get):
@@ -228,7 +231,9 @@ class DirectoryZoneNameTests(APITestCase):
     @patch("userdata.tmdb_client._get")
     def test_notifications_use_utc_day(self, mock_get, *_):
         FollowedPerson.objects.create(user=self.user, person_id=1, name="Some Actor")
-        NotificationCheckpoint.objects.create(user=self.user, last_seen_at=datetime(2026, 10, 7, 3, 0, tzinfo=UTC))
+        NotificationCheckpoint.objects.create(
+            user=self.user, last_seen_at=datetime(2026, 10, 7, 3, 0, tzinfo=UTC), seen_same_day=[[9, "movie"]],
+        )
         mock_get.return_value = {"cast": [
             {"id": 9, "media_type": "movie", "title": "Premiere", "poster_path": None, "release_date": "2026-10-07"},
         ]}

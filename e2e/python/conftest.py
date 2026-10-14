@@ -303,11 +303,10 @@ def mock_base_django_routes(page: Page) -> None:
     """Mount baseline empty-list Django API mocks (override per-test as needed).
 
     Trailing `**` matters here: fetchAllPages() (src/utils/fetchAllPages.ts) always
-    appends `?page=1` even on the first request, so an exact-match pattern with no
-    wildcard misses it, falls through to the autouse 401 block, and the app's
-    401-refresh interceptor (also unmocked -> also 401) hard-redirects to /login in
-    a loop. `lists/` isn't paginated so it never had this problem, but the wildcard
-    is harmless there too.
+    appends `?page=N`, even on the first request, so an exact-match pattern with no
+    wildcard misses it and falls through to the strict catch-all, which answers 501
+    and fails the test at teardown, naming the URL. Every list here, `lists/`
+    included, is paginated, so each gets the real DRF shape via paginated().
     """
     for path in ("watchlist", "ratings", "watched", "lists", "followed-people"):
         page.route(f"**/api/{path}/**", lambda r: fulfill_json(r, paginated([])))

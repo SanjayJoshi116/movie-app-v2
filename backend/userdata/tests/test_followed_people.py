@@ -11,6 +11,7 @@ from rest_framework.test import APITestCase
 
 from userdata import social_views
 from userdata.models import FollowedPerson
+from userdata.social_views import credits_cache
 
 
 class FollowedPeopleTests(APITestCase):
@@ -80,8 +81,8 @@ class FollowedPeopleRecommendationsBudgetTests(APITestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertLess(elapsed, 0.5 + 2)
-        self.assertIsNotNone(cache.get("tmdb:person_credits:6"))  # arrived in time: cached
-        self.assertIsNone(cache.get("tmdb:person_credits:5"))
+        self.assertIsNotNone(credits_cache().get("person_credits:6"))  # arrived in time: cached
+        self.assertIsNone(credits_cache().get("person_credits:5"))
 
     def test_budget_fits_under_gunicorn_timeout(self):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()

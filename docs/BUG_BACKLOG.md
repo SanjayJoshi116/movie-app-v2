@@ -46,13 +46,15 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 25 | `fix-write-guards-2` | ✅ 2026-10-13 | Episode progress load error → overwrite; review-only edit syncs TMDB; dialogs closable mid-save; stale panels |
 | 26 | `speed-up-pages` | ✅ 2026-10-10 | Every page slow: `localhost` IPv6 fallback (~300 ms/connection in dev), preflight on every call, sequential library pages, per-request DB connect, uncached TMDB proxy, 5–6 calls per detail page, `original` backdrops, eager trailers |
 | 27 | `bound-tmdb-calls` | ✅ 2026-10-14 | TMDB calls have no wall-clock deadline (per-IP connect timeout breaks the proxy budget); rating sync and TMDB session revoke still run in the request (leftover from 17); TMDB connect can take ~40s and store a revoked session |
-| 28 | (unnamed) | ⏳ | Recommendations under failure and load: stale row restarts a full recompute on every poll; uncapped media-cache fill; KMeans fits genre-less and disliked titles; warm-up order |
-| 29 | (unnamed) | ⏳ | Follow credits in the `default` cache (culling evicts throttle/login counters); notifications load every follow's credits; `guest_session_id` not redacted in logs |
+| 28a | `bound-rec-refresh` | ✅ 2026-10-14 | Recommendations under load: refused refresh retried on every poll; uncapped media-cache fill; backfill cap bypass (no per-user budget); warm-up order; unbounded refresh threads; thread-start failure leaves "pending" |
+| 28b | `rec-quality-fixes` | ✅ 2026-10-14 | Recommendation quality: KMeans fits genre-less and disliked titles; cross-type cluster yields nothing; genre-less TMDB answer settled forever; rated-but-unwatched titles recommended; `family_of` one type only; older recompute can overwrite newer |
+| 29 | `notifications-cache-hygiene` | ✅ 2026-10-14 | Follow credits in the `default` cache (culling evicts throttle/login counters); notifications load every follow's credits; `guest_session_id` not redacted in logs |
 | 30 | `harden-account-input` | ✅ 2026-10-14 | Backend account/input hardening: login lockout lasts 5 min not 1 h in prod; unbounded `voteAverage` 500s Stats; password-gated actions unthrottled; avatar decompression RAM; no `EMAIL_TIMEOUT` |
 | 31 | `fix-import-followups` | ✅ 2026-10-14 | 0.24.0 follow-ups: imports keep writing after close/sign-out (next account); episode Remove can report success for an update; 429 doesn't pause the shared lookup schedule; non-ISO `watched_at` fails a chunk |
 | 32 | `honest-states-a11y` | ✅ 2026-10-14 | Frontend honest states and a11y: Lists Delete confirm opens the list; failures shown as empty (watched, partial For You, person credits, reset link); unvalidated Watched URL params; unlabelled controls |
 | 33 | `fix-frontend-state` | ✅ 2026-10-14 | Frontend state: a failed first page starts an infinite-scroll request loop (Home/Anime); browse UI state carries to the next account; follow during the lazy load is undone |
-| 34 | (unnamed) | ⏳ | Infra/CI/tests: unpinned `npx wait-on` in CI; Lists e2e tests that can't fail; no TS mock-vs-API shape check; no CI `permissions:`; prod reset links default to localhost; Django admin mounted; `package.json` hardcodes the dev machine's interpreter path |
+| 34a | `harden-ci-3` | ✅ 2026-10-14 | CI/tests/images: unpinned `wait-on`, e2e Python deps and actions; no `permissions:`; vacuous list-name test; no TS DTO vs API check; no Python e2e traces; floating base images; tests in the backend image; docs drift and nits |
+| 34b | `tidy-app-config` | ✅ 2026-10-14 | App config and dev setup: prod reset links default to localhost; `.env.example` gaps; Django admin mounted; bulk upload size limit; `package.json` hardcodes the dev interpreter path |
 
 Items 0–26 are done (0.24.0). Open work is under "Fifth audit (2026-10-13)" below.
 
@@ -651,7 +653,9 @@ Against 0.24.0 (`11b8c84`), after items 0–26 were all archived. Seven read-onl
 - **[med] ✔ Connecting a TMDB account can take ~40s and leave a revoked session stored.** `tmdb_views.py:65-72` calls `tmdb_client.create_session` then `revoke_tmdb_session`. `tmdb_client`'s `_get`/`_post`/`_delete` pass a scalar `timeout=10`, which `requests` applies to connect and read separately, so each call can take ~20s. If gunicorn kills the worker (or `profile.save()` raises `DBError`) after the old session's revoke, the profile keeps the revoked `session_id`, `tmdb_auth_status` says `connected: True`, and every later rating sync fails with a WARNING. Ratings POST/PATCH/DELETE, `tmdb_disconnect`, `tmdb_request_token` and `delete_account` have the same ~20s-per-call shape with no budget constant or test pin, which CLAUDE.md requires for endpoints that wait on TMDB.
 - **Fix:** a deadline around each whole TMDB call (or a budget that models per-address connects), with a tuple timeout like `GENRE_LOOKUP_TIMEOUT`, a budget constant and a pin test. Move rating sync and the session revoke out of the request path (after commit, best-effort). Save the new TMDB session before revoking the old one.
 
-### 28. Recommendations under failure and load (⏳ not yet proposed)
+### 28. Recommendations under failure and load (✅ split: 28a ✅ `bound-rec-refresh`, archived 2026-10-14; 28b ✅ `rec-quality-fixes`, archived 2026-10-14)
+
+**Split 2026-10-14.** 28a (`bound-rec-refresh`): the stale-retry loop, the fill cap, the backfill-budget bypass (moved here from item 30), the warm-up order, refresh thread limits and the thread-start failure. 28b: the KMeans input, the cross-type cluster fallback, genre-less rechecks, rated-but-unwatched titles, `family_of`, and the save ordering between workers.
 
 From the backend TMDB/background pass. ✔ = re-checked by hand.
 
@@ -669,13 +673,14 @@ From the backend TMDB/background pass. ✔ = re-checked by hand.
   - `genre_families.family_of` (`:47-50`) registers an unknown id only for the type it was first seen on, so the same new id on the other type is never queried there.
   - (moved from item 30) Item 22's backfill cap can be bypassed: `DELETE /watched/clear/` then a 500-row import of fake ids resets `metadata_settled`, and each `/stats/` call backfills 100 more (~350k server-key TMDB calls/account/day within 5000/day). Fix: a per-user daily backfill budget, or remember 404'd `(type, id)` pairs globally. Docs: `features.txt` says "Imports of unknown titles can't flood TMDB"; that holds only after this and item 28's fill cap.
 
-### 29. Cache placement, notifications load, log redaction (⏳ not yet proposed)
+### 29. Cache placement, notifications load, log redaction (✅ `notifications-cache-hygiene`, archived 2026-10-14)
 
 - **[low-med] ✔ Followed people's cached credits sit in the `default` cache** (`social_views.py:221`, `from django.core.cache import cache`). `default` is a `DatabaseCache` with `MAX_ENTRIES` 50k, and its cull deletes the alphabetically first third of keys: `:1:login_fail:…` and `:1:throttle_…` sort before `:1:tmdb:person_credits:…`. Past 50k keys, each cull wipes per-username login-failure limits and throttle counters and keeps the bulky credits, the harm CLAUDE.md cites for keeping the proxy cache out of `default`. Fix: move them to the `tmdb` alias or their own.
 - **[low-med] Each notifications poll loads every followed person's cached credits** (`social_views.py:194`, `get_many` over all follows). `NOTIFICATIONS_MAX_FETCH` caps only TMDB fetches, and follows bulk-import 500 per request with no total limit, so 5,000 follows × 20–50 kB is 100–250 MB unpickled per poll in a sync worker. Fix: limit to the N most recent follows, or cache a per-person recent-releases summary.
 - **Attack path (backend-data pass):** one account can push `default` past 50k on purpose: bulk-follow 500 arbitrary ids per request, then poll notifications (40 fetches per poll, 30 polls/min, 404s cached as `[]`, 6h TTL), ~1,200 keys/min. From then on every cache set culls the login-failure and throttle counters.
 - **[low] ✔ `RedactingFormatter` doesn't redact `guest_session_id`** (`logging.py:8`). `\b(session_id|request_token)=` can't match inside `guest_session_id=` (`_` and `s` are both word characters), and the proxy treats `guest_session_id` as a credential. Fix: `(?<![A-Za-z0-9])((?:guest_)?session_id|request_token)=`, and the same in `_CREDENTIAL_JSON`.
 - (moved from item 30, plausible) A release dated the same day as "mark seen" never shows as unread (`notifications_views.py:73`, day-granular `>`).
+- **Implemented in `notifications-cache-hygiene` (2026-10-14).** The login-failure half of the cull risk was already gone (item 30 moved those counters to a table); throttle counters were the remaining victims. The same-day plausible was fixed with a server-side seen list (`NotificationCheckpoint.seen_same_day`).
 
 ### 30. Backend account and input hardening (✅ `harden-account-input`, archived 2026-10-14)
 
@@ -760,7 +765,9 @@ From the frontend state pass. ✔ = re-checked by hand.
   - Requests replayed from the refresh queue lack `_retry = true` (`userApi.ts:226-232`), so a second 401 starts another refresh and spends the `token_refresh` throttle.
   - After another tab signs out (or after delete-account), the next login in this tab returns to the previous account's URL (`AuthContext.tsx:67-71`, `postLoginPath`). Fix: navigate to a neutral path before `setUser(null)` there.
 
-### 34. Infra, CI and tests (⏳ not yet proposed)
+### 34. Infra, CI and tests (split: 34a ✅ `harden-ci-3`, archived 2026-10-14, specs `ci-pipeline`, `container-deployment`, `e2e-fixtures` synced; 34b ✅ `tidy-app-config`, archived 2026-10-14, specs `api-hardening`, `data-backup`, `dev-environment` synced)
+
+**Split 2026-10-14.** 34a (`harden-ci-3`): CI pins and permissions, Python e2e constraints and traces, the list-name test, the TS DTO check, pinned and slimmer images, `server_tokens`, `@types/node` and the docs nits. The Lists DELETE-mock item was already fixed in `honest-states-a11y`. 34b: `FRONTEND_URL` fail-closed and `.env.example`, the admin route, `DATA_UPLOAD_MAX_MEMORY_SIZE`, and the interpreter path in `package.json`.
 
 From the infra/CI/tests/docs pass. ✔ = re-checked by hand.
 

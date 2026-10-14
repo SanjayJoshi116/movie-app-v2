@@ -12,13 +12,21 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Read-only token: no job pushes, comments or publishes. upload-artifact
+# uses the runner's own runtime token, not these scopes.
+permissions:
+  contents: read
+
+# Third-party actions are pinned to a commit SHA (the version is in the
+# comment): a moved tag can't change what runs. Bump by replacing both.
+
 jobs:
   frontend:
     name: Frontend (typecheck + lint + test + build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -57,8 +65,8 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
@@ -104,8 +112,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -113,14 +121,14 @@ jobs:
       - run: nohup npx react-scripts start > /tmp/cra.log 2>&1 &
         env:
           BROWSER: none
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r e2e/python/requirements.txt
+      - run: pip install -r e2e/python/requirements.txt -c e2e/python/constraints.txt
       # Keyed on the pip pin: its browser build can differ from the npm one.
       - id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-py-${{ runner.os }}-${{ hashFiles('e2e/python/requirements.txt') }}
@@ -131,7 +139,9 @@ jobs:
         run: playwright install-deps chromium
       # Node resolves localhost to ::1 first, but the CRA dev server only
       # listens on IPv4 — without ipv4first, wait-on hangs forever.
-      - run: npx wait-on http://localhost:3000 -t 300000
+      # wait-on is a pinned devDependency; --no-install fails instead of
+      # downloading whatever the registry serves.
+      - run: npx --no-install wait-on http://localhost:3000 -t 300000
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
       - name: Show dev server output
@@ -143,22 +153,28 @@ jobs:
           ss -tlnp || netstat -tlnp || true
           echo "--- node processes ---"
           ps aux | grep -i node || true
-      - run: pytest e2e/python
+      - run: pytest e2e/python --tracing=retain-on-failure --output=e2e/python/test-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-python-traces
+          path: e2e/python/test-results/
+          retention-days: 7
 
   e2e-ts:
     name: E2E (Playwright TS)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       # Both projects are Chromium (mobile-chrome is an emulated Pixel 5).
       - id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -172,7 +188,7 @@ jobs:
         env:
           CI: true
           NODE_OPTIONS: --dns-result-order=ipv4first
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: playwright-report
@@ -186,11 +202,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       # Built only: running it needs Postgres and the deploy's secrets.
       - name: Build backend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: backend
           file: backend/Dockerfile
@@ -198,7 +214,7 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
       - name: Build frontend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: Dockerfile.frontend

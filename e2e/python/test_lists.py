@@ -183,11 +183,10 @@ class TestListsEdgeCases:
         expect(authed_page.get_by_role("heading", name="My Lists")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="New List").click()
         expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)
-        # Type >60 characters
+        # The name field caps at the API's 60 characters (ListsPage maxLength).
         authed_page.get_by_label("List Name").fill("A" * 100)
-        # Input value length should be at most 100 chars (or whatever maxLength is set)
         val = authed_page.get_by_label("List Name").input_value()
-        assert len(val) <= 100, f"Input should not accept unbounded length (got {len(val)})"
+        assert len(val) == 60, f"List name should be capped at 60 characters (got {len(val)})"
 
     def test_multiple_lists_show_all_cards(self, authed_page: Page):
         lists = [

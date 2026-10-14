@@ -9,6 +9,7 @@ from django.core import mail
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import F
+from django.test import override_settings
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -148,6 +149,15 @@ class PasswordResetExpiryTests(APITestCase):
             self.client.post("/api/auth/password-reset/", {"email": "lee@example.com"}, format="json")
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("expires in 1 hour.", mail.outbox[0].body)
+
+    def test_reset_link_built_on_frontend_url(self):
+        # settings strips FRONTEND_URL's trailing slash (test_settings_fail_closed);
+        # this pins the link built on the stripped value: no "//reset-password".
+        with override_settings(FRONTEND_URL="https://cinedb.example.com"), \
+                patch("userdata.auth_views._in_background", side_effect=lambda send: send()):
+            self.client.post("/api/auth/password-reset/", {"email": "lee@example.com"}, format="json")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(f"\nhttps://cinedb.example.com/reset-password/{self.uid}/", mail.outbox[0].body)
 
 
 class PasswordResetTimingTests(APITestCase):

@@ -6,6 +6,7 @@ still passed. The e2e conftest imports playwright, which this job doesn't
 install, so its MOCK_* dict literals are read with ast instead of imported.
 """
 import ast
+import re
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -16,13 +17,26 @@ from rest_framework.test import APITestCase
 from userdata.models import RatingEntry, UserList, UserListItem, WatchedEntry, WatchlistEntry
 from userdata.serializers import (
     RatingEntrySerializer,
+    UserListItemSerializer,
     UserListSerializer,
     UserSerializer,
     WatchedEntrySerializer,
     WatchlistEntrySerializer,
 )
 
-CONFTEST = Path(__file__).resolve().parents[3] / "e2e" / "python" / "conftest.py"
+REPO = Path(__file__).resolve().parents[3]
+CONFTEST = REPO / "e2e" / "python" / "conftest.py"
+# The TS e2e mocks `satisfies` these types, so they must match the API too.
+DOMAIN_TS = REPO / "src" / "types" / "domain.ts"
+
+TS_TYPE_SERIALIZERS = {
+    "AuthUser": UserSerializer,
+    "WatchlistEntryDTO": WatchlistEntrySerializer,
+    "WatchedEntryDTO": WatchedEntrySerializer,
+    "RatingEntryDTO": RatingEntrySerializer,
+    "UserListItemDTO": UserListItemSerializer,
+    "UserListDTO": UserListSerializer,
+}
 
 RECORD_SERIALIZERS = {
     "MOCK_USER": UserSerializer,
@@ -46,6 +60,33 @@ def _mocks():
                 except ValueError as e:
                     raise AssertionError(f"{name} in {CONFTEST.name} must stay a plain literal: {e}") from None
     return found
+
+
+def _ts_interfaces():
+    """{interface name: field names} for the top-level interfaces in domain.ts.
+    Field lines are `name: type;` or `name?: type;` (optional still counts)."""
+    text = DOMAIN_TS.read_text(encoding="utf-8")
+    found = {}
+    for match in re.finditer(r"^export interface (\w+) \{\r?\n(.*?)^\}", text, re.M | re.S):
+        found[match.group(1)] = set(re.findall(r"^\s+(\w+)\??\s*:", match.group(2), re.M))
+    return found
+
+
+class TSApiTypeTests(APITestCase):
+    """The TS e2e mocks are checked against these types by `satisfies`; this
+    keeps the types themselves equal to what the serializers send."""
+
+    def test_api_types_have_the_serializer_fields(self):
+        interfaces = _ts_interfaces()
+        for name, serializer in TS_TYPE_SERIALIZERS.items():
+            with self.subTest(type=name):
+                self.assertIn(name, interfaces, f"{name} not found in {DOMAIN_TS.name}")
+                expected = set(serializer.Meta.fields)
+                actual = interfaces[name]
+                self.assertEqual(
+                    actual, expected,
+                    f"{name}: missing {sorted(expected - actual)}, extra {sorted(actual - expected)}",
+                )
 
 
 class E2EMockShapeTests(APITestCase):

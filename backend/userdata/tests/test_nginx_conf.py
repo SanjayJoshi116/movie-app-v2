@@ -77,6 +77,9 @@ class NginxConfTests(SimpleTestCase):
             with self.subTest(location=name):
                 self.assertRegex(self.locations[name], r"\bgzip\s+off\s*;")
 
+    def test_server_version_is_hidden(self):
+        self.assertRegex(self.conf, r"(?m)^    server_tokens off;$")
+
     def test_security_headers_stay_server_level(self):
         server = _blocks(self.conf, "server")[""]
         outside_locations = re.sub(r"\blocation\b[^{]*\{[^{}]*\}", "", server)

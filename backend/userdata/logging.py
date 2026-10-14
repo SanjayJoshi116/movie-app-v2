@@ -3,10 +3,12 @@ import re
 
 from django.conf import settings
 
-# TMDB credentials that travel as query params (`?session_id=`, `request_token=`)
-# or in a JSON body. requests puts the full URL in HTTPError messages.
-_CREDENTIAL_PARAM = re.compile(r"\b(session_id|request_token)=[^&\s'\"]+")
-_CREDENTIAL_JSON = re.compile(r'("(?:session_id|request_token)"\s*:\s*)"[^"]*"')
+# TMDB credentials that travel as query params (`?session_id=`,
+# `guest_session_id=`, `request_token=`) or in a JSON body. requests puts the
+# full URL in HTTPError messages. A lookbehind, not `\b`: `_` is a word
+# character, so `\bsession_id` never matched inside `guest_session_id`.
+_CREDENTIAL_PARAM = re.compile(r"(?<![A-Za-z0-9])((?:guest_)?session_id|request_token)=[^&\s'\"]+")
+_CREDENTIAL_JSON = re.compile(r'("(?:(?:guest_)?session_id|request_token)"\s*:\s*)"[^"]*"')
 
 
 class RedactingFormatter(logging.Formatter):

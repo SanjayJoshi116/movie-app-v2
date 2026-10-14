@@ -1,3 +1,4 @@
+import json
 import re
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -43,3 +44,24 @@ class DjangoVersionTests(SimpleTestCase):
             f"Installed Django {django.get_version()} doesn't match the {pinned[0]}.{pinned[1]} pin in "
             f"requirements.txt. Wrong interpreter? Use the project env (see CLAUDE.md).",
         )
+
+
+REPO = REQUIREMENTS.parents[1]
+
+
+class PlaywrightVersionTests(SimpleTestCase):
+    def test_python_and_npm_playwright_match(self):
+        """Both e2e suites must drive the same Playwright release; they used to
+        match only because a comment in e2e/python/requirements.txt asked."""
+        npm = json.loads((REPO / "package.json").read_text(encoding="utf-8"))["devDependencies"]["@playwright/test"]
+        self.assertRegex(npm, r"^\d+\.\d+\.\d+$", "@playwright/test must be an exact version in package.json")
+        pins = {}
+        for name in ("requirements.txt", "constraints.txt"):
+            path = REPO / "e2e" / "python" / name
+            match = re.search(r"^playwright==(\S+)", path.read_text(encoding="utf-8"), re.M)
+            self.assertIsNotNone(match, f"no `playwright==X.Y.Z` pin in {path}")
+            pins[name] = match.group(1)
+        for name, pip in pins.items():
+            self.assertEqual(
+                pip, npm, f"e2e/python/{name} pins playwright {pip}, package.json pins @playwright/test {npm}",
+            )

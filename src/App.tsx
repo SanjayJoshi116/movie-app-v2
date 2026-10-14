@@ -175,7 +175,8 @@ function AppInner() {
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
               <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
               <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />
-              <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />              <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
+              <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />
+              <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </AnimatePresence>

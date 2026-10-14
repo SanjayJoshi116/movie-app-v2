@@ -3,6 +3,65 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.26.0] - 2026-10-14
+
+Bug-audit release, part 11, which closes the fifth audit (backlog items 0–34 all done): cache placement, notifications load and log redaction (`notifications-cache-hygiene`, backlog item 29), bounded recommendation refreshes (`bound-rec-refresh`, item 28a), recommendation quality fixes (`rec-quality-fixes`, item 28b), pinned CI, tests and images (`harden-ci-3`, item 34a), and app config and dev setup (`tidy-app-config`, item 34b). All five OpenSpec changes are archived and their specs synced.
+
+### ⚠️ Notes for deploy
+- **Three migrations:** `0026_notificationcheckpoint_seen_same_day` adds a JSON column with a default (no table rewrite); `0027_tmdbtitlebudget` adds a small per-user table; `0028_rec_quality` adds two nullable columns and, in one `UPDATE`, unsettles watched titles that were settled only because TMDB listed no genres (they're fetched once more, within the per-run cap and the daily budget).
+- **New cache table** `person_credits_cache`, created by the existing `createcachetable` step at startup (`start.py`, `docker-entrypoint.sh`). Credits cached in `default` before the deploy are never read again and expire within 6 hours, so the first polls after the deploy refetch followed people's credits from TMDB, 40 at a time per poll as usual.
+- **`FRONTEND_URL` is now required with `DEBUG` off** (`tidy-app-config`): the backend refuses to start without an absolute `http(s)` URL there, instead of mailing password-reset links to `localhost:3000`. The documented `.env.docker` already sets it; check any other deploy before upgrading.
+- **Local dev:** `npm run dev` now takes its Python from `DJANGO_PYTHON` (root `.env` or the shell), falling back to `python` on the `PATH`. Set it to the env with the backend requirements (see `.env.example`).
+
+### Fixed
+- **Followed people's cached credits can't evict rate-limit counters any more.** They had shared the main cache, where past 50,000 entries every write dropped a third of the keys, rate-limit counters first. One account could trigger this on purpose by bulk-following and polling. Credits now have their own size-limited cache, apart from the TMDB proxy's too.
+- **A notifications poll no longer loads every followed person's full credit list.** It reads a small per-person summary of recent and upcoming releases, so following thousands of prolific people no longer costs hundreds of MB per poll. Notifications are the same.
+- **A release dated the day you mark notifications seen, which appears later that day, now shows as unread.** It used to count as read because it shared the mark-seen date.
+- **`guest_session_id` is redacted from server logs,** in URLs and JSON bodies, like `session_id` and `request_token`.
+
+### Fixed — recommendations under load (`bound-rec-refresh`, backlog item 28a)
+- **A TMDB outage no longer turns every For You poll into a full recompute.** A refresh whose result is kept back because TMDB failed now waits 10 minutes before polls can start another; the stored recommendations are shown meanwhile. Watching or rating something still refreshes at once.
+- **One refresh fetches at most 200 titles' details** (never-cached first, then the oldest), instead of every uncached or week-old title in one burst; a huge imported library no longer means tens of thousands of TMDB calls and one enormous database query.
+- **Background title lookups are limited to 1,000 per user per day,** shared by the genre backfill and the recommendations cache, so clearing and re-importing unknown titles can't keep spending the server's TMDB quota.
+- **At most 4 recommendation refreshes compute at once per server process;** the rest wait their turn instead of each holding a database connection.
+- **A refresh that can't start its thread no longer leaves "pending" forever.**
+- **The startup warm-up skips users whose recommendations are fresh** and warms the oldest first.
+
+### Fixed — recommendation quality (`rec-quality-fixes`, backlog item 28b)
+- **Titles you rated low no longer shape "Your Taste" sections,** and titles without genres no longer skew them; with fewer than three usable titles there are no taste sections.
+- **A taste that mixes a movie-only and a TV-only genre (Horror and Reality) shows titles again** instead of an empty, dropped section.
+- **Titles TMDB listed without genres are checked again after 30 days,** so new releases get their genres and release year; only titles TMDB doesn't know are settled for good.
+- **Titles you've rated are never recommended,** even if you never marked them watched.
+- **A genre id TMDB adds later works for both movies and TV.**
+- **An older recompute can no longer overwrite a newer one** when two server processes refresh the same user.
+
+### Changed — CI, tests and images (`harden-ci-3`, backlog item 34a)
+- **Everything CI runs is pinned.** Actions by commit SHA (version in a comment); `wait-on` as an exact devDependency, called with `npx --no-install`; the Python e2e environment through a new `e2e/python/constraints.txt`; `@playwright/test` exact at `1.60.0`, and a backend test fails when it differs from the pip `playwright` pin.
+- **The workflow token is read-only** (`permissions: contents: read`).
+- **A failed Python e2e run uploads its Playwright traces** (7 days), like the TS job.
+- **Base images are pinned by exact version and digest:** `node:22.23.2-alpine3.24`, `nginx:1.31.5-alpine3.24`, `python:3.12.14-slim`, `postgres:15.19-alpine3.24`. A static test fails on any `FROM`/`image:` without a digest.
+- **The backend image no longer ships its tests or dev-only files,** and the frontend build context leaves out `.git`, `.github`, `.claude`, `openspec`, `docs` and tool caches.
+- **nginx no longer sends its version** (`server_tokens off`).
+- **Two checks that couldn't fail now can:** the list-name e2e test asserts the 60-character cap (it allowed 100), and `test_e2e_mock_shapes.py` compares the TS DTO types in `src/types/domain.ts` with the serializers, so a stale type fails the suite. TMDB-shaped TS e2e literals `satisfies` the `TMDB*` types.
+- `@types/node` follows the Node 22 runtime (`^22`).
+
+### Changed — app config and dev setup (`tidy-app-config`, backlog item 34b)
+- **Reset links can't point at localhost in production:** a missing or malformed `FRONTEND_URL` stops startup with `DEBUG` off, and a trailing slash no longer doubles the link's slash.
+- **A backup restore of many long reviews no longer loses whole chunks.** Bulk imports split requests by size (about 2 MB of JSON) as well as by 500 rows, so 500 ratings with 5,000-character reviews stay under the server's 2.5 MB body limit instead of failing as one 400.
+- **The Django admin is gone.** It had no registered models, wasn't routed in production, and in dev was an unthrottled login form. `createsuperuser`/`changepassword` still work; existing databases keep an unused `django_admin_log` table.
+- **`npm run dev`, `npm start` and `npm run django` no longer hardcode a machine-specific Python path:** `scripts/run-django.js` reads `DJANGO_PYTHON` and names it in the error when it isn't found.
+- `backend/.env.example` lists every setting the backend reads (`FRONTEND_URL`, `JWT_SIGNING_KEY`, `CONN_MAX_AGE`, `DEFAULT_FROM_EMAIL`, `EMAIL_TIMEOUT` were missing), and `test_app_config.py` fails when a new one isn't listed.
+
+### Docs
+- CLAUDE.md: the `person_credits` cache alias (bulky or user-growable cached data never goes in `default`), poll summaries vs full lists, `seen_same_day`, `guest_session_id` as a credential.
+- `docs/ARCHITECTURE.md`: why credits get their own alias, why polls read summaries and how the window is sized, and the same-day seen list.
+- CLAUDE.md / README: how each pin is bumped (action SHAs, image digests, e2e constraints, the Playwright version check), Python e2e traces, the TS DTO check, what the backend image leaves out.
+- `docs/ARCHITECTURE.md`: the reviews line no longer names the removed `fetchTVReviews`; the Python e2e conftest docstring describes the 501 catch-all.
+- `docs/BUG_BACKLOG.md`: item 29 archived; specs `notifications` and `api-hardening` synced; item 28 split into 28a (`bound-rec-refresh`, archived; specs `recommendation-refresh`, `title-metadata`, `service-health` synced) and 28b (`rec-quality-fixes`, archived; specs `recommendation-sections`, `title-metadata`, `recommendation-refresh` synced).
+- CLAUDE.md / `docs/ARCHITECTURE.md`: refresh backoff, fill cap, the per-user title budget (`tmdb_budget.take`) for any background title fetch, and the refresh semaphore; only a 404 settles title metadata (30-day recheck otherwise), clustering input, rated titles excluded, `save_recommendations` outcomes and `started`.
+- CLAUDE.md / README / `docs/ARCHITECTURE.md`: `DJANGO_PYTHON` and `scripts/run-django.js` replace the hardcoded interpreter path; `FRONTEND_URL` is fail-closed (and why it isn't taken from `Host`); the bulk byte budget; the admin's removal; `backend/.env.example` and the root `.env.example` document every setting.
+- `docs/BUG_BACKLOG.md`: item 34b archived as `tidy-app-config`; specs `api-hardening`, `data-backup` and the new `dev-environment` synced. Items 0–34 are all done.
+
 ## [0.25.0] - 2026-10-14
 
 Bug-audit release, part 10. Fixes from the fifth audit: backend account and input hardening (`harden-account-input`, backlog item 30), the 0.24.0 import and progress follow-ups (`fix-import-followups`, item 31), frontend state fixes (`fix-frontend-state`, item 33), bounded TMDB calls during requests (`bound-tmdb-calls`, item 27), and frontend honest states and accessibility (`honest-states-a11y`, item 32). All five are archived under `openspec/changes/archive/`. Items 28, 29 and 34 remain open.

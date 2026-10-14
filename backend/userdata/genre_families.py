@@ -40,14 +40,19 @@ FAMILY_OF: dict[int, str] = {
 
 def family_of(genre_id, media_type=None):
     """The family of one TMDB genre id. An unknown id is its own family,
-    registered for `media_type` (both types when unknown) so queries work."""
+    registered for each `media_type` it is seen with (both types when unknown)."""
     family = FAMILY_OF.get(genre_id)
     if family is not None:
         return family
     family = str(genre_id)
+    types = [media_type] if media_type in ("movie", "tv") else ["movie", "tv"]
     if family not in IDS:
-        types = [media_type] if media_type in ("movie", "tv") else ["movie", "tv"]
-        IDS[family] = {"movie": [], "tv": [], **{t: [genre_id] for t in types}}
+        IDS[family] = {"movie": [], "tv": []}
+    # Each type it's seen on, not only the first: the same new id on the
+    # other type must be queryable there too.
+    for t in types:
+        if genre_id not in IDS[family][t]:
+            IDS[family][t].append(genre_id)
     return family
 
 

@@ -7,9 +7,10 @@ filled inside `_compute_personalized` (which skips users with <3 titles), and
 `/stats` started its own 20-worker thread on every request with no dedupe and
 retried failed rows forever.
 
-A title TMDB answers with no genres (a 404, or one it lists none for) is marked
-`WatchedEntry.metadata_settled` in the DB, so no worker or restart fetches it
-again. Transient-failure backoff is in-process, like recommendations'
+A title TMDB reports as not found is marked `WatchedEntry.metadata_settled` in
+the DB, so no worker or restart fetches it again. One TMDB lists without genres
+(often not released yet) isn't settled: it's fetched again
+METADATA_RECHECK_DAYS after `metadata_checked_at`. Transient-failure backoff is in-process, like recommendations'
 `_computing_users`: a restart or another gunicorn worker costs at most one
 extra fetch per title. One run fetches at most MAX_PER_RUN titles, so a bulk
 import of unknown ids can't turn into hundreds of TMDB calls at once; the
@@ -19,12 +20,14 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import requests
 from django.db import Error as DBError
 from django.db import connection
+from django.utils import timezone
 
-from . import tmdb_client
+from . import tmdb_budget, tmdb_client
 from .models import WatchedEntry
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,7 @@ logger = logging.getLogger(__name__)
 MAX_WORKERS = 5
 MAX_PER_RUN = 100
 BACKOFF_SECONDS = 60 * 60
+METADATA_RECHECK_DAYS = 30
 MAX_FAILED_TRACKED = 10_000
 UNKNOWN_LANGUAGE = "??"
 UNKNOWN_YEAR = -1
@@ -43,10 +47,13 @@ _failed_at = {}  # entry pk -> monotonic time of the last transient failure
 
 
 def entry_needs_metadata(entry):
-    # An empty genre_ids list otherwise reads as "not filled yet".
-    if entry.metadata_settled:
-        return entry.original_language is None or entry.release_year is None
-    return not entry.genre_ids or entry.original_language is None or entry.release_year is None
+    if entry.original_language is None or entry.release_year is None:
+        return True
+    if entry.metadata_settled or entry.genre_ids:
+        return False
+    # Genre-less but not settled: never checked, or due for a recheck.
+    checked = entry.metadata_checked_at
+    return checked is None or timezone.now() - checked >= timedelta(days=METADATA_RECHECK_DAYS)
 
 
 def _in_backoff(entry):
@@ -93,13 +100,14 @@ def fetch_entry_metadata(entry):
         "original_language": data.get("original_language") or UNKNOWN_LANGUAGE,
         "release_year": year,
     }
-    return fields, not genre_ids
+    # Only a 404 settles a title; no genres yet is rechecked later.
+    return fields, False
 
 
 def _store(entry, fields, settled):
     """Write fetched metadata onto the row and the in-memory entry. Returns
     whether it was stored."""
-    fields = {**fields, "metadata_settled": settled}
+    fields = {**fields, "metadata_settled": settled, "metadata_checked_at": timezone.now()}
     try:
         WatchedEntry.objects.filter(pk=entry.pk).update(**fields)
     except DBError:
@@ -123,14 +131,17 @@ def backfill_entries(entries):
 
     Returns False when this run leaves titles unfilled because of a failure:
     a fetch or store failed, or a title was skipped while in backoff from an
-    earlier failure. Titles left for a later run only by the MAX_PER_RUN cap
-    don't count. Recommendations use this to mark the compute as failed.
+    earlier failure. Titles left for a later run only by the MAX_PER_RUN cap,
+    or by the user's daily title budget (tmdb_budget), don't count.
+    Recommendations use this to mark the compute as failed.
     """
     needing = [e for e in entries if entry_needs_metadata(e)]
     candidates = [e for e in needing if not _in_backoff(e)]
     complete = len(candidates) == len(needing)
     candidates.sort(key=lambda e: (e.watched_at, e.pk), reverse=True)
     todo = candidates[:MAX_PER_RUN]
+    if todo:
+        todo = todo[:tmdb_budget.take(todo[0].user_id, len(todo))]
     if not todo:
         return complete
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:

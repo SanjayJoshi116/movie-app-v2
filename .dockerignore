@@ -13,3 +13,15 @@ test-results
 playwright-report
 *.md
 backend
+# The frontend build needs src/, public/ and the package files only: keep
+# version control, tool state, specs and docs out of the build context.
+.git
+.github
+.claude
+openspec
+scripts
+docs
+.eslintcache
+.ruff_cache
+.pytest_cache
+coverage

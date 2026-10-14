@@ -55,7 +55,7 @@ At most one metadata backfill SHALL run per user at a time, with a bounded numbe
 - **THEN** all 250 titles have their metadata filled
 
 ### Requirement: Unfillable titles are not retried on every request
-A title that TMDB reports as not found, or for which TMDB lists no genres, SHALL be marked as settled in the database and SHALL NOT be fetched again, by any server worker, before or after a restart. A not-found title is stored with unknown language and release year. A title whose fetch failed for any other reason SHALL NOT be retried until a backoff period has passed.
+A title that TMDB reports as not found SHALL be marked as settled in the database and SHALL NOT be fetched again, by any server worker, before or after a restart. A not-found title is stored with unknown language and release year. A title for which TMDB lists no genres SHALL be stored with what TMDB returned and SHALL NOT be fetched again until 30 days after that answer, by any worker or after a restart; then it SHALL be fetched again, so genres and a release year that TMDB adds later are filled in. A title whose fetch failed for any other reason SHALL NOT be retried until a backoff period has passed.
 
 #### Scenario: Title removed from TMDB
 - **WHEN** a watched title's TMDB lookup returns not found
@@ -69,6 +69,14 @@ A title that TMDB reports as not found, or for which TMDB lists no genres, SHALL
 - **WHEN** a title's metadata fetch times out
 - **THEN** a stats request a minute later does not fetch it again, and one made after the backoff period does
 
+#### Scenario: Unreleased title without genres
+- **WHEN** TMDB returns a watched title with no genres and no release date
+- **THEN** stats requests during the next 30 days don't fetch it again, and the first one after 30 days does, storing the genres and release year TMDB has by then
+
+#### Scenario: Title settled without genres before this change
+- **WHEN** a title was settled earlier because TMDB listed no genres for it (not because it was missing)
+- **THEN** it is fetched once more on a later run, and from then on follows the 30-day recheck
+
 ### Requirement: Marking a title watched keeps supplied metadata
 When a client marks a title watched and supplies its original language or
 release year, the system SHALL store those values on the new watched entry.
@@ -76,3 +84,18 @@ release year, the system SHALL store those values on the new watched entry.
 #### Scenario: Language and year supplied
 - **WHEN** the client marks a movie watched with original language `ja` and release year 2001
 - **THEN** the stored watched entry has language `ja` and release year 2001, and stats count it under Japanese and the 2000s without a backfill
+
+### Requirement: Background title fetches share a per-user daily budget
+TMDB requests made in the background for one user's titles (genre and metadata backfill, and the recommendation cache fill) SHALL together be limited to 1,000 per user per day. The count SHALL be kept in the database and updated atomically, so concurrent processes can't exceed it. When the budget is used up, the remaining titles SHALL be left for the next day, and that SHALL NOT count as a failure of the refresh or backfill.
+
+#### Scenario: Repeated clear-and-import of unknown ids
+- **WHEN** a user repeatedly clears their watched list, imports 500 titles with ids TMDB doesn't know, and opens stats
+- **THEN** no more than 1,000 background title requests are made for that user in one day
+
+#### Scenario: Budget used up during a refresh
+- **WHEN** a user's daily budget runs out while their recommendations are being refreshed
+- **THEN** the refresh still stores its result, using the details already cached
+
+#### Scenario: Next day
+- **WHEN** a user whose budget ran out opens stats the next day
+- **THEN** the remaining titles are fetched again, up to the per-run cap

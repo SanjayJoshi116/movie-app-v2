@@ -181,8 +181,9 @@ All frontend requests — both TMDB lookups and app data (watchlist, watched, ra
 backend/
 ├── cinedb/
 │   ├── settings.py              # Django settings (PostgreSQL, JWT, CORS, email, throttle rates);
-│   │                            #   fails closed: DEBUG off by default, refuses wildcard/empty ALLOWED_HOSTS
-│   └── urls.py                  # Root URL config — mounts /api/
+│   │                            #   fails closed: DEBUG off by default, refuses wildcard/empty ALLOWED_HOSTS,
+│   │                            #   missing EMAIL_BACKEND or FRONTEND_URL
+│   └── urls.py                  # Root URL config — mounts /api/ and /media/ (no Django admin)
 ├── userdata/
 │   ├── models.py                # WatchlistEntry, WatchedEntry (incl. runtime_minutes, platform),
 │   │                            #   RatingEntry, UserList, UserListItem, EpisodeProgress,
@@ -419,7 +420,11 @@ pip install -r backend/requirements.txt -c backend/constraints.txt
 Backend versions are pinned: `requirements.txt` lists the direct dependencies, and the generated `constraints.txt` pins every transitive one. Docker and CI install with the same pair.
 To update one, edit its pin in `requirements.txt` (or `requirements-test.txt`), regenerate `constraints.txt` with the command in its header, then run `pytest backend/`.
 
-3. Set up environment variables — see [Environment Variables](#environment-variables) below.
+3. Set up environment variables — see [Environment Variables](#environment-variables) below. Point `DJANGO_PYTHON` in the root `.env` at the Python you installed the backend requirements into (`npm run dev` falls back to `python` on the `PATH` without it):
+
+```bash
+DJANGO_PYTHON=/path/to/envs/cinedb/python
+```
 
 4. Run Django migrations:
 
@@ -435,7 +440,7 @@ python backend/manage.py compute_recommendations
 
 > This runs automatically at backend startup. Run manually to warm the cache before first use.
 
-6. Start all three servers:
+6. Start the React dev server and Django together:
 
 ```bash
 npm run dev
@@ -451,7 +456,7 @@ The React app runs at `http://localhost:3000`. The Django API runs at `http://lo
 | --------------------------- | ----------------------------------------------------- |
 | `npm run dev`                | Start React and Django together (recommended, same as `npm start`) |
 | `npm start`                 | Same as `npm run dev`                                 |
-| `npm run django`            | Start Django API server only                          |
+| `npm run django`            | Start Django API server only (`scripts/run-django.js`, interpreter from `DJANGO_PYTHON`) |
 | `npm run build`             | Production build                                      |
 | `npm test`                  | Run Jest unit tests                                   |
 | `npx playwright test`       | Run E2E tests (starts React dev server automatically) |
@@ -466,7 +471,7 @@ The React app runs at `http://localhost:3000`. The Django API runs at `http://lo
 
 ### `.env` — Frontend (CRA dev server, project root)
 
-Not required for a default local setup — only needed for LAN access (see `### LAN Access` below). CRA reads it directly (`HOST`, `DANGEROUSLY_DISABLE_HOST_CHECK`); nothing server-side lives here anymore.
+Local development only. `DJANGO_PYTHON` names the Python that `npm run dev`/`npm start`/`npm run django` run Django with (a shell variable of the same name wins; unset means `python` on the `PATH`). `HOST` and `DANGEROUSLY_DISABLE_HOST_CHECK` are only for LAN access (see `### LAN Access` below). CRA reads the file but exposes only `REACT_APP_*` names to the bundle; nothing server-side lives here. See `.env.example`.
 
 ### `backend/.env` — Django
 
@@ -489,7 +494,8 @@ EMAIL_HOST_USER=you@gmail.com
 EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=noreply@cinedb.app
 
-# Must match the port the React app runs on (3000)
+# Base of password-reset links. Required when DEBUG is off (absolute http(s)
+# URL, or the backend refuses to start); DEBUG defaults it to the dev server.
 FRONTEND_URL=http://localhost:3000
 
 # DEBUG defaults to OFF when unset. `npm run dev` and pytest turn it on
@@ -547,6 +553,8 @@ docker compose up --build
 The app will be available at `http://localhost`. If `.env.db` is missing, compose refuses to start and names the file.
 
 ### Upgrading an existing deployment
+
+**`FRONTEND_URL` is required (0.26.0):** with `DEBUG` off the backend refuses to start unless `.env.docker` sets `FRONTEND_URL` to the app's absolute `http(s)` address (the base of password-reset links). The template above already has it.
 
 **Database password moved to `.env.db`** (one-time, before the next `docker compose up`):
 
@@ -706,16 +714,17 @@ backend/userdata/tests/
 │                                   #   reset mail off the request thread, per-username login failure limit
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
 ├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
-├── test_logging.py                 # TMDB key, session_id and request_token redacted from every logger;
+├── test_logging.py                 # TMDB key, (guest_)session_id and request_token redacted from every logger;
 │                                   #   prod 500s logged, 4xx quiet
 ├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images),
 │                                   #   versioned names, old file deleted on commit, failed replace keeps the old photo,
 │                                   #   re-encoded with EXIF stripped and orientation applied
-├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS and implicit EMAIL_BACKEND
-│                                   #   refused, DB password fallback
+├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS, implicit EMAIL_BACKEND and
+│                                   #   missing/malformed FRONTEND_URL refused, DB password fallback
+├── test_app_config.py              # No Django admin; backend/.env.example lists every variable settings.py reads
 ├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache,
 │                                   #   immutable /static/ cache (not on 404s), gzip off for /api/ and /media/,
-│                                   #   access log redacts reset links and TMDB callback tokens
+│                                   #   access log redacts reset links and TMDB callback tokens, server_tokens off
 ├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
 ├── test_local_dates.py            # X-Timezone parsing/fallback (incl. tzdata directory names), CORS preflight,
 │                                  #   watched_tz storage, local stats/notification days
@@ -730,11 +739,17 @@ backend/userdata/tests/
 │                                   #   left out of the TMDB average
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
 │                                   #   connect bound to the requesting user (single-use token), reconnect revokes
+├── test_rec_quality.py             # Taste clusters skip genre-less/disliked titles, split-type genre fallback,
+│                                   #   rated titles excluded, 30-day genre recheck + migration, newest compute wins
+├── test_rec_refresh_bounds.py      # Failure backoff, 200-title fill cap, per-user daily title budget (atomic),
+│                                   #   warm-up order, 4 concurrent refreshes, thread-start failure
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
 │                                   #   cache DB access off worker threads, outage guard, cross-process status
 ├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
 ├── test_notifications.py           # New-release notifications (every followed person, credits cache),
 │                                   #   40-person/15s poll budget pinned under gunicorn's timeout
+├── test_notifications_cache.py     # Person credits in their own cache alias, polls read recent summaries only,
+│                                   #   same-day release after mark-seen is unread
 ├── test_metadata_backfill.py       # One backfill per user, 100 titles per run, 404 settled in the DB
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
@@ -747,9 +762,12 @@ backend/userdata/tests/
 ├── test_genre_families.py          # Movie/TV genre id families and per-type discover params
 ├── test_recommendation_genres.py   # Family-based counts, no movie genre sent to TV discover, low ratings don't seed
 ├── test_startup_warmup.py          # Warm-up hang or non-zero exit never blocks startup
-├── test_compose_config.py          # db reads only .env.db, backend/.dockerignore excludes env copies
-├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins
-├── test_e2e_mock_shapes.py         # Python e2e mock records match the serializers and a real /api/stats/
+├── test_compose_config.py          # db reads only .env.db, backend/.dockerignore excludes env copies,
+│                                   #   tests and dev-only files; every FROM/image: pinned by digest
+├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins; pip
+│                                   #   playwright equals @playwright/test
+├── test_e2e_mock_shapes.py         # Python e2e mock records and the TS DTO types (src/types/domain.ts)
+│                                   #   match the serializers and a real /api/stats/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings/list items: create-only, timestamps,
@@ -830,11 +848,13 @@ cd e2e/python
 pytest
 ```
 
-> Requires `pip install -r e2e/python/requirements.txt` and `playwright install --with-deps chromium`.
+> Requires `pip install -r e2e/python/requirements.txt -c e2e/python/constraints.txt` and `playwright install --with-deps chromium`.
 
 ### CI
 
-GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded report. A newer push to a pull request cancels that PR's older run.
+GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded artifact (the TS report, or the Python job's `test-results` traces, uploaded only on failure). A newer push to a pull request cancels that PR's older run.
+
+Everything CI runs is pinned: actions by commit SHA (version in a comment), the workflow token is read-only (`permissions: contents: read`), npm tools (including `wait-on`) through the lockfile, the Python e2e environment through `e2e/python/constraints.txt`, and base images by exact version and digest. Bumping any of them is a deliberate edit; see CLAUDE.md for how.
 
 Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
 

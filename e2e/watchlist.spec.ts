@@ -1,12 +1,12 @@
 import { test, expect, mockAuthedBase, paginated } from "./fixtures";
 import type { WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
+import type { TMDBMovieSummary } from "../src/types/tmdb";
 
 const MOCK_MOVIE = {
   id: 550, title: "Fight Club", overview: "...", poster_path: "/poster.jpg",
   backdrop_path: null, release_date: "1999-10-15", vote_average: 8.4,
-  vote_count: 1000, genre_ids: [18], popularity: 80, adult: false,
-  original_language: "en", original_title: "Fight Club", video: false,
-};
+  vote_count: 1000, genre_ids: [18], popularity: 80, original_language: "en",
+} satisfies TMDBMovieSummary;
 
 const FIGHT_CLUB_ENTRY = {
   id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club",

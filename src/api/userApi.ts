@@ -355,6 +355,14 @@ export const bulkMarkWatched = (
 /** Server-side cap per bulk request (MAX_BULK_ENTRIES in bulk_import.py). */
 export const BULK_CHUNK_SIZE = 500;
 
+/**
+ * Body-size cap per bulk request, in UTF-8 bytes of JSON. Django refuses bodies
+ * over DATA_UPLOAD_MAX_MEMORY_SIZE (2.5 MB, its default) with a 400, and 500
+ * ratings with long reviews reach ~10 MB, so a chunk also ends here. The gap
+ * leaves room for the wrapper and any difference from axios's serialization.
+ */
+export const BULK_MAX_BYTES = 2_000_000;
+
 export interface BulkImportEntry {
   mediaId: number;
   mediaType?: "movie" | "tv";
@@ -378,9 +386,10 @@ export interface BulkImportResult {
 }
 
 /**
- * Import any number of entries through a bulk endpoint, BULK_CHUNK_SIZE per
- * request, sequentially. Each request is all-or-nothing server-side, so a
- * rejected chunk counts all its entries as failed and the rest still go through.
+ * Import any number of entries through a bulk endpoint, sequentially, at most
+ * BULK_CHUNK_SIZE entries and BULK_MAX_BYTES per request. Each request is
+ * all-or-nothing server-side, so a rejected chunk counts all its entries as
+ * failed and the rest still go through.
  */
 export function bulkImport(
   kind: "watched" | "watchlist" | "ratings",
@@ -391,8 +400,8 @@ export function bulkImport(
 }
 
 /**
- * Bulk-add items to one list (backup restore, CSV list import): 500 per
- * request instead of one POST per item, with each item's `addedAt` kept.
+ * Bulk-add items to one list (backup restore, CSV list import): chunked like
+ * bulkImport instead of one POST per item, with each item's `addedAt` kept.
  */
 export function bulkAddListItems(
   listId: number,
@@ -428,10 +437,46 @@ export interface BulkOptions {
   guard?: SessionGuard;
 }
 
+/** UTF-8 length of a string, without TextEncoder (absent in the Jest jsdom env). */
+function utf8Length(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code < 0xdc00) {
+      bytes += 4; // a surrogate pair: one 4-byte code point
+      i += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+/** `{"entries":[` + `]}`; other body fields are covered by BULK_MAX_BYTES's margin. */
+const BULK_WRAPPER_BYTES = 16;
+
+/** Consecutive slices of `entries`, each within BULK_CHUNK_SIZE and BULK_MAX_BYTES (one entry is never split). */
+function bulkChunks<T>(entries: T[]): T[][] {
+  const chunks: T[][] = [];
+  let chunk: T[] = [];
+  let bytes = BULK_WRAPPER_BYTES;
+  for (const entry of entries) {
+    const size = utf8Length(JSON.stringify(entry)) + 1; // + its comma
+    if (chunk.length > 0 && (chunk.length >= BULK_CHUNK_SIZE || bytes + size > BULK_MAX_BYTES)) {
+      chunks.push(chunk);
+      chunk = [];
+      bytes = BULK_WRAPPER_BYTES;
+    }
+    chunk.push(entry);
+    bytes += size;
+  }
+  if (chunk.length > 0) chunks.push(chunk);
+  return chunks;
+}
+
 async function postBulkChunks<T>(url: string, entries: T[], { guard }: BulkOptions = {}): Promise<BulkImportResult> {
   const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
-  for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
-    const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
+  for (const chunk of bulkChunks(entries)) {
     // Outside the try: a session that ended isn't a failed chunk, it ends the import.
     guard?.check();
     try {

@@ -1,4 +1,5 @@
 import { test, expect, mockAuthedBase } from "./fixtures";
+import type { TMDBMovieSummary } from "../src/types/tmdb";
 
 const MOCK_MOVIES = Array.from({ length: 6 }, (_, i) => ({
   id: 100 + i,
@@ -11,11 +12,8 @@ const MOCK_MOVIES = Array.from({ length: 6 }, (_, i) => ({
   vote_count: 500,
   genre_ids: [28],
   popularity: 100,
-  adult: false,
   original_language: "en",
-  original_title: `Movie ${i + 1}`,
-  video: false,
-}));
+} satisfies TMDBMovieSummary));
 
 test.beforeEach(async ({ page }) => {
   await mockAuthedBase(page);

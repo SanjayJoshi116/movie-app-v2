@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
@@ -34,7 +35,6 @@ if not DEBUG and SECRET_KEY == "django-insecure-dev-key-change-in-production":
     raise ImproperlyConfigured("Set SECRET_KEY env var before running in production.")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -131,7 +131,7 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 # collectstatic target. Nothing serves /static/ in production (nginx sends it
-# to the SPA, admin isn't routed, the API is JSON-only), so it's never run in
+# to the SPA, there's no admin, the API is JSON-only), so it's never run in
 # the image — this just keeps the command working.
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
@@ -212,13 +212,33 @@ TMDB_CACHE_PRODUCTION = {
     "LOCATION": "tmdb_proxy_cache",
     "OPTIONS": {"MAX_ENTRIES": 2000},
 }
+# Followed people's TMDB credits (social_views): their own alias too. In
+# `default` they outnumbered the throttle counters, and past MAX_ENTRIES every
+# cull dropped a third of `default`, counters first (they sort first). In `tmdb`
+# a big follow list and the proxy would cull each other. Two small rows per
+# person (full trimmed list + recent summary), so 10k entries ~ 5k people.
+PERSON_CREDITS_CACHE_DEV = {
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    "LOCATION": "person-credits",
+    "OPTIONS": {"MAX_ENTRIES": 2000},
+}
+PERSON_CREDITS_CACHE_PRODUCTION = {
+    "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+    "LOCATION": "person_credits_cache",
+    "OPTIONS": {"MAX_ENTRIES": 10_000},
+}
 if DEBUG:
     CACHES = {
         "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
         "tmdb": TMDB_CACHE_DEV,
+        "person_credits": PERSON_CREDITS_CACHE_DEV,
     }
 else:
-    CACHES = {"default": PRODUCTION_CACHE, "tmdb": TMDB_CACHE_PRODUCTION}
+    CACHES = {
+        "default": PRODUCTION_CACHE,
+        "tmdb": TMDB_CACHE_PRODUCTION,
+        "person_credits": PERSON_CREDITS_CACHE_PRODUCTION,
+    }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
@@ -252,7 +272,17 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "no
 # Seconds before an SMTP connect or socket operation gives up. Without it a
 # stalled mail server holds a reset-mail thread forever.
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+# Base of password-reset links. Fail closed with DEBUG off: an unset value used
+# to default to localhost, so production reset emails pointed at nothing. The
+# trailing slash is dropped so links never read "//reset-password".
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000" if DEBUG else "").strip().rstrip("/")
+if not DEBUG:
+    _frontend = urlsplit(FRONTEND_URL)
+    if _frontend.scheme not in ("http", "https") or not _frontend.netloc:
+        raise ImproperlyConfigured(
+            "FRONTEND_URL must be the app's absolute http(s) address when DEBUG is off "
+            "(e.g. FRONTEND_URL=https://cinedb.example.com); password-reset links are built from it."
+        )
 
 # Reset links expire after 1 hour (Django default is 3 days); the reset
 # email builds its "expires in" sentence from this value.

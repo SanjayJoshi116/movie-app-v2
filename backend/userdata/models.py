@@ -37,6 +37,9 @@ class WatchedEntry(models.Model):
     # TMDB answered with no genres (a 404, or a title it lists none for), so the
     # metadata backfill never fetches this entry again. See metadata_backfill.py.
     metadata_settled = models.BooleanField(default=False)
+    # When metadata was last fetched. A title TMDB lists without genres isn't
+    # settled: it's fetched again METADATA_RECHECK_DAYS after this.
+    metadata_checked_at = models.DateTimeField(null=True, blank=True)
     watched_at = models.DateTimeField(default=timezone.now, db_index=True)
     # IANA zone the watch was logged in (decides its day on every device);
     # blank for entries logged before zones were recorded. See timezones.py.
@@ -117,6 +120,9 @@ class UserRecommendationCache(models.Model):
     # Set when a refresh starts on any process, cleared when it ends; see
     # recommendations.REFRESH_STATUS_WINDOW.
     refreshing_since = models.DateTimeField(null=True, blank=True)
+    # When the compute that produced this row started: an older compute
+    # finishing later must not replace it (save_recommendations).
+    source_started_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} — rec cache ({self.computed_at:%Y-%m-%d %H:%M})"
@@ -185,6 +191,10 @@ class EpisodeProgress(models.Model):
 class NotificationCheckpoint(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_checkpoint")
     last_seen_at = models.DateTimeField()
+    # [id, media_type] of the items dated the mark-seen day (in the device's
+    # zone) that the user had then. A release dated that day that appears
+    # later isn't among them, so it still shows as unread.
+    seen_same_day = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.user.username} — notifications last seen {self.last_seen_at}"
@@ -205,3 +215,15 @@ class LoginFailure(models.Model):
 
     def __str__(self):
         return f"{self.key[:12]}… — {self.count} since {self.window_start}"
+
+
+class TmdbTitleBudget(models.Model):
+    """Background TMDB title fetches spent for one user today (UTC): metadata
+    backfill and the recommendation cache fill share it (tmdb_budget.take)."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tmdb_title_budget")
+    day = models.DateField()
+    used = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"{self.user_id}: {self.used} title fetches on {self.day}"

@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect, mockAuthedBase, paginated } from "./fixtures";
+import type { TMDBMovieSummary } from "../src/types/tmdb";
 
 // accessibility spec: Calendar release cards are real links (modifier click
 // opens a new tab), and a focused card link shows its outline in light theme.
@@ -9,8 +10,8 @@ const releaseDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
 const UPCOMING = {
   id: 4242, title: "Upcoming Film", overview: "", poster_path: null, backdrop_path: null,
   release_date: releaseDate, vote_average: 7, vote_count: 10, genre_ids: [18], popularity: 50,
-  adult: false, original_language: "en", original_title: "Upcoming Film", video: false,
-};
+  original_language: "en",
+} satisfies TMDBMovieSummary;
 
 async function mockCalendar(page: Page) {
   await page.route("**/api/tmdb/discover/movie**", (route) =>

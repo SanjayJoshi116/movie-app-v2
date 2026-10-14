@@ -1,6 +1,7 @@
 import { test, expect, mockAuthedBase, paginated, tvDetail } from "./fixtures";
 import type { FollowedPersonEntry } from "../src/api/userApi";
 import type { RatingEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
+import type { TMDBPersonSummary } from "../src/types/tmdb";
 
 // write-feedback spec: success only after the server confirms, and a failed
 // write leaves the UI as it was. Each failure answers 500 with an empty body,
@@ -11,7 +12,9 @@ const FIGHT_CLUB = {
   posterPath: null, voteAverage: 8.4, addedAt: "2024-01-15T10:00:00Z",
 } satisfies WatchlistEntryDTO;
 
-const PERSON = { id: 7, name: "Greta Gerwig", profile_path: null, known_for_department: "Directing", popularity: 10 };
+const PERSON = {
+  id: 7, name: "Greta Gerwig", profile_path: null, known_for_department: "Directing", popularity: 10, known_for: [],
+} satisfies TMDBPersonSummary;
 
 const errorToast = (page: import("@playwright/test").Page) => page.locator(".ant-message-error");
 const successToast = (page: import("@playwright/test").Page) => page.locator(".ant-message-success");

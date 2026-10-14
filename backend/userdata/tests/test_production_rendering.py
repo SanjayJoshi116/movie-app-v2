@@ -10,6 +10,7 @@ PROD = {
     "SECRET_KEY": "test-only-not-the-default-key",
     "ALLOWED_HOSTS": "testserver",
     "EMAIL_BACKEND": "django.core.mail.backends.locmem.EmailBackend",
+    "FRONTEND_URL": "https://cinedb.example.com",
 }
 # Same isolation as test_settings_fail_closed: dotenv off, so a developer's
 # backend/.env with DEBUG=True can't turn the production cases into DEBUG ones.

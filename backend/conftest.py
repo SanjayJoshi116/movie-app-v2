@@ -3,9 +3,11 @@ from django.core.cache import caches
 
 
 @pytest.fixture(autouse=True)
-def _empty_tmdb_proxy_cache():
-    """Each test sees an empty TMDB proxy cache, so a response cached by one
-    test can't hide the mocked upstream call another test asserts on."""
-    caches["tmdb"].clear()
+def _empty_tmdb_caches():
+    """Each test sees empty TMDB proxy and person-credits caches, so a response
+    cached by one test can't hide the mocked upstream call another asserts on."""
+    for alias in ("tmdb", "person_credits"):
+        caches[alias].clear()
     yield
-    caches["tmdb"].clear()
+    for alias in ("tmdb", "person_credits"):
+        caches[alias].clear()

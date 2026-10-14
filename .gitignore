@@ -48,7 +48,8 @@ desktop.ini
 # .env.db.example). .env.docker holds real secrets (TMDB key, mail password) and
 # .env.db the database password; .env.* also catches the copies people make
 # while editing (.env.docker.bak, .env.local, .env.old, ...). The same patterns
-# are in both .dockerignore files, so no copy ends up in an image either.
+# are in both .dockerignore files, so no copy ends up in an image either. The
+# root .env also holds DJANGO_PYTHON, a machine-specific interpreter path.
 .env
 .env.*
 !.env.example

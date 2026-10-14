@@ -15,3 +15,12 @@ db.sqlite3
 # Uploaded files belong in the media_data volume, never in an image.
 media/
 staticfiles/
+# Tests and dev-only startup files never run in the image (the entrypoint
+# runs manage.py and gunicorn directly).
+userdata/tests/
+conftest.py
+pytest.ini
+pytest_dev_env.py
+requirements-test.txt
+start.py
+.ruff_cache/

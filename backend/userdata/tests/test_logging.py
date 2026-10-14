@@ -107,8 +107,17 @@ class CredentialRedactionTests(APITestCase):
         out = self._format('payload {"session_id": "SECRET789"}')
         self.assertNotIn("SECRET789", out)
 
+    def test_guest_session_id_query_param_and_json(self):
+        out = self._format("401 for url: https://api.tmdb.org/3/movie/1/rating?guest_session_id=GUEST1&x=1")
+        self.assertNotIn("GUEST1", out)
+        self.assertIn("guest_session_id=***&x=1", out)
+        out = self._format('payload {"guest_session_id": "GUEST2"}')
+        self.assertNotIn("GUEST2", out)
+
     def test_unrelated_text_unchanged(self):
         self.assertEqual(self._format("a_session_idea=1 is fine"), "a_session_idea=1 is fine")
+        # A name that only ends in one of the credential names isn't one.
+        self.assertEqual(self._format("xsession_id=1 mysession_id=2"), "xsession_id=1 mysession_id=2")
 
     @patch("userdata.tmdb_proxy_views._session.get", side_effect=__import__("requests").ConnectionError(
         "Max retries exceeded with url: /3/account?session_id=PROXYSECRET"

@@ -5,7 +5,14 @@ from pathlib import Path
 from unittest import TestCase
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-PROD = {"SECRET_KEY": "test-only-not-the-default-key", "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend"}
+PROD = {
+    "SECRET_KEY": "test-only-not-the-default-key",
+    "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+    "FRONTEND_URL": "https://cinedb.example.com",
+}
+# Every variable a case sets or deliberately leaves unset; the probe's env drops
+# the developer's own values for all of them.
+CONTROLLED = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "FRONTEND_URL")
 # dotenv is disabled before settings import: load_dotenv() never overrides
 # variables that are set, but it *fills in* ones we deliberately left unset —
 # so a developer's backend/.env with DEBUG=True (the documented local setup)
@@ -18,8 +25,8 @@ PROBE = (
 
 def _import_settings(**env):
     """Import settings in a fresh interpreter whose environment is exactly
-    os.environ minus DEBUG/ALLOWED_HOSTS/EMAIL_BACKEND, plus `env` (backend/.env ignored)."""
-    full_env = {k: v for k, v in os.environ.items() if k not in ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND")}
+    os.environ minus CONTROLLED, plus `env` (backend/.env ignored)."""
+    full_env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
     full_env.update(env)
     return subprocess.run(
         [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=full_env,
@@ -75,9 +82,8 @@ class FailClosedSettingsTests(TestCase):
 
     def test_default_secret_key_refused_without_debug(self):
         # SECRET_KEY unset → the built-in development default, which signs JWTs.
-        unset = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "SECRET_KEY")
-        env = {k: v for k, v in os.environ.items() if k not in unset}
-        env.update(EMAIL_BACKEND=PROD["EMAIL_BACKEND"], ALLOWED_HOSTS="localhost")
+        env = {k: v for k, v in os.environ.items() if k not in (*CONTROLLED, "SECRET_KEY")}
+        env.update(EMAIL_BACKEND=PROD["EMAIL_BACKEND"], FRONTEND_URL=PROD["FRONTEND_URL"], ALLOWED_HOSTS="localhost")
         res = subprocess.run(
             [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=env,
             capture_output=True, text=True, timeout=60,
@@ -105,6 +111,46 @@ class FailClosedSettingsTests(TestCase):
         )
         self.assertEqual(res.returncode, 0, res.stderr)
 
+    def test_missing_frontend_url_refused_without_debug(self):
+        env = {k: v for k, v in PROD.items() if k != "FRONTEND_URL"}
+        for extra in ({}, {"FRONTEND_URL": ""}, {"FRONTEND_URL": "   "}):
+            with self.subTest(extra=extra):
+                res = _import_settings(**env, **extra, ALLOWED_HOSTS="localhost")
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("ImproperlyConfigured", res.stderr)
+                self.assertIn("FRONTEND_URL", res.stderr)
+
+    def test_malformed_frontend_url_refused_without_debug(self):
+        for url in ("cinedb.example.com", "ftp://cinedb.example.com", "https://", "/reset"):
+            with self.subTest(url=url):
+                res = _import_settings(**{**PROD, "FRONTEND_URL": url}, ALLOWED_HOSTS="localhost")
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("FRONTEND_URL", res.stderr)
+
+    def test_frontend_url_trailing_slash_dropped(self):
+        probe = PROBE.replace("print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.FRONTEND_URL)")
+        for debug in ("True", "False"):
+            with self.subTest(debug=debug):
+                env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+                env.update({**PROD, "DEBUG": debug, "ALLOWED_HOSTS": "localhost", "FRONTEND_URL": "https://cinedb.example.com/"})
+                res = subprocess.run(
+                    [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=env,
+                    capture_output=True, text=True, timeout=60,
+                )
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertEqual(res.stdout.strip(), "https://cinedb.example.com")
+
+    def test_debug_defaults_frontend_url_to_dev_server(self):
+        probe = PROBE.replace("print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.FRONTEND_URL)")
+        env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+        env["DEBUG"] = "True"
+        res = subprocess.run(
+            [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=env,
+            capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "http://localhost:3000")
+
     def test_debug_defaults_to_console_email(self):
         probe = PROBE.replace("print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.EMAIL_BACKEND)")
         full_env = {k: v for k, v in os.environ.items() if k not in ("DEBUG", "EMAIL_BACKEND")}
@@ -128,7 +174,7 @@ class PersistentConnectionSettingsTests(TestCase):
 
     def _conn_max_age(self, **env):
         full_env = {k: v for k, v in os.environ.items()
-                    if k not in ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "CONN_MAX_AGE")}
+                    if k not in (*CONTROLLED, "CONN_MAX_AGE")}
         full_env.update(env)
         res = subprocess.run(
             [sys.executable, "-c", CONN_PROBE], cwd=BACKEND_DIR, env=full_env,

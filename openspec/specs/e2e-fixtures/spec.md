@@ -47,7 +47,7 @@ notifications mark-seen), matching any query string the app appends.
 - **THEN** both the poll and the mark-seen request are answered by base-fixture mocks
 
 ### Requirement: Mocked records use the API's field names
-Every e2e mock record standing in for an API resource (user, watchlist entry, watched entry, rating, stats) SHALL carry the field names the API actually returns for that resource, with values in the formats the API uses. It SHALL NOT carry fields the API no longer sends. An automated check SHALL fail when a mock record's fields differ from the API's.
+Every e2e mock record standing in for an API resource (user, watchlist entry, watched entry, rating, stats) SHALL carry the field names the API actually returns for that resource, with values in the formats the API uses. It SHALL NOT carry fields the API no longer sends. An automated check SHALL fail when a mock record's fields differ from the API's. For the TypeScript e2e suite, whose mocks are type-checked against the app's API record types, the automated check SHALL compare those types' fields with the API's, so a mock can't agree with a stale type.
 
 #### Scenario: Serializer gains a field
 - **WHEN** a field is added to or removed from the watched-entry API response and the e2e watched mock isn't updated
@@ -56,6 +56,10 @@ Every e2e mock record standing in for an API resource (user, watchlist entry, wa
 #### Scenario: Stats month format
 - **WHEN** an e2e test renders the stats page from the shared stats mock
 - **THEN** the mocked monthly activity uses the same month label format as the API, and the page shows no `NaN`
+
+#### Scenario: API type falls behind the serializer
+- **WHEN** a field is added to the rating API response and the app's TypeScript rating record type isn't updated
+- **THEN** the backend test suite fails, naming the type and the missing field
 
 ### Requirement: E2E assertions cannot pass without checking anything
 An e2e test SHALL NOT make an assertion conditional on whether an element exists at that instant. It SHALL wait for the state it checks rather than sleep for a fixed time. An assertion that something is absent, empty or zero SHALL only run after the page has finished loading the data it depends on. A test that checks an error state SHALL assert the visible error UI, not merely that the page rendered.
