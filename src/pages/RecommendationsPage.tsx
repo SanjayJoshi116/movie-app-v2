@@ -98,7 +98,7 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
                         setShowMarkWatchedModal(true);
                       }
                     }}
-                    aria-label={isWatched(item.id, item.type) ? "Unmark watched" : "Mark as watched"}
+                    aria-label={`${isWatched(item.id, item.type) ? "Unmark watched" : "Mark as watched"}: ${item.title}`}
                   />
                 </Tooltip>
                 <Tooltip title={isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}>
@@ -117,7 +117,7 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
                         showError(getApiError(err, "Failed to update watchlist."));
                       }
                     }}
-                    aria-label={isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-label={`${isInWatchlist(item.id, item.type) ? "Remove from watchlist" : "Add to watchlist"}: ${item.title}`}
                   />
                 </Tooltip>
                 <Button
@@ -176,6 +176,8 @@ const REC_CACHE_KEY = "cinedb_recommendations";
 
 /** A polled group: still computing, answered ready, or polling stopped first. */
 type GroupState = "pending" | "ready" | "gaveUp";
+type RecGroup = "forYou" | "personalized" | "followed";
+const NO_FAILED_GROUPS: ReadonlySet<RecGroup> = new Set();
 const REC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface RecCache {
@@ -211,7 +213,7 @@ function readRecCache(): RecCache | null {
 function RecommendationsPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
-  const { watchedList, isDataLoading } = useAppContext();
+  const { watchedList, isDataLoading, watchedError, reloadWatched } = useAppContext();
 
   const [search, setSearch] = useState(() => sessionStorage.getItem(SS_SEARCH) ?? "");
   const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(() => (sessionStorage.getItem(SS_TYPE_FILTER) as LibraryTypeFilter) ?? "all");
@@ -237,10 +239,14 @@ function RecommendationsPage() {
   const [forYouState, setForYouState] = useState<GroupState>(initialGroup);
   const [personalizedState, setPersonalizedState] = useState<GroupState>(initialGroup);
   const [followedAnswered, setFollowedAnswered] = useState(Boolean(cache?.complete));
-  const [fetchError, setFetchError] = useState(false);
+  // Groups whose request failed in this visit. A failed group stays "pending",
+  // but only the groups still being prepared count as computing.
+  const [failedGroups, setFailedGroups] = useState<ReadonlySet<RecGroup>>(NO_FAILED_GROUPS);
+  const fetchError = failedGroups.size > 0;
   const [retryToken, setRetryToken] = useState(0);
-  // A failed request leaves its group "pending"; the error UI wins then.
-  const computing = !fetchError && (forYouState === "pending" || personalizedState === "pending");
+  const computing =
+    (forYouState === "pending" && !failedGroups.has("forYou")) ||
+    (personalizedState === "pending" && !failedGroups.has("personalized"));
   const gaveUp = forYouState === "gaveUp" || personalizedState === "gaveUp";
   const hasWatched = watchedList.length > 0;
   // An incomplete snapshot (left mid-computation) is shown but not trusted:
@@ -279,8 +285,9 @@ function RecommendationsPage() {
   useEffect(() => {
     if (isDataLoading || !hasWatched || hasFetched.current) return;
     hasFetched.current = true;
-    setFetchError(false);
+    setFailedGroups(NO_FAILED_GROUPS);
     let cancelled = false;
+    const fail = (group: RecGroup) => setFailedGroups((prev) => new Set(prev).add(group));
     let pending = 3;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const done = () => { if (--pending === 0 && !cancelled) setLoading(false); };
@@ -294,6 +301,7 @@ function RecommendationsPage() {
       fetchFn: () => Promise<{ data: { status: string; sections: PersonalizedRecSection[] } }>,
       setter: (s: PersonalizedRecSection[]) => void,
       setGroupState: (v: GroupState) => void,
+      group: RecGroup,
       attempt: number,
     ) {
       fetchFn()
@@ -305,7 +313,7 @@ function RecommendationsPage() {
           } else if (attempt < MAX_POLLS) {
             setGroupState("pending");
             timeouts.push(setTimeout(
-              () => pollRecommendation(fetchFn, setter, setGroupState, attempt + 1),
+              () => pollRecommendation(fetchFn, setter, setGroupState, group, attempt + 1),
               POLL_INTERVAL_MS,
             ));
           } else {
@@ -313,16 +321,16 @@ function RecommendationsPage() {
             setGroupState("gaveUp");
           }
         })
-        .catch(() => { if (!cancelled) setFetchError(true); })
+        .catch(() => { if (!cancelled) fail(group); })
         .finally(() => { if (attempt === 0) done(); });
     }
 
-    pollRecommendation(fetchForYouRecommendations, setSections, setForYouState, 0);
-    pollRecommendation(fetchPersonalizedRecommendations, setPersonalizedSections, setPersonalizedState, 0);
+    pollRecommendation(fetchForYouRecommendations, setSections, setForYouState, "forYou", 0);
+    pollRecommendation(fetchPersonalizedRecommendations, setPersonalizedSections, setPersonalizedState, "personalized", 0);
 
     fetchFollowedPeopleRecommendations()
       .then(res => { if (!cancelled) { setFollowedSections(res.data); setFollowedAnswered(true); } })
-      .catch(() => { if (!cancelled) setFetchError(true); })
+      .catch(() => { if (!cancelled) fail("followed"); })
       .finally(done);
 
     return () => {
@@ -334,7 +342,7 @@ function RecommendationsPage() {
 
   const retry = () => {
     hasFetched.current = false;
-    setFetchError(false);
+    setFailedGroups(NO_FAILED_GROUPS);
     setForYouState("pending");
     setPersonalizedState("pending");
     setFollowedAnswered(false);
@@ -389,6 +397,11 @@ function RecommendationsPage() {
 
       {isDataLoading ? (
         <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
+      ) : watchedError != null && watchedList.length === 0 ? (
+        <LoadError
+          title="Couldn't load your watched titles"
+          onRetry={() => { reloadWatched().catch(() => {}); }}
+        />
       ) : watchedList.length === 0 ? (
         <Empty
           image={<BulbOutlined style={{ fontSize: 48, color: RATING_GOLD }} />}
@@ -411,6 +424,15 @@ function RecommendationsPage() {
         <>
           {loading && totalItems === 0 && (
             <Spin size="large" style={{ display: "block", margin: "80px auto" }} />
+          )}
+          {fetchError && (totalItems > 0 || computing) && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Some recommendations couldn't be loaded."
+              action={<Button size="small" onClick={retry}>Retry</Button>}
+            />
           )}
           {gaveUp && !fetchError && (
             <Alert

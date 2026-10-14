@@ -1,4 +1,6 @@
-import userApi, { bulkAddListItems, bulkImport, BULK_CHUNK_SIZE, type BulkImportEntry } from "../userApi";
+import userApi, {
+  bindSessionUser, bulkAddListItems, bulkImport, BULK_CHUNK_SIZE, sessionGuard, SessionEndedError, type BulkImportEntry,
+} from "../userApi";
 
 function entries(n: number): BulkImportEntry[] {
   return Array.from({ length: n }, (_, i) => ({ mediaId: i + 1, title: `T${i + 1}` }));
@@ -52,5 +54,43 @@ describe("bulkAddListItems", () => {
     const result = await bulkAddListItems(7, entries(1200));
     expect(post.mock.calls.map(([url]) => url)).toEqual(Array(3).fill("/lists/7/items/bulk/"));
     expect(result).toEqual({ added: 1200, skipped: 0, failed: 0 });
+  });
+});
+
+describe("bulk imports with a session guard", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    bindSessionUser(null);
+  });
+
+  it("sends no further chunk once the session that started the import has ended", async () => {
+    bindSessionUser(1);
+    const guard = sessionGuard();
+    const post = jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => {
+      // Sign out, and in as someone else, while the first chunk is in flight.
+      bindSessionUser(2);
+      return { data: { added: (body as { entries: unknown[] }).entries.length, skipped: 0 } } as never;
+    });
+    await expect(bulkImport("watched", entries(1200), { guard })).rejects.toBeInstanceOf(SessionEndedError);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends nothing if the session ended before the import started writing", async () => {
+    bindSessionUser(1);
+    const guard = sessionGuard();
+    bindSessionUser(null);
+    const post = jest.spyOn(userApi, "post");
+    await expect(bulkAddListItems(7, entries(3), { guard })).rejects.toBeInstanceOf(SessionEndedError);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("imports normally while the session is unchanged", async () => {
+    bindSessionUser(1);
+    const guard = sessionGuard();
+    jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => (
+      { data: { added: (body as { entries: unknown[] }).entries.length, skipped: 0 } } as never
+    ));
+    expect(await bulkImport("watchlist", entries(600), { guard })).toEqual({ added: 600, skipped: 0, failed: 0 });
+    expect(guard.isCurrent()).toBe(true);
   });
 });

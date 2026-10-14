@@ -112,7 +112,8 @@ function ListsPage() {
         />
       )}
 
-      {isLoading ? (
+      {/* Only the first load blanks the page: a background reload keeps the grid. */}
+      {isLoading && lists.length === 0 ? (
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
           <Spin size="large" />
         </div>
@@ -160,26 +161,30 @@ function ListsPage() {
                   </CardLink>
                 }
                 actions={[
-                  <Popconfirm
-                    key="delete"
-                    title={`Delete "${list.name}"?`}
-                    description="This will permanently remove the list and all its items."
-                    onConfirm={async () => {
-                      try {
-                        await deleteList(list.id);
-                        showSuccess("List deleted");
-                      } catch (err) {
-                        showError(getApiError(err, "Failed to delete list."));
-                      }
-                    }}
-                    okText="Delete"
-                    okType="danger"
-                    cancelText="Cancel"
-                  >
-                    <Button type="link" danger icon={<DeleteOutlined />} size="small" onClick={(e) => e.stopPropagation()}>
-                      Delete
-                    </Button>
-                  </Popconfirm>,
+                  // The confirm's popup is portaled, but React events still
+                  // bubble to the card's onClick: stop OK/Cancel here, or
+                  // either one opens the list.
+                  <span key="delete" onClick={(e) => e.stopPropagation()}>
+                    <Popconfirm
+                      title={`Delete "${list.name}"?`}
+                      description="This will permanently remove the list and all its items."
+                      onConfirm={async () => {
+                        try {
+                          await deleteList(list.id);
+                          showSuccess("List deleted");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to delete list."));
+                        }
+                      }}
+                      okText="Delete"
+                      okType="danger"
+                      cancelText="Cancel"
+                    >
+                      <Button type="link" danger icon={<DeleteOutlined />} size="small">
+                        Delete
+                      </Button>
+                    </Popconfirm>
+                  </span>,
                 ]}
               >
                 <Typography.Text strong style={{ fontSize: FONT_SIZE.emphasis, display: "block", marginBottom: 4 }}>

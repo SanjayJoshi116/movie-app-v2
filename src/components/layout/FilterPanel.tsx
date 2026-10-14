@@ -15,10 +15,14 @@ import {
 import type { FilterValues, SortOption } from "../../types";
 import { useAppContext } from "../../context/useAppContext";
 import { movieGenres, tvGenres } from "../../constants/genres";
+import { genresFor } from "../../utils/browseFilters";
 import { FONT_SIZE } from "../../constants/typography";
 import { RATING_GOLD } from "../../constants/ui";
 
 const { CheckableTag } = Tag;
+
+// TMDB lists announced titles a few years out; nothing is dated further.
+const MAX_YEAR = new Date().getFullYear() + 5;
 
 interface Language {
   code: string;
@@ -75,7 +79,12 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
   // applied on its own refetched the grid, then Apply fetched it again.
   const [filters, setFilters] = useState<FilterValues>(() => ({ ...DEFAULT_FILTERS, ...appliedFilters }));
   const [sortBy, setSortBy] = useState<SortOption>(appliedSortBy);
-  const [draftGenres, setDraftGenres] = useState<number[]>(selectedGenres);
+  // Only this media type's genres: if the panel (re)mounts open as the scope
+  // changes, its seed runs before App's genre reset and would carry the
+  // previous scope's genres into Apply.
+  const seedGenres = () => genresFor(isMovie ? "movie" : "tv", selectedGenres);
+  const [draftGenres, setDraftGenres] = useState<number[]>(seedGenres);
+  const [draftAdult, setDraftAdult] = useState(includeAdult);
 
   // Each opening starts from what's applied, so closing without Apply
   // discards the edits instead of showing them as if they were in effect.
@@ -83,7 +92,8 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
     if (!open) return;
     setFilters({ ...DEFAULT_FILTERS, ...appliedFilters });
     setSortBy(appliedSortBy);
-    setDraftGenres(selectedGenres);
+    setDraftGenres(seedGenres());
+    setDraftAdult(includeAdult);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (key: keyof FilterValues, val: string) =>
@@ -93,16 +103,21 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
     setDraftGenres((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
 
   const handleApply = () => {
-    // One handler, so React batches both: the page re-renders once and the
-    // grid sends one request for the new genres and filters together.
+    // One handler, so React batches all three: the page re-renders once and
+    // the grid sends one request for the new genres, adult setting and filters.
+    // A range typed backwards (2020 → 1990) means 1990–2020.
+    const { yearFrom, yearTo } = filters;
+    const swapYears = yearFrom !== "" && yearTo !== "" && Number(yearFrom) > Number(yearTo);
     setGenres(draftGenres);
-    onApply({ ...filters, includeAdult }, sortBy);
+    setIncludeAdult(draftAdult);
+    onApply({ ...filters, ...(swapYears && { yearFrom: yearTo, yearTo: yearFrom }), includeAdult: draftAdult }, sortBy);
   };
 
   const handleReset = () => {
     setFilters(DEFAULT_FILTERS);
     setSortBy("popularity.desc");
     setDraftGenres([]);
+    setDraftAdult(false);
     clearGenres();
     setIncludeAdult(false);
     onReset();
@@ -127,20 +142,22 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
       <Form layout="vertical" size="middle">
         <Typography.Text strong>Year Range</Typography.Text>
         <div style={{ display: "flex", gap: 8, marginTop: 8, marginBottom: 16 }}>
-          <Form.Item label="From" style={{ flex: 1, marginBottom: 0 }}>
+          <Form.Item label="From" htmlFor="filter-year-from" style={{ flex: 1, marginBottom: 0 }}>
             <InputNumber
+              id="filter-year-from"
               min={1900}
-              max={2030}
+              max={MAX_YEAR}
               placeholder="e.g. 2010"
               value={filters.yearFrom ? Number(filters.yearFrom) : undefined}
               onChange={(v) => set("yearFrom", v?.toString() ?? "")}
               style={{ width: "100%" }}
             />
           </Form.Item>
-          <Form.Item label="To" style={{ flex: 1, marginBottom: 0 }}>
+          <Form.Item label="To" htmlFor="filter-year-to" style={{ flex: 1, marginBottom: 0 }}>
             <InputNumber
+              id="filter-year-to"
               min={1900}
-              max={2030}
+              max={MAX_YEAR}
               placeholder="e.g. 2024"
               value={filters.yearTo ? Number(filters.yearTo) : undefined}
               onChange={(v) => set("yearTo", v?.toString() ?? "")}
@@ -151,8 +168,9 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
 
         <Divider style={{ margin: "8px 0 16px" }} />
 
-        <Form.Item label="Min TMDB Rating (0–10)" style={{ marginBottom: 16 }}>
+        <Form.Item label="Min TMDB Rating (0–10)" htmlFor="filter-min-rating" style={{ marginBottom: 16 }}>
           <InputNumber
+            id="filter-min-rating"
             min={0}
             max={10}
             step={0.5}
@@ -163,8 +181,9 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
           />
         </Form.Item>
 
-        <Form.Item label="Language" style={{ marginBottom: 16 }}>
+        <Form.Item label="Language" htmlFor="filter-language" style={{ marginBottom: 16 }}>
           <Select
+            id="filter-language"
             placeholder="Any language"
             allowClear
             value={filters.language || undefined}
@@ -181,8 +200,9 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
             <Divider style={{ margin: "8px 0 16px" }} />
             <Typography.Text strong>Runtime (minutes)</Typography.Text>
             <div style={{ display: "flex", gap: 8, marginTop: 8, marginBottom: 16 }}>
-              <Form.Item label="Min" style={{ flex: 1, marginBottom: 0 }}>
+              <Form.Item label="Min" htmlFor="filter-min-runtime" style={{ flex: 1, marginBottom: 0 }}>
                 <InputNumber
+                  id="filter-min-runtime"
                   min={0}
                   placeholder="e.g. 60"
                   value={filters.minRuntime ? Number(filters.minRuntime) : undefined}
@@ -190,8 +210,9 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
                   style={{ width: "100%" }}
                 />
               </Form.Item>
-              <Form.Item label="Max" style={{ flex: 1, marginBottom: 0 }}>
+              <Form.Item label="Max" htmlFor="filter-max-runtime" style={{ flex: 1, marginBottom: 0 }}>
                 <InputNumber
+                  id="filter-max-runtime"
                   min={0}
                   placeholder="e.g. 180"
                   value={filters.maxRuntime ? Number(filters.maxRuntime) : undefined}
@@ -235,8 +256,9 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
 
         <Divider style={{ margin: "8px 0 16px" }} />
 
-        <Form.Item label="Sort By" style={{ marginBottom: 16 }}>
+        <Form.Item label="Sort By" htmlFor="filter-sort" style={{ marginBottom: 16 }}>
           <Select
+            id="filter-sort"
             value={sortBy}
             onChange={(v) => setSortBy(v as SortOption)}
             options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
@@ -244,10 +266,12 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
         </Form.Item>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Typography.Text>Include Adult Content</Typography.Text>
+          <Typography.Text id="filter-adult-label">Include Adult Content</Typography.Text>
           <Switch
-            checked={includeAdult}
-            onChange={setIncludeAdult}
+            id="filter-adult"
+            aria-labelledby="filter-adult-label"
+            checked={draftAdult}
+            onChange={setDraftAdult}
           />
         </div>
       </Form>

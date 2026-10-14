@@ -122,6 +122,17 @@ class TestWatchedWithItems:
         expect(authed_page.locator(".ant-pagination")).to_be_visible(timeout=5_000)
 
 
+    def test_malformed_page_params_fall_back_to_defaults(self, authed_page: Page):
+        items = make_watched_items(50)
+        authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))
+        authed_page.route("**/api/watched/**", lambda r: fulfill_json(r, paginated(items)))
+        for query in ("page=-2", "page=1.5", "pageSize=-5"):
+            authed_page.goto(f"/watched?{query}")
+            expect(authed_page.get_by_text("Watched (50)")).to_be_visible(timeout=8_000)
+            expect(authed_page.locator(".ant-pagination-item-active")).to_have_text("1")
+            expect(authed_page.locator(".ant-pagination-options")).to_contain_text("48 / page")
+
+
 class TestWatchedClearAll:
     def test_clear_all_button_shows_popconfirm(self, authed_page: Page):
         authed_page.route("**/api/watchlist/**", lambda r: fulfill_json(r, paginated([])))

@@ -106,31 +106,31 @@ export function AddToListModal({ open, onClose, mediaId, mediaType, title, poste
           renderItem={(list) => {
             const inList = isInList(list.id, mediaId, mediaType);
             return (
-              <List.Item
-                style={{ cursor: "pointer" }}
-                onClick={async () => {
-                  try {
-                    if (inList) {
-                      await removeFromList(list.id, mediaId, mediaType);
-                      showSuccess(`Removed from "${list.name}"`);
-                    } else {
-                      await addToList(list.id, { id: mediaId, type: mediaType, title, posterPath, voteAverage });
-                      showSuccess(`Added to "${list.name}"`);
+              <List.Item>
+                {/* A real labelled checkbox (named after the list), so Tab and
+                    Space work and a row click toggles once. */}
+                <Checkbox
+                  checked={inList}
+                  style={{ flex: 1 }}
+                  onChange={async () => {
+                    try {
+                      if (inList) {
+                        await removeFromList(list.id, mediaId, mediaType);
+                        showSuccess(`Removed from "${list.name}"`);
+                      } else {
+                        await addToList(list.id, { id: mediaId, type: mediaType, title, posterPath, voteAverage });
+                        showSuccess(`Added to "${list.name}"`);
+                      }
+                    } catch (err) {
+                      showError(getApiError(err, "Failed to update list."));
                     }
-                  } catch (err) {
-                    showError(getApiError(err, "Failed to update list."));
-                  }
-                }}
-                actions={[<Checkbox key="check" checked={inList} onChange={() => {}} />]}
-              >
-                <List.Item.Meta
-                  title={<Typography.Text strong>{list.name}</Typography.Text>}
-                  description={
-                    <Tag color="gold" style={{ fontSize: FONT_SIZE.caption }}>
-                      {list.items.length} item{list.items.length !== 1 ? "s" : ""}
-                    </Tag>
-                  }
-                />
+                  }}
+                >
+                  <Typography.Text strong>{list.name}</Typography.Text>
+                </Checkbox>
+                <Tag color="gold" style={{ fontSize: FONT_SIZE.caption, marginInlineEnd: 0 }}>
+                  {list.items.length} item{list.items.length !== 1 ? "s" : ""}
+                </Tag>
               </List.Item>
             );
           }}

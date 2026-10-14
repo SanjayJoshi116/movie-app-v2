@@ -188,3 +188,20 @@ class NotificationCheckpoint(models.Model):
 
     def __str__(self):
         return f"{self.user.username} — notifications last seen {self.last_seen_at}"
+
+
+class LoginFailure(models.Model):
+    """Failed password attempts for one username, across all IPs and workers.
+
+    A table rather than the cache: DatabaseCache's incr is a non-atomic
+    get + set that resets the expiry, and culling evicts entries. Written only
+    through auth_views' single-statement upsert, which keeps `window_start` at
+    the window's first failure.
+    """
+
+    key = models.CharField(max_length=64, primary_key=True)  # sha256 of the folded username
+    count = models.PositiveIntegerField()
+    window_start = models.DateTimeField(db_index=True)
+
+    def __str__(self):
+        return f"{self.key[:12]}… — {self.count} since {self.window_start}"

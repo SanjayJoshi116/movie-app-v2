@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import userApi, { currentSessionGeneration, isCurrentSession } from "../api/userApi";
 import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
+import { createInflight } from "../utils/inflight";
+import { guardedReload } from "../utils/guardedReload";
 import type { RatingEntry, RatingEntryDTO, RatingsMap } from "../types";
 
 function ratingKey(id: number, type: string) { return `${type}-${id}`; }
@@ -9,8 +11,16 @@ function ratingKey(id: number, type: string) { return `${type}-${id}`; }
 export function useRatings() {
   const { isAuthenticated } = useAuth();
   const [ratings, setRatings] = useState<RatingsMap>({});
-  const [isLoading, setIsLoading] = useState(isAuthenticated);
+  // The session generation of the last finished load. Until it's this
+  // session's, ratings are loading, so the first render after sign-in never
+  // reads as loaded and empty.
+  const [loadedGen, setLoadedGen] = useState<number | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const isLoading = isAuthenticated && (reloading || loadedGen !== currentSessionGeneration());
   const [error, setError] = useState<unknown>(null);
+  // Bumped as each write settles: a reload that started earlier is rerun.
+  const writeSeq = useRef(0);
+  const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
   const dbIdMap = useRef<Record<string, number>>({});
   const ratingsRef = useRef(ratings);
   ratingsRef.current = ratings;
@@ -19,34 +29,42 @@ export function useRatings() {
     if (!isAuthenticated) return;
     // A response that lands after sign-out belongs to the previous account.
     const gen = currentSessionGeneration();
-    setIsLoading(true);
+    setReloading(true);
     try {
-      const data = await fetchAllPages<RatingEntryDTO>(userApi, "/ratings/", { pageSize: LIBRARY_PAGE_SIZE });
-      if (!isCurrentSession(gen)) return;
-      const map: Record<string, number> = {};
-      const ratingsMap: RatingsMap = {};
-      data.forEach((item) => {
-        const k = ratingKey(item.mediaId, item.mediaType);
-        map[k] = item.id;
-        ratingsMap[k] = {
-          id: item.mediaId,
-          type: item.mediaType,
-          title: item.title,
-          userRating: item.userRating,
-          review: item.review,
-          ratedAt: item.ratedAt,
-        };
-      });
-      dbIdMap.current = map;
-      setRatings(ratingsMap);
-      setError(null);
+      await guardedReload(
+        writeSeq,
+        () => fetchAllPages<RatingEntryDTO>(userApi, "/ratings/", { pageSize: LIBRARY_PAGE_SIZE }),
+        (data) => {
+          if (!isCurrentSession(gen)) return;
+          const map: Record<string, number> = {};
+          const ratingsMap: RatingsMap = {};
+          data.forEach((item) => {
+            const k = ratingKey(item.mediaId, item.mediaType);
+            map[k] = item.id;
+            ratingsMap[k] = {
+              id: item.mediaId,
+              type: item.mediaType,
+              title: item.title,
+              userRating: item.userRating,
+              review: item.review,
+              ratedAt: item.ratedAt,
+            };
+          });
+          dbIdMap.current = map;
+          setRatings(ratingsMap);
+          setError(null);
+        },
+      );
     } catch (err) {
       if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
     } finally {
-      if (isCurrentSession(gen)) setIsLoading(false);
+      if (isCurrentSession(gen)) {
+        setReloading(false);
+        setLoadedGen(gen);
+      }
     }
   }, [isAuthenticated]);
 
@@ -55,18 +73,18 @@ export function useRatings() {
       setRatings({});
       dbIdMap.current = {};
       setError(null);
-      setIsLoading(false);
+      setReloading(false);
       return;
     }
     reload().catch(() => { /* recorded in `error` */ });
   }, [isAuthenticated, reload]);
 
-  const set = useCallback(async (
+  const setRaw = useCallback(async (
     id: number,
     type: string,
     title: string,
     userRating: number,
-    review = ""
+    review: string,
   ) => {
     if (!isAuthenticated) return;
     const gen = currentSessionGeneration();
@@ -97,7 +115,7 @@ export function useRatings() {
     ratingsRef.current[ratingKey(id, type)] ?? null,
   []);
 
-  const remove = useCallback(async (id: number, type: string) => {
+  const removeRaw = useCallback(async (id: number, type: string) => {
     if (!isAuthenticated) return;
     const k = ratingKey(id, type);
     const dbId = dbIdMap.current[k];
@@ -112,6 +130,21 @@ export function useRatings() {
       return next;
     });
   }, [isAuthenticated]);
+
+  // One in-flight slot per title, like the other library hooks: saving the
+  // same rating twice sends one request, and a different save or a remove
+  // runs after the pending one with its own outcome.
+  const set = useCallback(
+    (id: number, type: string, title: string, userRating: number, review = "") =>
+      inflight.current.run(ratingKey(id, type), () => setRaw(id, type, title, userRating, review),
+        `set:${userRating}:${review}`),
+    [setRaw],
+  );
+
+  const remove = useCallback(
+    (id: number, type: string) => inflight.current.run(ratingKey(id, type), () => removeRaw(id, type), "remove"),
+    [removeRaw],
+  );
 
   return { ratings, isLoading, error, set, get, remove, reload };
 }

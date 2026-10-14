@@ -85,7 +85,7 @@ describe("useWatched", () => {
     expect(result.current.isWatched(3, "movie")).toBe(true);
   });
 
-  it("remove while the add is in flight does not send a DELETE", async () => {
+  it("remove while the add is in flight runs after it and ends unwatched", async () => {
     const { result } = renderHook(() => useWatched(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
@@ -94,7 +94,68 @@ describe("useWatched", () => {
     });
 
     expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith("/watched/99/");
+    expect(mockPost.mock.invocationCallOrder[0]).toBeLessThan(mockDelete.mock.invocationCallOrder[0]!);
+    expect(result.current.isWatched(4, "movie")).toBe(false);
+  });
+
+  it("a reload that started before an add and lands after it keeps the item", async () => {
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let answerStale!: (v: unknown) => void;
+    mockGet
+      .mockReturnValueOnce(new Promise((res) => { answerStale = res; })) // the stale reload
+      .mockResolvedValueOnce({ data: [{ id: 99, mediaId: 5, mediaType: "movie", title: "T", posterPath: null,
+        voteAverage: 7, watchedAt: "2024-01-01T00:00:00Z", watchedTz: "" }] }); // its rerun
+    let reloading!: Promise<void>;
+    act(() => { reloading = result.current.reload(); });
+    await act(async () => { await result.current.add(makeEntry({ id: 5 })); });
+    await act(async () => { answerStale({ data: [] }); await reloading; });
+
+    expect(mockGet).toHaveBeenCalledTimes(3); // mount, stale (dropped), rerun
+    expect(result.current.isWatched(5, "movie")).toBe(true);
+    await act(async () => { await result.current.remove(5, "movie"); });
+    expect(mockDelete).toHaveBeenCalledWith("/watched/99/");
+  });
+
+  it("Clear All during a pending add is sent after it and ends empty", async () => {
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let answerAdd!: (v: unknown) => void;
+    mockPost.mockReturnValueOnce(new Promise((res) => { answerAdd = res; }));
+    let adding!: Promise<void>;
+    let clearing!: Promise<void>;
+    act(() => {
+      adding = result.current.add(makeEntry({ id: 6 }));
+      clearing = result.current.clearAll();
+    });
     expect(mockDelete).not.toHaveBeenCalled();
+    await act(async () => {
+      answerAdd({ data: { id: 100, watchedAt: "2024-01-01T00:00:00Z" } });
+      await Promise.all([adding, clearing]);
+    });
+    expect(mockDelete).toHaveBeenCalledWith("/watched/clear/");
+    expect(result.current.watchedList).toEqual([]);
+  });
+
+  it("an add during a clear is sent after the clear", async () => {
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    let answerClear!: (v: unknown) => void;
+    mockDelete.mockReturnValueOnce(new Promise((res) => { answerClear = res; }));
+    let clearing!: Promise<void>;
+    let adding!: Promise<void>;
+    act(() => {
+      clearing = result.current.clearAll();
+      adding = result.current.add(makeEntry({ id: 7 }));
+    });
+    expect(mockPost).not.toHaveBeenCalled();
+    await act(async () => { answerClear({}); await Promise.all([clearing, adding]); });
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(result.current.isWatched(7, "movie")).toBe(true);
   });
 
   it("toggle after the first write settles runs normally", async () => {

@@ -1,16 +1,19 @@
 import io
 import shutil
 import tempfile
+import threading
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.storage import FileSystemStorage, default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import DatabaseError
+from django.db import DatabaseError, connection
 from django.test import override_settings
 from PIL import Image
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase, APITransactionTestCase
+
+from userdata import auth_views
 
 from ..models import Profile
 
@@ -341,3 +344,112 @@ class AvatarMetadataTests(APITestCase):
         f = SimpleUploadedFile("cut.jpg", data, content_type="image/jpeg")
         res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AvatarSizeTests(APITestCase):
+    """avatar-upload: a pixel cap far below the decoder limit, and a bounded
+    stored resolution."""
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.user = User.objects.create_user(username="sid", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def _post(self, data, name, content_type):
+        f = SimpleUploadedFile(name, data, content_type=content_type)
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post("/api/auth/avatar/", {"avatar": f}, format="multipart")
+        self.user.refresh_from_db()
+        return res
+
+    def _encode(self, img, fmt, **options):
+        buf = io.BytesIO()
+        img.save(buf, format=fmt, **options)
+        return buf.getvalue()
+
+    def _stored(self):
+        stored = Profile.objects.get(user=self.user).avatar
+        with default_storage.open(stored.name, "rb") as fh:
+            return Image.open(io.BytesIO(fh.read()))
+
+    def test_large_single_colour_png_rejected(self):
+        # 1-bit, so building it is cheap here; it compresses to a few KB, far
+        # under 5 MB, and is ~88M px: under Pillow's limit, over ours.
+        self._post(self._encode(Image.new("RGB", (20, 20), "red"), "PNG"), "a.png", "image/png")
+        before = Profile.objects.get(user=self.user).avatar.name
+        data = self._encode(Image.new("1", (9400, 9400)), "PNG")
+        self.assertLess(len(data), 5 * 1024 * 1024)
+        res = self._post(data, "big.png", "image/png")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("too large", res.data["detail"])
+        self.assertEqual(Profile.objects.get(user=self.user).avatar.name, before)
+
+    def test_large_photo_is_scaled_down(self):
+        data = self._encode(Image.new("RGB", (4000, 3000), "blue"), "JPEG", quality=50)
+        res = self._post(data, "photo.jpg", "image/jpeg")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertEqual(self._stored().size, (1024, 768))
+
+    def test_small_image_keeps_its_size(self):
+        res = self._post(self._encode(Image.new("RGB", (400, 400), "green"), "PNG"), "a.png", "image/png")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertEqual(self._stored().size, (400, 400))
+
+    def test_rotated_large_photo_is_upright_and_scaled(self):
+        exif = Image.Exif()
+        exif[0x0112] = 6  # rotate 90° clockwise to display
+        data = self._encode(Image.new("RGB", (2048, 1536), "blue"), "JPEG", exif=exif)
+        res = self._post(data, "photo.jpg", "image/jpeg")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        stored = self._stored()
+        self.assertEqual(stored.size, (768, 1024))
+        self.assertNotIn(0x0112, stored.getexif())
+
+
+class ConcurrentAvatarReplaceTests(APITransactionTestCase):
+    """Real commits: two uploads at once leave exactly the profile's file."""
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        override = override_settings(MEDIA_ROOT=media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.user = User.objects.create_user(username="tab", password="Xk9#mQ2vTz8p")
+
+    def _upload(self):
+        client = APIClient()
+        client.force_authenticate(user=User.objects.get(pk=self.user.pk))
+        return client.post("/api/auth/avatar/", {"avatar": make_image_file(size=(30, 30))}, format="multipart")
+
+    def test_two_uploads_at_once(self):
+        self.assertEqual(self._upload().status_code, 200)  # the previous avatar
+        real_reencode = auth_views._reencode_avatar
+        barrier = threading.Barrier(2)
+        codes = []
+
+        def reencode_together(file, image_format):
+            data = real_reencode(file, image_format)
+            barrier.wait(timeout=10)  # both reach the save at the same moment
+            return data
+
+        def upload():
+            try:
+                codes.append(self._upload().status_code)
+            finally:
+                connection.close()
+
+        with patch.object(auth_views, "_reencode_avatar", reencode_together):
+            threads = [threading.Thread(target=upload) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=30)
+
+        self.assertEqual(codes, [200, 200])
+        _, files = default_storage.listdir("avatars")
+        self.assertEqual(files, [Profile.objects.get(user=self.user).avatar.name.split("/")[-1]])

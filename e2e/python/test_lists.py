@@ -1,6 +1,8 @@
 """
 Custom lists page tests: empty state, create, delete, items, remove item, edge cases.
 """
+import re
+
 from playwright.sync_api import Page, expect
 
 from conftest import paginated, fulfill_json, MOCK_LIST
@@ -132,18 +134,46 @@ class TestListsDelete:
         authed_page.get_by_role("button", name="Delete").click()
         expect(authed_page.get_by_text('Delete "Favorites"?')).to_be_visible(timeout=5_000)
 
+    @staticmethod
+    def _mock_lists_with_delete(page: Page) -> list[str]:
+        """One handler for GET and DELETE (a second route on the same pattern
+        would shadow the DELETE). Returns the DELETE URLs it received."""
+        deleted: list[str] = []
+
+        def handle(r):
+            if r.request.method == "DELETE":
+                deleted.append(r.request.url)
+                r.fulfill(status=204, body="")
+            else:
+                fulfill_json(r, paginated([] if deleted else [MOCK_LIST]))
+
+        page.route("**/api/lists/**", handle)
+        return deleted
+
     def test_delete_confirmed_removes_list(self, authed_page: Page):
-        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated([MOCK_LIST])))
-        authed_page.route("**/api/lists/1/", lambda r: r.fulfill(status=204, body=""))
+        deleted = self._mock_lists_with_delete(authed_page)
         authed_page.goto("/lists")
         expect(authed_page.get_by_role("heading", name="My Lists")).to_be_visible(timeout=8_000)
         authed_page.get_by_role("button", name="Delete").click()
         expect(authed_page.get_by_text('Delete "Favorites"?')).to_be_visible(timeout=5_000)
 
-        # After confirming, mock the GET to return empty
-        authed_page.route("**/api/lists/**", lambda r: fulfill_json(r, paginated([])))
         authed_page.locator(".ant-popconfirm-buttons").get_by_role("button", name="Delete").click()
         expect(authed_page.get_by_text("No custom lists yet", exact=False)).to_be_visible(timeout=5_000)
+        assert len(deleted) == 1 and deleted[0].rstrip("/").endswith("/api/lists/1"), deleted
+        expect(authed_page).to_have_url(re.compile(r"/lists$"))
+
+    def test_delete_cancelled_stays_on_lists(self, authed_page: Page):
+        deleted = self._mock_lists_with_delete(authed_page)
+        authed_page.goto("/lists")
+        expect(authed_page.get_by_role("heading", name="My Lists")).to_be_visible(timeout=8_000)
+        authed_page.get_by_role("button", name="Delete").click()
+        expect(authed_page.get_by_text('Delete "Favorites"?')).to_be_visible(timeout=5_000)
+
+        authed_page.locator(".ant-popconfirm-buttons").get_by_role("button", name="Cancel").click()
+        expect(authed_page.get_by_text('Delete "Favorites"?')).to_be_hidden(timeout=5_000)
+        expect(authed_page).to_have_url(re.compile(r"/lists$"))
+        expect(authed_page.get_by_text("Favorites", exact=True)).to_be_visible()
+        assert deleted == []
 
 
 class TestListsEdgeCases:

@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getEpisodeProgress, setEpisodeProgress, deleteEpisodeProgress, type EpisodeProgressData } from "../api/userApi";
+import {
+  currentSessionGeneration,
+  deleteEpisodeProgress,
+  getEpisodeProgress,
+  isCurrentSession,
+  setEpisodeProgress,
+  type EpisodeProgressData,
+} from "../api/userApi";
 import { useAuth } from "../context/AuthContext";
-import { createInflight } from "../utils/inflight";
 
 export function useEpisodeProgress(showId: number) {
   const { isAuthenticated } = useAuth();
@@ -12,7 +18,8 @@ export function useEpisodeProgress(showId: number) {
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [busy, setBusy] = useState(false);
-  const inflight = useRef(createInflight());
+  // The latest write for each show: what it does, and when it settles.
+  const pending = useRef(new Map<number, { op: string; promise: Promise<void> }>());
   const showIdRef = useRef(showId);
   showIdRef.current = showId;
 
@@ -32,37 +39,48 @@ export function useEpisodeProgress(showId: number) {
 
   const retry = useCallback(() => setRetryToken((t) => t + 1), []);
 
-  // One write per show at a time: a double click on Next or Save settles with
-  // the first request instead of sending a second. Writes resolve after the
-  // user may have navigated to another show; only apply the result if it's
-  // still the one on screen.
+  // One write per show at a time, in click order. Repeating the same write
+  // while it's pending (a double click on Next or Save) settles with it
+  // instead of sending a second. A different write (Remove while Next is
+  // saving) waits for it and then runs, so it reports its own outcome; sharing
+  // one slot made Remove say "removed" with Next's result. Writes resolve after
+  // the user may have navigated to another show, or signed out; only apply
+  // the result if it's still the one on screen, for the same session.
   const write = useCallback(
-    <T,>(fn: () => Promise<T>) =>
-      inflight.current.run(`progress-${showId}`, async () => {
-        setBusy(true);
-        try {
-          return await fn();
-        } finally {
-          if (showIdRef.current === showId) setBusy(false);
-        }
-      }),
+    (op: string, fn: (gen: number) => Promise<void>): Promise<void> => {
+      const slots = pending.current;
+      const last = slots.get(showId);
+      if (last?.op === op) return last.promise;
+      const gen = currentSessionGeneration();
+      const run = async () => {
+        if (isCurrentSession(gen) && showIdRef.current === showId) setBusy(true);
+        await fn(gen);
+      };
+      const promise: Promise<void> = (last ? last.promise.catch(() => undefined).then(run) : run()).finally(() => {
+        if (slots.get(showId)?.promise !== promise) return; // a later write is queued behind this one
+        slots.delete(showId);
+        if (isCurrentSession(gen) && showIdRef.current === showId) setBusy(false);
+      });
+      slots.set(showId, { op, promise });
+      return promise;
+    },
     [showId]
   );
 
   const update = useCallback(
     (season: number, episode: number) =>
-      write(async () => {
+      write(`update:${season}:${episode}`, async (gen) => {
         const res = await setEpisodeProgress(showId, season, episode);
-        if (showIdRef.current === showId) setProgress(res.data);
+        if (isCurrentSession(gen) && showIdRef.current === showId) setProgress(res.data);
       }),
     [showId, write]
   );
 
   const clear = useCallback(
     () =>
-      write(async () => {
+      write("clear", async (gen) => {
         await deleteEpisodeProgress(showId);
-        if (showIdRef.current === showId) setProgress(null);
+        if (isCurrentSession(gen) && showIdRef.current === showId) setProgress(null);
       }),
     [showId, write]
   );

@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Row, Col, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
+  Alert, Row, Col, Button, Typography, Descriptions, Spin, Tabs, Image, Empty,
 } from "antd";
 import { LeftOutlined, UserAddOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import {
@@ -33,6 +33,17 @@ import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { goBack } from "../utils/goBack";
 
+// A malformed credits body (no array) counts as no credits, not a crash.
+function toCredits(c: TMDBPersonCredits): TMDBPersonCredits {
+  return {
+    cast: sortCreditsNewestFirst(mergeCredits(Array.isArray(c?.cast) ? c.cast : [])),
+    crew: Array.isArray(c?.crew) ? c.crew : [],
+  };
+}
+
+/** A credits request that failed for a reason other than "TMDB has none". */
+const creditsFailed = (r: PromiseSettledResult<unknown>) => r.status === "rejected" && !isNotFound(r.reason);
+
 function PersonPage() {
   const id = useValidId();
   const navigate = useNavigate();
@@ -43,7 +54,7 @@ function PersonPage() {
   const savedLoadedPages = locationState?.loadedPages;
   const [searchParams, setSearchParams] = useSearchParams();
   const activeCreditsTab = searchParams.get("tab");
-  const { isFollowing, follow, unfollow, error: followStatusError } = useFollowedPeople();
+  const { isFollowing, follow, unfollow, error: followStatusError, loading: followStatusLoading } = useFollowedPeople();
   const { showSuccess, showError } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
@@ -52,6 +63,10 @@ function PersonPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [creditsError, setCreditsError] = useState(false);
+  const [creditsRetrying, setCreditsRetrying] = useState(false);
+  // Bumped per person load and per credits retry: only the latest one applies.
+  const creditsRequest = useRef(0);
 
   useEffect(() => {
     if (!id) return;
@@ -62,18 +77,22 @@ function PersonPage() {
     setTvCredits(null);
     setImages(null);
     setError(null);
+    setCreditsError(false);
+    setCreditsRetrying(false);
     setLoading(true);
+    const request = ++creditsRequest.current;
     let cancelled = false;
 
     const load = async () => {
-      // Only the person record is essential; credits/photos tabs just hide on failure.
+      // Only the person record is essential. Credits that fail show their own
+      // error with Retry; photos just hide.
       const [personRes, movieRes, tvRes, imagesRes] = await Promise.allSettled([
         fetchPerson(id),
         fetchPersonMovieCredits(id),
         fetchPersonTVCredits(id),
         fetchPersonImages(id),
       ]);
-      if (cancelled) return;
+      if (cancelled || request !== creditsRequest.current) return;
 
       if (personRes.status === "rejected") {
         console.error("Error fetching person details:", personRes.reason);
@@ -82,11 +101,9 @@ function PersonPage() {
         const movies = settledData(movieRes);
         const tv = settledData(tvRes);
         setPerson(personRes.value.data);
-        // A malformed credits body (no array) counts as no credits, not a crash.
-        const castOf = (c: TMDBPersonCredits | undefined) => sortCreditsNewestFirst(mergeCredits(Array.isArray(c?.cast) ? c.cast : []));
-        const crewOf = (c: TMDBPersonCredits | undefined) => (Array.isArray(c?.crew) ? c.crew : []);
-        setMovieCredits(movies ? { cast: castOf(movies), crew: crewOf(movies) } : null);
-        setTvCredits(tv ? { cast: castOf(tv), crew: crewOf(tv) } : null);
+        setMovieCredits(movies ? toCredits(movies) : null);
+        setTvCredits(tv ? toCredits(tv) : null);
+        setCreditsError(creditsFailed(movieRes) || creditsFailed(tvRes));
         setImages(settledData(imagesRes) ?? null);
       }
       setLoading(false);
@@ -95,6 +112,21 @@ function PersonPage() {
     load();
     return () => { cancelled = true; };
   }, [id, reloadKey]);
+
+  // Refetch only the credits, so the bio and photos stay on screen.
+  const retryCredits = async () => {
+    if (!id) return;
+    const request = ++creditsRequest.current;
+    setCreditsRetrying(true);
+    const [movieRes, tvRes] = await Promise.allSettled([fetchPersonMovieCredits(id), fetchPersonTVCredits(id)]);
+    if (request !== creditsRequest.current) return;
+    const movies = settledData(movieRes);
+    const tv = settledData(tvRes);
+    if (movies) setMovieCredits(toCredits(movies));
+    if (tv) setTvCredits(toCredits(tv));
+    setCreditsError(creditsFailed(movieRes) || creditsFailed(tvRes));
+    setCreditsRetrying(false);
+  };
 
   if (id === null) return <NotFoundPage />;
   if (loading)
@@ -227,8 +259,11 @@ function PersonPage() {
               <Button
                 icon={isFollowing(person.id) ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 type={isFollowing(person.id) ? "default" : "primary"}
-                // Without the followed list, "Follow" would claim "not following".
-                disabled={followStatusError}
+                // Without the followed list (loading or failed), "Follow" would claim
+                // "not following", and a follow during the load would be undone by it.
+                disabled={followStatusError || followStatusLoading}
+                loading={followStatusLoading}
+                aria-label={followStatusLoading ? "Loading follow status" : undefined}
                 onClick={async () => {
                   try {
                     if (isFollowing(person.id)) {
@@ -243,7 +278,7 @@ function PersonPage() {
                   }
                 }}
               >
-                {isFollowing(person.id) ? "Unfollow" : "Follow"}
+                {followStatusLoading ? "" : isFollowing(person.id) ? "Unfollow" : "Follow"}
               </Button>
             </div>
 
@@ -291,7 +326,22 @@ function PersonPage() {
           </Col>
         </Row>
 
-        {tabItems.length > 0 ? (
+        {creditsError && tabItems.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Some credits couldn't be loaded."
+            action={<Button size="small" loading={creditsRetrying} onClick={retryCredits}>Retry</Button>}
+          />
+        )}
+        {creditsRetrying && tabItems.length === 0 ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+            <Spin />
+          </div>
+        ) : creditsError && tabItems.length === 0 ? (
+          <LoadError title="Couldn't load credits" onRetry={retryCredits} />
+        ) : tabItems.length > 0 ? (
           <Tabs
             activeKey={activeCreditsTab && tabItems.some((t) => t.key === activeCreditsTab) ? activeCreditsTab : defaultTab}
             onChange={(key) => setSearchParams({ tab: key }, { replace: true })}

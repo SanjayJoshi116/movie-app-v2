@@ -1,38 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Card, Tag, Button, Tooltip, Typography, Tabs, Empty, theme } from "antd";
-import { EyeOutlined, EyeFilled, SearchOutlined } from "@ant-design/icons";
+import { Row, Col, Typography, Tabs, Empty, theme } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
-import { useToast } from "../hooks/useToast";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
+import Movie from "../components/Movie";
+import TVShowCard from "../components/TVShowCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import { saveSessionCache } from "../api/userApi";
 import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
-import { POSTER_URL, pageVariants, WATCHED_GREEN } from "../constants/ui";
-import { useActionIconColor } from "../hooks/useActionIconColor";
-import { ratingColor } from "../utils/colors";
-import { FONT_SIZE } from "../constants/typography";
-import { MarkWatchedModal } from "../components/MarkWatchedModal";
-import { PosterPlaceholder } from "../components/PosterPlaceholder";
-import { getApiError } from "../utils/apiError";
-import type { MediaType } from "../types";
+import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
-import CardLink from "../components/CardLink";
-
-interface PendingWatch {
-  id: number;
-  type: MediaType;
-  title: string;
-  posterPath: string | null;
-  voteAverage: number;
-}
+import { pickKey } from "../utils/queryParams";
 
 // ── Shared paginated hook ────────────────────────────────────────────────────
 
@@ -166,10 +152,6 @@ interface TabProps {
 
 function MoviesTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
-  const { isWatched, toggleWatched } = useAppContext();
-  const idleIconColor = useActionIconColor();
-  const { showSuccess, showError } = useToast();
-  const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
@@ -182,121 +164,29 @@ function MoviesTab({ query, adult, active }: TabProps) {
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
-  if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (loading) return <SkeletonCard count={12} />;
   if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No movies found for "${query}"`} style={{ padding: "40px 0" }} />;
 
+  // The browse grids' card: same watched/watchlist controls, named per title.
   return (
     <>
       <Row gutter={[16, 20]}>
         {items.map((m: TMDBMovieSummary) => (
           <Col key={m.id} xs={12} sm={8} md={6} lg={4}>
-            <motion.div
-              role="article"
-              whileHover={{ scale: 1.04, y: -4 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              style={{ cursor: "pointer" }}
-              onClick={() => navigate(`/movie/${m.id}`)}
-            >
-              <Card
-                hoverable
-                className="glass-card"
-                cover={
-                  // Poster-only link (the card has its own buttons); the
-                  // wrapper's mouse onClick stays, so stop the click there.
-                  <CardLink to={`/movie/${m.id}`} label={m.title} stopPropagation>
-                    {m.poster_path ? (
-                      <img
-                        src={`${POSTER_URL}${m.poster_path}`}
-                        alt=""
-                        loading="lazy"
-                        className="movie-poster-img"
-                      />
-                    ) : (
-                      <PosterPlaceholder className="movie-poster-img" />
-                    )}
-                  </CardLink>
-                }
-                styles={{ body: { padding: "10px 12px" } }}
-                style={{ height: "100%" }}
-              >
-                <Card.Meta
-                  title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{m.title}</span>}
-                  description={
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                      <Tag color={ratingColor(m.vote_average)} style={{ margin: 0 }}>
-                        ★ {m.vote_average.toFixed(1)}
-                      </Tag>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <Tooltip title={isWatched(m.id, "movie") ? "Unmark watched" : "Mark as watched"}>
-                          <Button
-                            size="small"
-                            type="text"
-                            icon={isWatched(m.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(m.id, "movie") ? WATCHED_GREEN : idleIconColor }}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (isWatched(m.id, "movie")) {
-                                try {
-                                  await toggleWatched({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
-                                  showSuccess("Removed from watched");
-                                } catch (err) {
-                                  showError(getApiError(err, "Failed to update watched status."));
-                                }
-                              } else {
-                                setPendingWatch({ id: m.id, type: "movie", title: m.title, posterPath: m.poster_path, voteAverage: m.vote_average });
-                              }
-                            }}
-                            aria-label={isWatched(m.id, "movie") ? "Unmark watched" : "Mark as watched"}
-                          />
-                        </Tooltip>
-                        <Button
-                          size="small"
-                          type="primary"
-                          ghost
-                          onClick={(e) => { e.stopPropagation(); navigate(`/movie/${m.id}`); }}
-                        >
-                          Details
-                        </Button>
-                      </div>
-                    </div>
-                  }
-                />
-              </Card>
-            </motion.div>
+            <Movie movie={m} onKnowMore={(id: number) => navigate(`/movie/${id}`)} />
           </Col>
         ))}
       </Row>
-      {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadingMore && <div style={{ marginTop: 16 }}><SkeletonCard count={6} /></div>}
       {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
-      <MarkWatchedModal
-        open={pendingWatch !== null}
-        mediaId={pendingWatch?.id ?? 0}
-        mediaType={pendingWatch?.type ?? "movie"}
-        onCancel={() => setPendingWatch(null)}
-        onConfirm={async (details) => {
-          if (pendingWatch) {
-            try {
-              await toggleWatched({ ...pendingWatch, ...details });
-              showSuccess("Marked as watched");
-            } catch (err) {
-              showError(getApiError(err, "Failed to mark as watched."));
-            }
-          }
-          setPendingWatch(null);
-        }}
-      />
     </>
   );
 }
 
 function TVTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
-  const { isWatched, toggleWatched } = useAppContext();
-  const idleIconColor = useActionIconColor();
-  const { showSuccess, showError } = useToast();
-  const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
@@ -309,111 +199,23 @@ function TVTab({ query, adult, active }: TabProps) {
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
-  if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (loading) return <SkeletonCard count={12} />;
   if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No TV shows found for "${query}"`} style={{ padding: "40px 0" }} />;
 
+  // The browse grids' card: same watched/watchlist controls, named per title.
   return (
     <>
       <Row gutter={[16, 20]}>
         {items.map((t: TMDBTVSummary) => (
           <Col key={t.id} xs={12} sm={8} md={6} lg={4}>
-            <motion.div
-              role="article"
-              whileHover={{ scale: 1.04, y: -4 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              style={{ cursor: "pointer" }}
-              onClick={() => navigate(`/tv/${t.id}`)}
-            >
-              <Card
-                hoverable
-                className="glass-card"
-                cover={
-                  // Poster-only link (the card has its own buttons); the
-                  // wrapper's mouse onClick stays, so stop the click there.
-                  <CardLink to={`/tv/${t.id}`} label={t.name} stopPropagation>
-                    {t.poster_path ? (
-                      <img
-                        src={`${POSTER_URL}${t.poster_path}`}
-                        alt=""
-                        loading="lazy"
-                        className="movie-poster-img"
-                      />
-                    ) : (
-                      <PosterPlaceholder className="movie-poster-img" />
-                    )}
-                  </CardLink>
-                }
-                styles={{ body: { padding: "10px 12px" } }}
-                style={{ height: "100%" }}
-              >
-                <Card.Meta
-                  title={<span style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3", display: "block" }}>{t.name}</span>}
-                  description={
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                      <Tag color={ratingColor(t.vote_average)} style={{ margin: 0 }}>
-                        ★ {t.vote_average.toFixed(1)}
-                      </Tag>
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <Tooltip title={isWatched(t.id, "tv") ? "Unmark watched" : "Mark as watched"}>
-                          <Button
-                            size="small"
-                            type="text"
-                            icon={isWatched(t.id, "tv") ? <EyeFilled /> : <EyeOutlined />}
-                            style={{ color: isWatched(t.id, "tv") ? WATCHED_GREEN : idleIconColor }}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (isWatched(t.id, "tv")) {
-                                try {
-                                  await toggleWatched({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
-                                  showSuccess("Removed from watched");
-                                } catch (err) {
-                                  showError(getApiError(err, "Failed to update watched status."));
-                                }
-                              } else {
-                                setPendingWatch({ id: t.id, type: "tv", title: t.name, posterPath: t.poster_path, voteAverage: t.vote_average });
-                              }
-                            }}
-                            aria-label={isWatched(t.id, "tv") ? "Unmark watched" : "Mark as watched"}
-                          />
-                        </Tooltip>
-                        <Button
-                          size="small"
-                          type="primary"
-                          ghost
-                          onClick={(e) => { e.stopPropagation(); navigate(`/tv/${t.id}`); }}
-                        >
-                          Details
-                        </Button>
-                      </div>
-                    </div>
-                  }
-                />
-              </Card>
-            </motion.div>
+            <TVShowCard tvShow={t} onKnowMore={(id: number) => navigate(`/tv/${id}`)} />
           </Col>
         ))}
       </Row>
-      {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadingMore && <div style={{ marginTop: 16 }}><SkeletonCard count={6} /></div>}
       {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
-      <MarkWatchedModal
-        open={pendingWatch !== null}
-        mediaId={pendingWatch?.id ?? 0}
-        mediaType={pendingWatch?.type ?? "movie"}
-        onCancel={() => setPendingWatch(null)}
-        onConfirm={async (details) => {
-          if (pendingWatch) {
-            try {
-              await toggleWatched({ ...pendingWatch, ...details });
-              showSuccess("Marked as watched");
-            } catch (err) {
-              showError(getApiError(err, "Failed to mark as watched."));
-            }
-          }
-          setPendingWatch(null);
-        }}
-      />
     </>
   );
 }
@@ -432,7 +234,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
   );
   const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadingMore && !loadMoreError);
 
-  if (loading) return <Row gutter={[16, 20]}><SkeletonCard count={12} /></Row>;
+  if (loading) return <SkeletonCard count={12} />;
   if (error && !items.length) return <LoadError onRetry={retry} />;
   if (!items.length) return <Empty description={`No people found for "${query}"`} style={{ padding: "40px 0" }} />;
 
@@ -445,7 +247,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
           </Col>
         ))}
       </Row>
-      {loadingMore && <Row gutter={[16, 20]} style={{ marginTop: 16 }}><SkeletonCard count={6} /></Row>}
+      {loadingMore && <div style={{ marginTop: 16 }}><SkeletonCard count={6} /></div>}
       {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
       <div ref={sentinelRef} style={{ height: 1 }} />
     </>
@@ -458,7 +260,7 @@ function SearchPage() {
   const { token } = theme.useToken();
   const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") ?? "movies";
+  const activeTab = pickKey(searchParams.get("tab"), ["movies", "tv", "people"], "movies");
   const urlQuery = searchParams.get("q")?.trim() ?? "";
 
   // The URL carries the search, so a reload, a shared link or a return from

@@ -27,7 +27,7 @@ import { ReviewsSection } from "./ReviewsSection";
 import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import type { TMDBTVDetail, TMDBProviderRegion, TMDBAggregateCreditsFull } from "../types";
-import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
@@ -147,7 +147,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
                   aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: RATING_GOLD, fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: inWatchlist ? IN_WATCHLIST_BLUE : idleIconColor, fontSize: "1.5rem" }}
                 >
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
@@ -422,8 +422,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
           <>
             <SectionHeader title="Cast" />
             <div className="cast-scroll-container">
-              {castList.slice(0, 15).map((actor) => (
-                <div key={actor.id} className="cast-scroll-item">
+              {castList.slice(0, 15).map((actor, i) => (
+                // One person can be listed twice (two roles): the id alone repeats.
+                <div key={`${actor.id}-${i}`} className="cast-scroll-item">
                   <CardLink to={`/person/${actor.id}`} label={actor.name}>
                   <Card
                     hoverable

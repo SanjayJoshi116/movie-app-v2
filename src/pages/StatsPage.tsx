@@ -36,6 +36,8 @@ import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN, ON_GOLD_TEXT } fr
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { LoadError } from "../components/LoadError";
 import { formatDateDMY } from "../utils/formatDate";
+import { pickKey } from "../utils/queryParams";
+import { ratingColor } from "../utils/colors";
 
 const { Title, Text } = Typography;
 
@@ -46,9 +48,12 @@ const PURPLE = "#722ed1";
 const TEAL = "#13c2c2";
 const ORANGE = "#fa8c16";
 const RED = "#ff4d4f";
+const MAGENTA = "#eb2f96";
+const LIME = "#a0d911";
+const SKY = "#1890ff";
 
 const PIE_COLORS = [GOLD, BLUE];
-const PALETTE = [GOLD, BLUE, PURPLE, TEAL, ORANGE, GREEN, RED, "#eb2f96", "#a0d911", "#1890ff"];
+const PALETTE = [GOLD, BLUE, PURPLE, TEAL, ORANGE, GREEN, RED, MAGENTA, LIME, SKY];
 
 const CHART_STYLE = { fontSize: FONT_SIZE.caption };
 
@@ -81,13 +86,6 @@ function useCountUp(target: number, duration = 1200): number {
   }, [target, duration]);
   return val;
 }
-
-const ratingColor = (r: string) => {
-  const n = Number(r);
-  if (n >= 8) return GREEN;
-  if (n >= 5) return GOLD;
-  return RED;
-};
 
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string; color?: string }[]; label?: string }) {
   const { token } = theme.useToken();
@@ -354,7 +352,7 @@ function StatsPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeStatsTab = searchParams.get("tab") ?? "top-rated";
+  const activeStatsTab = pickKey(searchParams.get("tab"), ["top-rated", "recent"], "top-rated");
 
   useEffect(() => {
     let cancelled = false;
@@ -530,7 +528,7 @@ function StatsPage() {
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {data.ratingDistribution.map((entry, i) => (
-                      <Cell key={i} fill={ratingColor(entry.rating)} />
+                      <Cell key={i} fill={ratingColor(Number(entry.rating))} />
                     ))}
                   </Bar>
                 </BarChart>

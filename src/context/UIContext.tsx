@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { AuthContext } from "./AuthContext";
 import type { Theme } from "../types";
 
 interface UIContextType {
@@ -24,6 +25,22 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [includeAdult, setIncludeAdult] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [theme, setTheme] = useLocalStorage<Theme>("cinedb_theme", "dark");
+
+  // Browse settings belong to the session: on sign-out they go back to the
+  // defaults, so the next account in this tab doesn't inherit "include adult"
+  // or genre picks. During render, like App's scope reset, so no page fetches
+  // with the old values first. Theme is a device preference and stays. Read
+  // from the context, not useAuth(), so UIProvider also renders without auth.
+  const isAuthenticated = useContext(AuthContext)?.isAuthenticated ?? false;
+  const [wasAuthenticated, setWasAuthenticated] = useState(isAuthenticated);
+  if (wasAuthenticated !== isAuthenticated) {
+    setWasAuthenticated(isAuthenticated);
+    if (!isAuthenticated) {
+      setSearchTerm("");
+      setIncludeAdult(false);
+      setSelectedGenres([]);
+    }
+  }
 
   useEffect(() => {
     if (theme === "dark") {

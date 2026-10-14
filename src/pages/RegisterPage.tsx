@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, Link } from "react-router-dom";
-import { isAxiosError } from "axios";
 import { useAuth } from "../context/AuthContext";
 import { getApiError } from "../utils/apiError";
 
@@ -22,12 +21,7 @@ export default function RegisterPage() {
       await register(values.username, values.email, values.password);
       navigate("/movies", { replace: true });
     } catch (err: unknown) {
-      const detail = isAxiosError(err) ? err.response?.data : undefined;
-      const msg =
-        detail && typeof detail === "object"
-          ? Object.values(detail).flat().join(" ")
-          : getApiError(err, "Registration failed.");
-      message.error(msg);
+      message.error(getApiError(err, "Registration failed."));
     } finally {
       submitting.current = false;
       setLoading(false);

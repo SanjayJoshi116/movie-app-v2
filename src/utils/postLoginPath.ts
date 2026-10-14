@@ -14,3 +14,14 @@ export function postLoginPath(state: unknown): string {
   if (!from?.pathname || AUTH_ONLY_PATHS.includes(from.pathname)) return DEFAULT_PATH;
   return `${from.pathname}${from.search ?? ""}${from.hash ?? ""}`;
 }
+
+/**
+ * The state the route guard sends to /login. It carries the page to return
+ * to, except after a sign-out in this tab: whoever signs in next may be
+ * someone else, and the previous account's page (a list id, a search query)
+ * isn't theirs. Opening a protected link while signed out still returns there.
+ */
+export function loginRedirectState(from: unknown, signedOutInThisTab: boolean | undefined): { from: unknown } | null {
+  return signedOutInThisTab ? null : { from };
+}
+

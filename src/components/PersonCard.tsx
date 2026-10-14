@@ -10,6 +10,7 @@ import { IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import CardLink from "./CardLink";
+import { personLabel } from "../utils/personLabel";
 
 interface PersonCardPerson {
   id: number;
@@ -24,9 +25,10 @@ interface Props {
 }
 
 const PersonCard = ({ person, onClick }: Props) => {
-  const { isFollowing, follow, unfollow, error: followStatusError } = useFollowedPeople();
+  const { isFollowing, follow, unfollow, error: followStatusError, loading: followStatusLoading } = useFollowedPeople();
   const { showSuccess, showError } = useToast();
   const following = isFollowing(person.id);
+  const label = personLabel(person.name, person.id);
 
   return (
     <motion.div
@@ -42,11 +44,11 @@ const PersonCard = ({ person, onClick }: Props) => {
         cover={
           // Poster-only link: the Follow button below must stay outside it.
           // The card-level onClick above stays for mouse users.
-          <CardLink to={`/person/${person.id}`} onNavigate={onClick} stopPropagation label={`View profile of ${person.name}`}>
+          <CardLink to={`/person/${person.id}`} onNavigate={onClick} stopPropagation label={`View profile of ${label}`}>
             {person.profile_path ? (
               <img
                 src={`${IMG_URL}${person.profile_path}`}
-                alt={person.name}
+                alt={label}
                 loading="lazy"
                 className="movie-poster-img"
               />
@@ -60,7 +62,7 @@ const PersonCard = ({ person, onClick }: Props) => {
       >
         <Card.Meta
           title={
-            <MarqueeTitle style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3" }}>{person.name}</MarqueeTitle>
+            <MarqueeTitle style={{ fontSize: FONT_SIZE.emphasis, lineHeight: "1.3" }}>{label}</MarqueeTitle>
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -69,11 +71,19 @@ const PersonCard = ({ person, onClick }: Props) => {
                   {person.known_for_department}
                 </Tag>
               ) : <span />}
-              {/* While the followed list failed to load, "Follow" would be a guess. */}
-              <Tooltip title={followStatusError ? "Couldn't load who you follow. Retry from the Following page." : undefined}>
+              {/* While the followed list is loading or failed to load, "Follow" would be
+                  a guess, and a follow made during the load would be undone by it. */}
+              <Tooltip
+                title={
+                  followStatusError
+                    ? "Couldn't load who you follow. Retry from the Following page."
+                    : followStatusLoading ? "Loading follow status" : undefined
+                }
+              >
               <Button
                 size="small"
-                disabled={followStatusError}
+                disabled={followStatusError || followStatusLoading}
+                loading={followStatusLoading}
                 type={following ? "default" : "primary"}
                 icon={following ? <UserDeleteOutlined /> : <UserAddOutlined />}
                 onClick={async (e) => {
@@ -81,18 +91,20 @@ const PersonCard = ({ person, onClick }: Props) => {
                   try {
                     if (following) {
                       await unfollow(person.id);
-                      showSuccess(`Unfollowed ${person.name}`);
+                      showSuccess(`Unfollowed ${label}`);
                     } else {
                       await follow(person.id, person.name, person.profile_path ?? null);
-                      showSuccess(`Following ${person.name}`);
+                      showSuccess(`Following ${label}`);
                     }
                   } catch (err) {
                     showError(getApiError(err, "Failed to update follow status."));
                   }
                 }}
-                aria-label={following ? `Unfollow ${person.name}` : `Follow ${person.name}`}
+                aria-label={
+                  followStatusLoading ? `Loading follow status for ${label}` : following ? `Unfollow ${label}` : `Follow ${label}`
+                }
               >
-                {following ? "Unfollow" : "Follow"}
+                {followStatusLoading ? "" : following ? "Unfollow" : "Follow"}
               </Button>
               </Tooltip>
             </div>

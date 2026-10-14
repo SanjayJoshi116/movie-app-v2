@@ -15,6 +15,7 @@ import type { TMDBMovieSummary, TMDBTVSummary } from "../types";
 import { POSTER_URL, pageVariants, RATING_GOLD } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { localISODate } from "../utils/formatDate";
+import { downloadBlob } from "../utils/export";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -64,13 +65,7 @@ function groupByDate(items: CalendarItem[]): DateGroup[] {
 }
 
 function exportIcal(groups: DateGroup[]) {
-  const blob = new Blob([buildIcs(groups)], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "cinedb-releases.ics";
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([buildIcs(groups)], { type: "text/calendar;charset=utf-8" }), "cinedb-releases.ics");
 }
 
 function CalendarPage() {

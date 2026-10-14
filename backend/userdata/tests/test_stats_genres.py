@@ -1,4 +1,5 @@
 import re
+import threading
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -68,9 +69,21 @@ class StatsGenreLookupTests(APITestCase):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
         match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
         self.assertIsNotNone(match, "docker-entrypoint.sh must set gunicorn --timeout explicitly")
-        connect, read = stats_views.GENRE_LOOKUP_TIMEOUT
-        # Two sequential calls (movie + tv) on a cold cache.
-        self.assertLessEqual(2 * (connect + read), int(match.group(1)) - 10)
+        # Two sequential calls (movie + tv) on a cold cache, each under a
+        # wall-clock deadline (per-attempt timeouts can't bound a call).
+        self.assertLessEqual(2 * stats_views.GENRE_LOOKUP_DEADLINE, int(match.group(1)) - 10)
+
+    @patch.object(stats_views, "GENRE_LOOKUP_DEADLINE", 0.3)
+    def test_hanging_lookup_answers_with_builtin_names_within_the_budget(self):
+        release = threading.Event()
+        self.addCleanup(release.set)  # never leave a pool thread blocked
+        self.client.get("/api/ratings/")  # warm up (no TMDB): the first request loads the URLconf
+        with patch("userdata.tmdb_client._get", side_effect=lambda *a, **k: release.wait(10)), \
+                self.assertLogs("userdata.stats_views", level="WARNING"):
+            started = time.monotonic()
+            genres = self._top_genres()
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(genres, ["Drama"])
 
     def test_get_genre_names_still_falls_back_by_default(self):
         with patch("userdata.tmdb_client._get", side_effect=requests.ConnectionError()):

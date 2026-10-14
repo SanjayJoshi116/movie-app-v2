@@ -17,6 +17,10 @@ export interface FollowedPeopleContextType {
   error: boolean;
   /** Clears `error` and fetches the list again. */
   retry(): void;
+  /** After follows changed outside follow()/unfollow() (a backup restore):
+   *  fetches again, like retry(), and counts as a follow change, so the
+   *  notifications refresh. */
+  reload(): void;
   isFollowing(personId: number): boolean;
   follow(personId: number, name: string, profilePath: string | null): Promise<void>;
   unfollow(personId: number): Promise<void>;
@@ -76,6 +80,11 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
     setRetryToken((t) => t + 1);
   }, []);
 
+  const reload = useCallback(() => {
+    retry();
+    setChanges((c) => c + 1);
+  }, [retry]);
+
   const isFollowing = useCallback(
     (personId: number) => followed.some((f) => f.personId === personId),
     [followed]
@@ -110,8 +119,8 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const loading = isAuthenticated && !loaded;
 
   const value = useMemo<FollowedPeopleContextType>(
-    () => ({ followed, loading, error, retry, isFollowing, follow, unfollow, request, changes }),
-    [followed, loading, error, retry, isFollowing, follow, unfollow, request, changes]
+    () => ({ followed, loading, error, retry, reload, isFollowing, follow, unfollow, request, changes }),
+    [followed, loading, error, retry, reload, isFollowing, follow, unfollow, request, changes]
   );
 
   return <FollowedPeopleContext.Provider value={value}>{children}</FollowedPeopleContext.Provider>;

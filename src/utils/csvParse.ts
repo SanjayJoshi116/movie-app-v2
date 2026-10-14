@@ -140,6 +140,25 @@ function parsePositiveInt(raw: string | undefined): number | null {
 /** The bulk endpoints reject timestamps before 1900 (serializers.py). */
 const EARLIEST_WATCHED = Date.UTC(1900, 0, 1);
 
+// What the bulk endpoints accept (DRF: ISO 8601 only). Date.parse reads far
+// more ("05/01/2024", "May 1, 2024"), and one such row failed its whole chunk.
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:?\d{2})$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A CSV watched time the server will accept, or undefined (the row then gets
+ * the import time). An ISO date-time needs an offset or Z; a date alone is
+ * kept as noon UTC, which falls on that calendar day from UTC-12 to UTC+11
+ * (midnight UTC showed as the day before in every western zone).
+ */
+export function normalizeWatchedAt(raw: string): string | undefined {
+  const value = raw.trim();
+  const iso = ISO_DATE_TIME.test(value) ? value : ISO_DATE.test(value) ? `${value}T12:00:00Z` : undefined;
+  if (!iso) return undefined;
+  const when = Date.parse(iso);
+  return when >= EARLIEST_WATCHED && when <= Date.now() ? iso : undefined;
+}
+
 export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: string | null } {
   const [header, ...lines] = parseCSV(text);
   if (!header || lines.length === 0) {
@@ -177,11 +196,11 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     const row: ParsedEntry = { mediaId, title: (cols[titleCol] ?? "").trim() };
     const type = typeCol === -1 ? undefined : parseMediaType(cols[typeCol]);
     if (type) row.type = type;
-    // A bad, future or pre-1900 time is dropped for this row only (the server
-    // would reject the whole batch for it); the row then gets the import time.
-    const watchedAt = watchedAtCol === -1 ? "" : (cols[watchedAtCol] ?? "").trim();
-    const when = Date.parse(watchedAt);
-    if (watchedAt && when >= EARLIEST_WATCHED && when <= Date.now()) row.watchedAt = watchedAt;
+    // A bad, non-ISO, future or pre-1900 time is dropped for this row only
+    // (the server would reject the whole batch for it); the row then gets the
+    // import time.
+    const watchedAt = watchedAtCol === -1 ? undefined : normalizeWatchedAt(cols[watchedAtCol] ?? "");
+    if (watchedAt) row.watchedAt = watchedAt;
     const watchedTz = watchedTzCol === -1 ? "" : (cols[watchedTzCol] ?? "").trim();
     if (watchedTz) row.watchedTz = watchedTz;
     rows.push(row);

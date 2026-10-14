@@ -104,3 +104,43 @@ it("reports progress up to the total", async () => {
   expect(progress[0]).toEqual([0, 3]);
   expect(progress[progress.length - 1]).toEqual([3, 3]);
 });
+
+it("pauses every worker for a 429's Retry-After, not just the one that got it", async () => {
+  const calls: number[] = [];
+  let rateLimited = false;
+  const lookup = async (n: number) => {
+    calls.push(Date.now());
+    if (n === 0 && !rateLimited) {
+      rateLimited = true;
+      throw httpError(429, { "retry-after": "5" });
+    }
+    return n;
+  };
+  const items = Array.from({ length: 8 }, (_, i) => i);
+  const { results, missing } = await runWithTimers(pacedLookup(items, lookup));
+
+  expect(missing).toBe(0);
+  expect(results).toEqual(items);
+  const limitedAt = calls[0]!;
+  // Nothing at all is sent in the 5 s after the 429 (the other workers' slots
+  // were already taken at most a few intervals in, before it).
+  const interval = 60_000 / LOOKUPS_PER_MINUTE;
+  const during = calls.filter((t) => t > limitedAt + MAX_IN_FLIGHT * interval && t < limitedAt + 5_000);
+  expect(during).toEqual([]);
+});
+
+it("starts no more items once shouldStop is true, and counts them as missing", async () => {
+  const started: number[] = [];
+  let stop = false;
+  const lookup = async (n: number) => {
+    started.push(n);
+    if (n === 2) stop = true;
+    return n;
+  };
+  const items = Array.from({ length: 50 }, (_, i) => i);
+  const { results, missing } = await runWithTimers(pacedLookup(items, lookup, { shouldStop: () => stop }));
+
+  expect(started.length).toBeLessThanOrEqual(2 + MAX_IN_FLIGHT);
+  expect(missing).toBe(items.length - results.filter((r) => r !== undefined).length);
+  expect(missing).toBeGreaterThanOrEqual(50 - 2 - MAX_IN_FLIGHT);
+});

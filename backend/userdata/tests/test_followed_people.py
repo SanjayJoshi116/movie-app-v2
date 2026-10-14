@@ -145,3 +145,35 @@ class FollowedPeopleBulkTests(APITestCase):
     def test_list_and_follow_responses_carry_followed_at(self):
         res = self.client.post("/api/followed-people/", {"personId": 9, "name": "N"}, format="json")
         self.assertIn("followedAt", res.data)
+
+
+class FollowedRecsThrottleTests(APITestCase):
+    """endpoint-time-budgets: followed-people recommendations are rate limited
+    per user, and a throttled call never reaches TMDB."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.alice = User.objects.create_user(username="alice", password="Xk9#mQ2vTz8p")
+        self.bob = User.objects.create_user(username="bob", password="Xk9#mQ2vTz8p")
+        for user in (self.alice, self.bob):
+            FollowedPerson.objects.create(user=user, person_id=287, name="Brad Pitt")
+
+    def _get(self, user):
+        self.client.force_authenticate(user=user)
+        return self.client.get("/api/recommendations/followed-people/")
+
+    @patch("userdata.social_views.FollowedRecsThrottle.get_rate", return_value="2/min")
+    @patch("userdata.social_views._fetch_followed_people_credits", return_value=[])
+    def test_over_limit_is_429_without_tmdb(self, fetch, _rate):
+        self.assertEqual(self._get(self.alice).status_code, 200)
+        self.assertEqual(self._get(self.alice).status_code, 200)
+        self.assertEqual(fetch.call_count, 2)
+        res = self._get(self.alice)
+        self.assertEqual(res.status_code, 429)
+        self.assertEqual(fetch.call_count, 2)  # throttled before any TMDB work
+        self.assertEqual(self._get(self.bob).status_code, 200)
+
+    def test_rate_is_configured(self):
+        from django.conf import settings
+        self.assertEqual(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["followed_recs"], "30/min")

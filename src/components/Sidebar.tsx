@@ -32,20 +32,13 @@ import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { avatarColor } from "../utils/colors";
+import { getInitials } from "../utils/initials";
 import { RATING_GOLD, WATCHED_GREEN, AVATAR_INITIALS_TEXT } from "../constants/ui";
 
 interface Props {
   isBrowsePage: boolean;
   showFilterPanel: boolean;
   onToggleFilterPanel: () => void;
-}
-
-function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
-  const f = user.first_name?.trim() ?? "";
-  const l = user.last_name?.trim() ?? "";
-  if (f && l) return (f[0]! + l[0]!).toUpperCase();
-  if (f) return f.slice(0, 2).toUpperCase();
-  return user.username.slice(0, 2).toUpperCase();
 }
 
 const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) => {

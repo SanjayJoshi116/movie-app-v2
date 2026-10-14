@@ -29,15 +29,8 @@ import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { avatarColor } from "../utils/colors";
+import { getInitials } from "../utils/initials";
 import { RATING_GOLD, ON_GOLD_TEXT, AVATAR_INITIALS_TEXT } from "../constants/ui";
-
-function getInitials(user: { first_name?: string; last_name?: string; username: string }): string {
-  const f = user.first_name?.trim() ?? "";
-  const l = user.last_name?.trim() ?? "";
-  if (f && l) return (f[0]! + l[0]!).toUpperCase();
-  if (f) return f.slice(0, 2).toUpperCase();
-  return user.username.slice(0, 2).toUpperCase();
-}
 
 interface Props {
   isBrowsePage: boolean;
@@ -172,7 +165,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
         onClose={() => setSearchOpen(false)}
         styles={{ body: { padding: "16px" } }}
       >
-        <SearchBox />
+        <SearchBox id="mobile-search" />
       </Drawer>
 
       <Drawer

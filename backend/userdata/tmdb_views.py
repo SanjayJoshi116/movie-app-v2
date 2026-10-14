@@ -33,7 +33,8 @@ def _request_token_key(user_id):
 def tmdb_request_token(request):
     redirect_to = request.query_params.get("redirect_to", "")
     try:
-        data = tmdb_client.get_request_token()
+        # Bounded: this request waits on it (tmdb_client.TMDB_CALL_DEADLINE).
+        data = tmdb_client.call_with_deadline(tmdb_client.get_request_token, tmdb_client.TMDB_CALL_DEADLINE)
         token = data["request_token"]
         # Only the token issued to this user can complete a connection, so a
         # callback link carrying someone else's approved token is refused.
@@ -62,14 +63,19 @@ def tmdb_create_session(request):
     if not isinstance(issued, str) or not hmac.compare_digest(issued, request_token):
         return Response({"error": TMDB_CONNECT_RESTART}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        data = tmdb_client.create_session(request_token)
+        data = tmdb_client.call_with_deadline(
+            tmdb_client.create_session, tmdb_client.TMDB_CALL_DEADLINE, request_token
+        )
         session_id = data["session_id"]
         profile, _ = TMDBProfile.objects.get_or_create(user=request.user)
-        if profile.session_id and profile.session_id != session_id:
-            # Best-effort, like disconnect: never blocks the new connection.
-            tmdb_client.revoke_tmdb_session(request.user.id, profile.session_id)
+        old_session_id = profile.session_id
+        # Store the new session first, then revoke the old one after commit in
+        # the background: a request that dies partway (or a failed save) can
+        # then never leave a revoked session stored.
         profile.session_id = session_id
         profile.save()
+        if old_session_id and old_session_id != session_id:
+            tmdb_client.revoke_in_background(request.user.id, old_session_id)
         return Response({"connected": True})
     except (requests.RequestException, ValueError, KeyError, DBError) as e:
         logger.warning("TMDB create-session failed for user %s: %s", request.user.id, e)
@@ -94,8 +100,10 @@ def tmdb_disconnect(request):
     except TMDBProfile.DoesNotExist:
         return Response({"connected": False})
     if profile.session_id:
-        # Best-effort: a TMDB failure is logged and never blocks the disconnect.
-        tmdb_client.revoke_tmdb_session(request.user.id, profile.session_id)
+        # Forget it first, then revoke in the background: the disconnect never
+        # waits on TMDB, and a TMDB failure is only logged.
+        session_id = profile.session_id
         profile.session_id = ""
         profile.save()
+        tmdb_client.revoke_in_background(request.user.id, session_id)
     return Response({"connected": False})

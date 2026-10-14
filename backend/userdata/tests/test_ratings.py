@@ -1,4 +1,8 @@
+import re
+import threading
+import time
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import requests
@@ -7,6 +11,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from userdata import tmdb_client
 from userdata.models import RatingEntry, TMDBProfile
 
 
@@ -171,3 +176,80 @@ class RatingSyncLoggingTests(APITestCase):
             res = self.client.delete(f"/api/ratings/{entry.pk}/")
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
         self.assertNotIn(SECRET_SESSION, "\n".join(cm.output))
+
+
+class RatingSyncBoundsTests(APITestCase):
+    """ratings: TMDB sync runs after the local change, bounded, in order."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="sig", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        TMDBProfile.objects.create(user=self.user, session_id="sess")
+        self.release = threading.Event()
+        self.addCleanup(self.release.set)  # never leave a pool thread blocked
+        self.client.get("/api/ratings/")  # warm up: the first request loads the URLconf
+
+    def _post(self, rating):
+        return self.client.post("/api/ratings/", {
+            "mediaId": 550, "mediaType": "movie", "title": "Fight Club", "userRating": rating,
+        }, format="json")
+
+    def _hang(self, *args):
+        self.release.wait(10)
+        return {}
+
+    @patch("userdata.tmdb_client.TMDB_CALL_DEADLINE", 0.3)
+    def test_tmdb_hanging_never_holds_a_rating_write(self):
+        with patch("userdata.tmdb_client.post_rating", side_effect=self._hang), \
+                patch("userdata.tmdb_client.delete_rating", side_effect=self._hang):
+            def url():
+                return f"/api/ratings/{RatingEntry.objects.get().pk}/"
+
+            for send in (
+                lambda: self._post(8),
+                lambda: self.client.patch(url(), {"userRating": 9}, format="json"),
+                lambda: self.client.delete(url()),
+            ):
+                started = time.monotonic()
+                with self.assertLogs("userdata.ratings_views", level="WARNING"):
+                    res = send()
+                self.assertLess(time.monotonic() - started, 2)
+                self.assertLess(res.status_code, 300)
+        self.assertFalse(RatingEntry.objects.exists())
+
+    def test_delete_removes_the_row_even_when_the_sync_fails(self):
+        entry = RatingEntry.objects.create(user=self.user, media_id=550, media_type="movie", title="T", user_rating=7)
+        order = []
+        real_delete = RatingEntry.delete
+
+        def tracked_delete(instance, *args, **kwargs):
+            order.append("local delete")
+            return real_delete(instance, *args, **kwargs)
+
+        def fail(*args):
+            # Runs on the TMDB pool thread: no DB access here (worker-thread rule).
+            order.append("tmdb sync")
+            raise requests.ConnectionError("down")
+
+        with patch.object(RatingEntry, "delete", tracked_delete), \
+                patch("userdata.tmdb_client.delete_rating", side_effect=fail), \
+                self.assertLogs("userdata.ratings_views", level="WARNING"):
+            res = self.client.delete(f"/api/ratings/{entry.pk}/")
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(RatingEntry.objects.filter(pk=entry.pk).exists())
+        self.assertEqual(order, ["local delete", "tmdb sync"])
+
+    def test_rate_then_delete_reaches_tmdb_in_order(self):
+        calls = []
+        with patch("userdata.tmdb_client.post_rating", side_effect=lambda *a: calls.append(("post", a))), \
+                patch("userdata.tmdb_client.delete_rating", side_effect=lambda *a: calls.append(("delete", a))):
+            self._post(8)
+            self.client.delete(f"/api/ratings/{RatingEntry.objects.get().pk}/")
+        self.assertEqual(calls, [("post", ("movie", 550, "sess", 8)), ("delete", ("movie", 550, "sess"))])
+
+    def test_rating_endpoints_fit_under_gunicorn_timeout(self):
+        entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
+        timeout = int(re.search(r"gunicorn .*--timeout (\d+)", entrypoint).group(1))
+        # One bounded TMDB call per rating write.
+        self.assertLessEqual(tmdb_client.TMDB_CALL_DEADLINE, timeout - 10)
+

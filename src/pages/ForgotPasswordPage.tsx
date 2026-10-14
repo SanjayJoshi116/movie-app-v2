@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/userApi";
+import { getApiError } from "../utils/apiError";
 
 export default function ForgotPasswordPage() {
   const { message } = App.useApp();
@@ -14,13 +15,7 @@ export default function ForgotPasswordPage() {
       await requestPasswordReset(values.email.trim());
       setSent(true);
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { detail?: string }; status?: number } };
-      const response = axiosErr?.response;
-      if (!response) {
-        message.error("Cannot reach the server. Make sure the backend is running.");
-      } else {
-        message.error(response.data?.detail || "Something went wrong. Please try again.");
-      }
+      message.error(getApiError(err, "Something went wrong. Please try again."));
     } finally {
       setLoading(false);
     }

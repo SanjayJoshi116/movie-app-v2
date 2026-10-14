@@ -86,7 +86,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people (the term and tab live in the URL, `/search?q=…&tab=…`, so reload, a shared link or a sign-in round trip shows the same results); the People page also has its own search box
 - **Hero Banner** — Trending title of the week as a full-width backdrop with title, overview, rating, and direct link
 - **Recent Searches** — Search history dropdown (last 5 queries)
-- **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies. Drawer edits are a draft: closing without Apply discards them, and reopening shows what's applied
+- **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies. Drawer edits, "Include Adult Content" included, are a draft: closing without Apply discards them, and reopening shows what's applied. Every drawer field is labelled for screen readers, and category buttons are disabled while a search or filter decides the results
 - **Genre Tags** — Pick genres in the filter drawer; they apply with the other filters on Apply, in one request
 - **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll (capped at TMDB's 500-page limit); a failed next page shows "Couldn't load more" with Retry and stops auto-loading until you retry
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
@@ -98,7 +98,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
 - **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time. A failed load shows Retry instead of "not tracked" (so a save can't overwrite real progress), and a double click on Next or Save sends one write
-- **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything
+- **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything; failed credit requests show an error with Retry (credits only), never "No credits"
 - **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section; a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
 
 ### Library
@@ -187,7 +187,8 @@ backend/
 │   ├── models.py                # WatchlistEntry, WatchedEntry (incl. runtime_minutes, platform),
 │   │                            #   RatingEntry, UserList, UserListItem, EpisodeProgress,
 │   │                            #   FollowedPerson, UserRecommendationCache (pre-computed rec cache per user),
-│   │                            #   TMDBProfile (TMDB OAuth session), Profile (avatar ImageField)
+│   │                            #   TMDBProfile (TMDB OAuth session), Profile (avatar ImageField),
+│   │                            #   LoginFailure (per-username failed-password count)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases, FiniteFloatField, MediaIdentityMixin,
 │   │                            #   restated length/range bounds, small input serializers for ad-hoc endpoints)
 │   ├── bulk_import.py           # bulk_import(): shared create-only, all-or-nothing bulk endpoint helper
@@ -350,7 +351,12 @@ src/
 │   ├── safeUrl.ts               # safeHttpUrl(): third-party URL → link target only if http(s)
 │   ├── ics.ts                   # Calendar .ics builder (DTSTAMP, text escaping, 75-octet folding)
 │   ├── tmdbPages.ts             # Caps TMDB total_pages at its 500-page limit
-│   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations
+│   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations; other actions
+│   │                            #   queue behind, runExclusive() for clears, group() per list
+│   ├── guardedReload.ts         # Library reload rerun if a write settled while it was in flight
+│   ├── personLabel.ts           # Followed person's name, "Person <id>" when blank
+│   ├── queryParams.ts           # parseIntParam()/pickKey(): address values with safe fallbacks
+│   ├── initials.ts              # getInitials(): fallback avatar text (sidebar, bottom nav, profile)
 │   ├── settled.ts               # settledData()/isNotFound() helpers for Promise.allSettled pages
 │   ├── postLoginPath.ts         # Where to go after sign-in (state.from path+query+hash, else /movies);
 │   │                            #   shared by LoginPage and App's signed-in auth-page redirect
@@ -435,7 +441,7 @@ python backend/manage.py compute_recommendations
 npm run dev
 ```
 
-The React app runs at `http://localhost:3000`. The Django API runs at `http://localhost:8000`, and the app reaches it same-origin: CRA's dev `proxy` (`package.json`) forwards `/api` and `/media` to `127.0.0.1:8000`, so there are no CORS preflights. Restart `npm run dev` after changing `proxy`.
+The React app runs at `http://localhost:3000`. The Django API runs at `http://localhost:8000`, and the app reaches it same-origin: CRA's dev `proxy` (`package.json`) forwards `/api` and `/media` to Django on port 8000 (over IPv4, see `package.json`), so there are no CORS preflights. Restart `npm run dev` after changing `proxy`.
 
 > **Note:** Both must be running for the app to work fully. `npm run dev` starts them together using `concurrently` (and first runs `kill-port 3000 8000` to clear anything left over from a previous run).
 
@@ -574,7 +580,7 @@ http://<host-lan-ip>:3000   # port 3000
 
 Find the host LAN IP:
 - **Windows:** `ipconfig` → look for **IPv4 Address** under Wi-Fi or Ethernet
-- **Mac/Linux:** `ifconfig` or `ip addr` → look for `inet 192.168.x.x`
+- **Mac/Linux:** `ifconfig` or `ip addr` → look for the `inet` address of your Wi-Fi or Ethernet interface
 
 > **Note:** nginx forwards the browser's `Host` header to Django, so every name or IP you browse to must be listed in `ALLOWED_HOSTS` (e.g. `ALLOWED_HOSTS=localhost,<host-lan-ip>`). Keep `localhost` in the list — the backend healthcheck calls `localhost:8000`. A wildcard `ALLOWED_HOSTS=*` is refused at startup when `DEBUG` is off.
 >
@@ -617,6 +623,7 @@ src/hooks/__tests__/
 ├── useWatched.test.ts
 ├── useRatings.test.ts
 ├── useLists.test.ts
+├── libraryOrdering.test.ts      # Loading from first render after sign-in; unmark/remove/add queue behind pending writes
 ├── useToast.test.tsx            # Memoized, identical messages deduped by key
 ├── useInfiniteScroll.test.tsx    # A failed page is requested once, not in a loop, until Retry
 ├── sessionGeneration.test.tsx    # Library/notification responses from a signed-out session are dropped
@@ -628,7 +635,8 @@ src/context/__tests__/
 ├── AppContext.test.tsx
 ├── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
 ├── AuthContext.sync.test.tsx     # Other tab logs out / signs in as someone else / updates the profile
-└── FollowedPeopleContext.test.tsx # Lazy fetch, state shared across consumers, new follow first, `changes`
+├── FollowedPeopleContext.test.tsx # Lazy fetch, state shared across consumers, new follow first, `changes`
+└── UIContext.test.tsx            # Search, adult content and genres reset on sign-out; theme kept
 
 src/api/__tests__/
 ├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
@@ -647,6 +655,8 @@ src/utils/__tests__/
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
 ├── csvBom.test.ts                # Exports start with a UTF-8 BOM and still round-trip
+├── downloadBlob.test.ts          # Anchor attached, object URL revoked only after a tick
+├── queryParams.test.ts           # Malformed/out-of-range page, pageSize and tab values fall back
 ├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
 ├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
@@ -664,10 +674,20 @@ src/components/__tests__/
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
+├── PersonCardFollow.test.tsx     # Follow disabled while follow state loads
+├── importSession.test.tsx        # Imports/restores stop after sign-out, can't close mid-run; personLabel
 ├── TrailerEmbed.test.tsx         # No iframe until the thumbnail is activated
 └── WatchProviders.test.tsx       # TMDB's provider link used only if http(s)
 
+src/components/layout/__tests__/
+└── FilterPanel.test.tsx          # Genres of the current type only; adult switch is a draft; labelled fields
+
 src/pages/__tests__/
+├── ListsPage.test.tsx            # Delete confirm never opens the list; grid kept during a reload
+├── RecommendationsPage.test.tsx  # Partial group failure → inline Retry; failed watched load → error
+├── PersonPage.test.tsx           # Failed credits → error with Retry (credits only), partial tabs kept
+├── PeoplePage.test.tsx           # A search with no matches says so
+├── authPageErrors.test.tsx       # Register/forgot/reset errors only through getApiError
 └── FollowingPage.test.tsx        # Recommendations refetch when the followed set changes at the same size
 ```
 
@@ -734,6 +754,9 @@ backend/userdata/tests/
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings/list items: create-only, timestamps,
 │                                   #   all-or-nothing; list createdAt on create only
+├── test_input_bounds.py            # voteAverage 0–10 (Stats ignores stored outliers), episode progress needs
+│                                   #   season + episode (no PATCH), list deleted mid-add → 404
+├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled
 ├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
 │                                   #   review (5000) and list description (200) caps
 └── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
@@ -790,15 +813,15 @@ e2e/python/
 ├── test_a11y_routing.py # Keyboard card links, person-card Follow, 404 page, signed-in auth-page redirect (9)
 ├── test_auth.py       # Login, register, password reset, redirect guards (29)
 ├── test_browse.py     # Movie/TV browse, categories, filters, browser-Back restore (18)
-├── test_detail.py     # Movie/TV detail pages, cast, recommendations (19)
-├── test_lists.py      # User lists CRUD + CSV export (16)
+├── test_detail.py     # Movie/TV detail pages, cast, recommendations (25)
+├── test_lists.py      # User lists CRUD + CSV export, delete confirm stays on Lists (17)
 ├── test_local_dates.py # Watched dates in the logged zone + label, X-Timezone sent (London browser) (1)
-├── test_profile.py    # Profile edit, password change, TMDB connect (11)
+├── test_profile.py    # Profile edit, password change, TMDB connect and its pending check (18)
 ├── test_ratings.py    # Rate + review flow (11)
 ├── test_recommendations.py # For You failed load → in-place Retry (3)
-├── test_search.py     # Live search across movies/TV/people (7)
-├── test_stats.py      # Stats dashboard charts, error + Retry (21)
-├── test_watched.py    # Watched list CRUD, CSV import/export (16)
+├── test_search.py     # Live search across movies/TV/people, unknown tab (8)
+├── test_stats.py      # Stats dashboard charts, error + Retry, unknown tab (22)
+├── test_watched.py    # Watched list CRUD, CSV import/export, malformed page params (17)
 └── test_watchlist.py  # Watchlist CRUD, sort, export (19)
 ```
 

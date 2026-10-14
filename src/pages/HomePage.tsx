@@ -142,7 +142,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     restore: { isReturning, savedLoadedPages, savedScrollY },
   });
 
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadMoreError);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !error && !loadMoreError);
 
   // Lets browser Back (not just the in-app Back button) restore this page.
   const stashBrowseState = () =>
@@ -219,6 +219,8 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
           <Button
             key={cat.key}
             type={activeCategory === cat.key ? "primary" : "default"}
+            // A search or filter decides the results; a category can't change them then.
+            disabled={Boolean(searchTerm) || hasFilters}
             onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}

@@ -169,9 +169,11 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   }, [fetchPage, currentPage]);
 
   const loadMore = useCallback(async () => {
-    if (loading || loadingMore || !hasMore || loadMoreError) return;
+    // Not while page 1 failed either: a sentinel left in view under the error
+    // screen re-fired after every page it loaded (an endless request loop).
+    if (loading || loadingMore || !hasMore || loadMoreError || error) return;
     await fetchNextPage();
-  }, [fetchNextPage, hasMore, loading, loadingMore, loadMoreError]);
+  }, [fetchNextPage, hasMore, loading, loadingMore, loadMoreError, error]);
 
   const retryLoadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;

@@ -51,7 +51,10 @@ async function lookupOne<T, R>(item: T, lookup: (item: T) => Promise<R>): Promis
       if (status === 404) return undefined; // TMDB doesn't know this id: final
       if (status === 429) {
         if (++rateLimited >= MAX_RATE_LIMITED_TRIES) return undefined;
-        await sleep(retryAfterMs(err));
+        // Push the shared schedule, so every worker (and any other import in
+        // the tab) waits it out; sleeping only this one let the others keep
+        // firing into the same window and use up their tries.
+        nextSlotAt = Math.max(nextSlotAt, Date.now() + retryAfterMs(err));
         continue;
       }
       if (++otherFailures > 1) return undefined;
@@ -68,20 +71,30 @@ export interface PacedResult<R> {
 
 /**
  * Run `lookup` for every item, at most MAX_IN_FLIGHT at a time and
- * LOOKUPS_PER_MINUTE overall. Never rejects: an item whose lookup fails is
- * counted in `missing`, so the caller can still import it and say so.
+ * LOOKUPS_PER_MINUTE overall. Never rejects: an item whose lookup fails, or
+ * that wasn't started because `shouldStop` turned true, is counted in
+ * `missing`, so the caller can still import it and say so.
  */
 export async function pacedLookup<T, R>(
   items: T[],
   lookup: (item: T) => Promise<R>,
-  { onProgress }: { onProgress?: (done: number, total: number) => void } = {},
+  {
+    onProgress,
+    shouldStop,
+  }: {
+    onProgress?: (done: number, total: number) => void;
+    /** Once true, no further items are started (e.g. the session that began the import ended). */
+    shouldStop?: () => boolean;
+  } = {},
 ): Promise<PacedResult<R>> {
-  const results: (R | undefined)[] = new Array(items.length);
+  // Filled, not `new Array(n)`: filter() skips holes, so items never started
+  // (shouldStop) would go uncounted in `missing`.
+  const results: (R | undefined)[] = Array.from({ length: items.length }, () => undefined);
   let next = 0;
   let done = 0;
   onProgress?.(0, items.length);
   const worker = async () => {
-    while (next < items.length) {
+    while (next < items.length && !shouldStop?.()) {
       const index = next++;
       results[index] = await lookupOne(items[index]!, lookup);
       onProgress?.(++done, items.length);

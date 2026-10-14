@@ -170,4 +170,37 @@ describe("follow order and change counter", () => {
     expect(screen.getByTestId("changes")).toHaveTextContent("0");
     expect(mockGet).not.toHaveBeenCalled();
   });
+
+  it("reload() counts as a follow change, and refetches only for a mounted consumer", async () => {
+    let ctx!: FollowedPeopleContextType;
+    function Reader() {
+      ctx = React.useContext(FollowedPeopleContext)!;
+      return <div data-testid="changes">{ctx.changes}</div>;
+    }
+    const { unmount } = render(<Shell><Reader /></Shell>);
+    act(() => ctx.reload());
+    expect(screen.getByTestId("changes")).toHaveTextContent("1");
+    expect(mockGet).not.toHaveBeenCalled(); // still lazy
+    unmount();
+
+    render(<Shell><Reader /><Consumer name="a" /></Shell>);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    act(() => ctx.reload());
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("changes")).toHaveTextContent("1");
+  });
+
+  it("retry() alone is not a follow change", async () => {
+    let ctx!: FollowedPeopleContextType;
+    function Reader() {
+      ctx = React.useContext(FollowedPeopleContext)!;
+      return <div data-testid="changes">{ctx.changes}</div>;
+    }
+    render(<Shell><Reader /><Consumer name="a" /></Shell>);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    act(() => ctx.retry());
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("changes")).toHaveTextContent("0");
+  });
 });
+

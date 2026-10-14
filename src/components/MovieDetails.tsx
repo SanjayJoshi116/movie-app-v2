@@ -25,10 +25,13 @@ import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
-import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
+import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 import { goBack } from "../utils/goBack";
+
+// USD amounts: grouped the US way whatever the browser locale (no "1.000.000 $").
+const USD_AMOUNT = new Intl.NumberFormat("en-US");
 
 interface ReleaseDateEntry {
   iso_3166_1: string;
@@ -148,7 +151,7 @@ const MovieDetails = ({ movie }: Props) => {
                   whileTap={{ scale: 0.85 }}
                   animate={{ scale: inWatchlist ? 1.1 : 1 }}
                   aria-label={inWatchlist ? "Remove from watchlist" : "Add to watchlist"}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: RATING_GOLD, fontSize: "1.5rem" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: inWatchlist ? IN_WATCHLIST_BLUE : idleIconColor, fontSize: "1.5rem" }}
                 >
                   {inWatchlist ? <BookFilled /> : <BookOutlined />}
                 </motion.button>
@@ -201,7 +204,7 @@ const MovieDetails = ({ movie }: Props) => {
                 )}
                 {budget ? (
                   <Col>
-                    <Statistic title="Budget (USD)" value={budget} prefix="$" formatter={(v) => Number(v).toLocaleString()} />
+                    <Statistic title="Budget (USD)" value={budget} prefix="$" formatter={(v) => USD_AMOUNT.format(Number(v))} />
                   </Col>
                 ) : null}
               </Row>
@@ -212,7 +215,7 @@ const MovieDetails = ({ movie }: Props) => {
                 <Descriptions.Item label="Language">{original_language?.toUpperCase()}</Descriptions.Item>
                 <Descriptions.Item label={<>Certification<InfoTooltip title="US content rating (MPAA-style); may not reflect ratings in other regions." /></>}>{renderCertifications(certifications)}</Descriptions.Item>
                 {directors && <Descriptions.Item label="Director">{directors}</Descriptions.Item>}
-                {revenue ? <Descriptions.Item label="Revenue (USD)">${revenue.toLocaleString()}</Descriptions.Item> : null}
+                {revenue ? <Descriptions.Item label="Revenue (USD)">${USD_AMOUNT.format(revenue)}</Descriptions.Item> : null}
               </Descriptions>
 
               {genres && genres.length > 0 && (
@@ -294,8 +297,9 @@ const MovieDetails = ({ movie }: Props) => {
           <>
             <SectionHeader title="Cast" />
             <div className="cast-scroll-container">
-              {cast.slice(0, 15).map((actor) => (
-                <div key={actor.id} className="cast-scroll-item">
+              {cast.slice(0, 15).map((actor, i) => (
+                // One person can be listed twice (two roles): the id alone repeats.
+                <div key={`${actor.id}-${i}`} className="cast-scroll-item">
                   <CardLink to={`/person/${actor.id}`} label={actor.name}>
                   <Card
                     hoverable

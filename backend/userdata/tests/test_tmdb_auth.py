@@ -1,5 +1,10 @@
 import logging
+import re
 import sys
+import threading
+import time
+from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -7,16 +12,27 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.contrib.auth.models import User
-from django.test import override_settings
+from django.db import DatabaseError
+from django.test import SimpleTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from userdata import tmdb_client
 from userdata.logging import RedactingFormatter
 from userdata.models import TMDBProfile
 from userdata.tmdb_views import _request_token_key
 
 FAKE_KEY = "deadbeefcafe0123456789"
 TMDB_URL = f"https://api.themoviedb.org/3/authentication/session/new?api_key={FAKE_KEY}"
+
+
+@contextmanager
+def inline_background(test):
+    """Run the request's on-commit callbacks, and the background revoke thread
+    they start, inline: revokes happen after the local change (account-security)."""
+    with patch("userdata.tmdb_client._start_background", side_effect=lambda target, *args: target(*args)), \
+            test.captureOnCommitCallbacks(execute=True):
+        yield
 
 
 def _http_error(*args, **kwargs):
@@ -104,14 +120,15 @@ class TmdbSessionRevokeTests(APITestCase):
     @patch("userdata.tmdb_client.requests.delete")
     def test_disconnect_revokes_session(self, delete):
         delete.return_value.json.return_value = {"success": True}
-        res = self.client.delete("/api/tmdb-auth/disconnect/")
+        with inline_background(self):
+            res = self.client.delete("/api/tmdb-auth/disconnect/")
         self.assertEqual(res.data, {"connected": False})
         self._assert_revoke_call(delete)
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "")
 
     @patch("userdata.tmdb_client.requests.delete", side_effect=_revoke_error)
     def test_tmdb_failure_still_disconnects_and_logs_no_secrets(self, delete):
-        with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm:
+        with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm, inline_background(self):
             res = self.client.delete("/api/tmdb-auth/disconnect/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data, {"connected": False})
@@ -130,22 +147,24 @@ class TmdbSessionRevokeTests(APITestCase):
         delete.assert_not_called()
 
     @patch("userdata.tmdb_client.requests.delete")
-    def test_account_delete_revokes_before_user_is_gone(self, delete):
+    def test_account_delete_revokes_after_user_is_gone(self, delete):
         user_existed = []
 
         def record(*args, **kwargs):
             user_existed.append(User.objects.filter(pk=self.user.pk).exists())
             return Mock(**{"json.return_value": {"success": True}})
         delete.side_effect = record
-        res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
+        with inline_background(self):
+            res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
         self._assert_revoke_call(delete)
-        self.assertEqual(user_existed, [True])
+        # Deleted first: a slow or failing TMDB can't stop the deletion.
+        self.assertEqual(user_existed, [False])
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
 
     @patch("userdata.tmdb_client.requests.delete", side_effect=_revoke_error)
     def test_account_delete_survives_tmdb_failure(self, _):
-        with self.assertLogs("userdata.tmdb_client", level="WARNING"):
+        with self.assertLogs("userdata.tmdb_client", level="WARNING"), inline_background(self):
             res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
@@ -231,7 +250,8 @@ class TmdbConnectBindingTests(APITestCase):
         delete.return_value.json.return_value = {"success": True}
         TMDBProfile.objects.create(user=self.user, session_id="sess-old")
         self._issue(self.user, "tok-mine")
-        self.assertEqual(self._create("tok-mine").status_code, status.HTTP_200_OK)
+        with inline_background(self):
+            self.assertEqual(self._create("tok-mine").status_code, status.HTTP_200_OK)
         delete.assert_called_once()
         self.assertEqual(delete.call_args.kwargs["json"], {"session_id": "sess-old"})
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
@@ -241,8 +261,123 @@ class TmdbConnectBindingTests(APITestCase):
     def test_failed_revoke_does_not_block_reconnect(self, *_):
         TMDBProfile.objects.create(user=self.user, session_id="sess-old")
         self._issue(self.user, "tok-mine")
-        with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm:
+        with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm, inline_background(self):
             res = self._create("tok-mine")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
         self.assertNotIn("sess-old", "\n".join(cm.output))
+
+
+@override_settings(TMDB_API_KEY=FAKE_KEY)
+class TmdbLocalChangeFirstTests(APITestCase):
+    """account-security: the stored session is never one that was revoked, and
+    no request waits on a TMDB revoke. endpoint-time-budgets: connect is bounded."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="ola", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        self.release = threading.Event()
+        self.addCleanup(self.release.set)  # never leave a pool thread blocked
+
+    def _issue(self, token):
+        with patch("userdata.tmdb_client.get_request_token", return_value={"request_token": token}):
+            self.client.get("/api/tmdb-auth/request-token/")
+
+    def _create(self, token):
+        return self.client.post("/api/tmdb-auth/create-session/", {"request_token": token}, format="json")
+
+    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_reconnect_revokes_only_after_the_new_session_is_committed(self, _, delete):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        self._issue("tok")
+        with patch("userdata.tmdb_client._start_background") as start, \
+                self.captureOnCommitCallbacks(execute=False) as callbacks:
+            res = self._create("tok")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        start.assert_not_called()  # nothing revoked inside the request
+        delete.assert_not_called()
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
+        self.assertEqual(len(callbacks), 1)
+
+    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_failed_save_on_reconnect_revokes_nothing(self, _, delete):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        self._issue("tok")
+        with patch.object(TMDBProfile, "save", side_effect=DatabaseError("down")), inline_background(self):
+            res = self._create("tok")
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+        delete.assert_not_called()
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-old")
+
+    @patch("userdata.tmdb_client.TMDB_CALL_DEADLINE", 0.3)
+    def test_create_session_hanging_returns_502_in_time_and_keeps_the_session(self):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        self._issue("tok")
+        with patch("userdata.tmdb_client.create_session", side_effect=lambda *a: self.release.wait(10)):
+            started = time.monotonic()
+            res = self._create("tok")
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertEqual(res.data, {"error": "Couldn't reach TMDB. Try again."})
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-old")
+
+    @patch("userdata.tmdb_client.TMDB_CALL_DEADLINE", 0.3)
+    def test_request_token_hanging_returns_502_in_time(self):
+        with patch("userdata.tmdb_client.get_request_token", side_effect=lambda: self.release.wait(10)):
+            started = time.monotonic()
+            res = self.client.get("/api/tmdb-auth/request-token/")
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertLess(time.monotonic() - started, 2)
+
+    def test_disconnect_and_delete_never_wait_on_a_hanging_revoke(self):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+
+        entered = threading.Semaphore(0)
+
+        def hanging_delete(*args, **kwargs):
+            entered.release()
+            self.release.wait(10)
+            return Mock(**{"json.return_value": {"success": True}})
+
+        def hang():
+            return patch("userdata.tmdb_client.requests.delete", side_effect=hanging_delete)
+
+        def request_then_commit(send):
+            """Send the request, then run its on-commit callbacks (what autocommit
+            does at once in production): neither may wait on the hanging revoke."""
+            with hang():
+                with self.captureOnCommitCallbacks(execute=False) as callbacks:
+                    started = time.monotonic()
+                    res = send()
+                for callback in callbacks:
+                    callback()
+                self.assertLess(time.monotonic() - started, 2)
+                # The background revoke is now inside the fake, so it can't
+                # reach the real network after the patch ends.
+                self.assertTrue(entered.acquire(timeout=5))
+            return res
+
+        self.client.get("/api/tmdb-auth/status/")  # warm up: the first request loads the URLconf
+        res = request_then_commit(lambda: self.client.delete("/api/tmdb-auth/disconnect/"))
+        self.assertEqual(res.data, {"connected": False})
+        self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "")
+
+        TMDBProfile.objects.filter(user=self.user).update(session_id="sess-2")
+        self.user.refresh_from_db()
+        res = request_then_commit(
+            lambda: self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
+        )
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+
+
+class TmdbConnectBudgetTests(SimpleTestCase):
+    def test_connect_endpoints_fit_under_gunicorn_timeout(self):
+        entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
+        timeout = int(re.search(r"gunicorn .*--timeout (\d+)", entrypoint).group(1))
+        # One bounded TMDB call per request; the revoke runs after it, in the background.
+        self.assertLessEqual(tmdb_client.TMDB_CALL_DEADLINE, timeout - 10)
+

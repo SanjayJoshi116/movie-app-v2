@@ -97,3 +97,37 @@ class ConcurrentEmailChangeTests(TransactionTestCase):
 
         self.assertEqual(sorted(codes), [200, 400])
         self.assertEqual(User.objects.filter(email__iexact="same@example.com").count(), 1)
+
+
+class LockFoldTests(APITestCase):
+    """The advisory lock must fold case the way the check (email__iexact,
+    UPPER() on PostgreSQL) does, or two addresses the check calls equal can take
+    different locks and race. Which pairs fold together depends on the
+    database's collation; this dev DB folds none of these, Docker's glibc one
+    may fold some. Either way: equal under iexact means the same lock key."""
+
+    PAIRS = (
+        ("\u017fam@example.com", "sam@example.com"),  # long s: upper is S, lower stays
+        ("\u212aim@example.com", "kim@example.com"),  # Kelvin sign: lower is k
+        ("stra\u00dfe@example.com", "STRASSE@example.com"),
+        ("Ana@Example.com", "ana@example.com"),
+    )
+
+    def test_equal_under_iexact_means_same_lock(self):
+        for a, b in self.PAIRS:
+            User.objects.all().delete()
+            User.objects.create_user(username="x", email=a, password=PASSWORD)
+            same_to_check = User.objects.filter(email__iexact=b).exists()
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT hashtext(upper(%s)) = hashtext(upper(%s))", [a, b])
+                same_lock = cursor.fetchone()[0]
+            if same_to_check:
+                self.assertTrue(same_lock, (a, b))
+
+    def test_lock_uses_upper(self):
+        from django.db import transaction
+        from django.test.utils import CaptureQueriesContext
+
+        with transaction.atomic(), CaptureQueriesContext(connection) as ctx:
+            auth_views._email_taken_under_lock("ana@example.com")
+        self.assertIn("hashtext(upper(", ctx.captured_queries[0]["sql"])

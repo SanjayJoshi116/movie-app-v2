@@ -1,16 +1,18 @@
 import hashlib
 import io
 import logging
+import math
 import threading
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -25,7 +27,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from . import tmdb_client
-from .models import Profile, TMDBProfile
+from .models import LoginFailure, Profile, TMDBProfile
 from .signals import delete_avatar_on_commit
 from .serializers import (
     LoginInputSerializer,
@@ -40,8 +42,12 @@ from .serializers import (
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
 AVATAR_EXT_BY_FORMAT = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
+AVATAR_MAX_PIXELS = 16_000_000
+AVATAR_MAX_SIDE = 1024  # stored avatars are scaled down to fit this square
 
 logger = logging.getLogger(__name__)
+
+_FAILURE_TABLE = connection.ops.quote_name(LoginFailure._meta.db_table)
 
 
 def _in_background(target):
@@ -56,20 +62,65 @@ class LoginThrottle(AnonRateThrottle):
 
 
 def _login_failure_key(username):
-    # Hashed so raw usernames never sit in the cache table.
-    return "login_fail:" + hashlib.sha256(username.strip().lower().encode()).hexdigest()
+    # Hashed so raw usernames are never stored.
+    return hashlib.sha256(username.strip().lower().encode()).hexdigest()
+
+
+def _failure_window():
+    return timedelta(seconds=settings.LOGIN_FAILURE_WINDOW_SECONDS)
+
+
+def _login_failure_state(key):
+    """(count, seconds left in the window) for key; (0, 0) once it has passed.
+    The DB clock decides, as it does when recording."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT count, EXTRACT(EPOCH FROM window_start + %s - now()) FROM {_FAILURE_TABLE} "
+            "WHERE key = %s AND window_start > now() - %s",
+            [_failure_window(), key, _failure_window()],
+        )
+        row = cursor.fetchone()
+    return (row[0], max(1, math.ceil(row[1]))) if row else (0, 0)
 
 
 def _login_failures(key):
-    return cache.get(key, 0)
+    return _login_failure_state(key)[0]
 
 
 def _record_login_failure(key):
-    cache.add(key, 0, settings.LOGIN_FAILURE_WINDOW_SECONDS)  # the window starts at the first failure
-    try:
-        cache.incr(key)
-    except ValueError:  # expired between add() and incr()
-        cache.add(key, 1, settings.LOGIN_FAILURE_WINDOW_SECONDS)
+    """Count one failure, atomically. The window runs from its first failure:
+    later failures never move it, and the first one after it has passed starts
+    a new one. Concurrent upserts on one key serialize on its row, so a
+    parallel burst counts every failure."""
+    window = _failure_window()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {_FAILURE_TABLE} AS f (key, count, window_start) VALUES (%s, 1, now()) "
+            "ON CONFLICT (key) DO UPDATE SET "
+            "count = CASE WHEN f.window_start <= now() - %s THEN 1 ELSE f.count + 1 END, "
+            "window_start = CASE WHEN f.window_start <= now() - %s THEN now() ELSE f.window_start END",
+            [key, window, window],
+        )
+        # Keeps the table at about the usernames failing within the last window.
+        cursor.execute(f"DELETE FROM {_FAILURE_TABLE} WHERE window_start <= now() - %s", [window])
+
+
+def _clear_login_failures(key):
+    LoginFailure.objects.filter(key=key).delete()
+
+
+def _login_limited_response(key):
+    """The 429 for a username at the per-username limit, or None. Shared by
+    login and the password-gated account actions so they can't drift apart."""
+    count, seconds_left = _login_failure_state(key)
+    if count < settings.LOGIN_FAILURE_LIMIT:
+        return None
+    response = Response(
+        {"detail": "Too many failed login attempts for this account. Try again later."},
+        status=status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+    response["Retry-After"] = str(seconds_left)
+    return response
 
 
 class RegisterThrottle(AnonRateThrottle):
@@ -78,6 +129,13 @@ class RegisterThrottle(AnonRateThrottle):
 
 class PasswordResetThrottle(AnonRateThrottle):
     scope = "password_reset"
+
+
+class PasswordResetConfirmThrottle(AnonRateThrottle):
+    """Separate from requesting a link, so a few rejected passwords on the
+    confirm form don't use up the request allowance, or the reverse."""
+
+    scope = "password_reset_confirm"
 
 
 class TokenSessionThrottle(AnonRateThrottle):
@@ -218,7 +276,7 @@ def password_reset_request(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([PasswordResetThrottle])
+@throttle_classes([PasswordResetConfirmThrottle])
 def password_reset_confirm(request):
     from django.contrib.auth.tokens import default_token_generator
     from django.contrib.auth.password_validation import validate_password
@@ -254,6 +312,9 @@ def password_reset_confirm(request):
     # Whoever triggered the reset may be locking out an attacker: end every
     # existing session (at its next refresh) along with the old password.
     _revoke_all_refresh_tokens(user)
+    # Someone else's guessing may have locked this username; the new password
+    # must work straight away.
+    _clear_login_failures(_login_failure_key(user.username))
     return Response({"detail": "Password reset successfully."})
 
 
@@ -266,11 +327,12 @@ def _email_taken_under_lock(email, exclude_pk=None):
     auth_user.email has no unique index (older accounts may already share
     one), so the serializers' check alone races: two requests for the same new
     address can both pass it. A transaction-scoped advisory lock on the
-    lowercased address makes the second wait and then see the first's row.
+    upper-cased address (the fold email__iexact compares with on PostgreSQL)
+    makes the second wait and then see the first's row.
     Call inside transaction.atomic(); PostgreSQL only.
     """
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(lower(%s)))", [email])
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(upper(%s)))", [email])
     others = User.objects.filter(email__iexact=email)
     if exclude_pk is not None:
         others = others.exclude(pk=exclude_pk)
@@ -311,13 +373,9 @@ def login(request):
     # Per-username limit across all IPs, checked before the password so a
     # distributed guesser learns nothing once it trips (existing or not).
     failure_key = _login_failure_key(username)
-    if _login_failures(failure_key) >= settings.LOGIN_FAILURE_LIMIT:
-        response = Response(
-            {"detail": "Too many failed login attempts for this account. Try again later."},
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
-        response["Retry-After"] = str(settings.LOGIN_FAILURE_WINDOW_SECONDS)
-        return response
+    limited = _login_limited_response(failure_key)
+    if limited:
+        return limited
     user = authenticate(username=username, password=password)
     if user is None:
         _record_login_failure(failure_key)
@@ -332,13 +390,23 @@ def delete_account(request):
     body = PasswordInputSerializer(data=request.data)
     body.is_valid(raise_exception=True)
     password = body.validated_data["password"]
+    # Same per-username limit as login, so a stolen session can't guess the
+    # password here without bound.
+    failure_key = _login_failure_key(request.user.username)
+    limited = _login_limited_response(failure_key)
+    if limited:
+        return limited
     if not password or not request.user.check_password(password):
+        if password:
+            _record_login_failure(failure_key)
         return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
+    # Read before the account (and its TMDB profile) is gone; revoke only after
+    # the deletion, in the background, so a slow TMDB can never stop it.
     session_id = TMDBProfile.objects.filter(user=request.user).values_list("session_id", flat=True).first()
-    if session_id:
-        # Best-effort, before the id is gone with the account; never blocks deletion.
-        tmdb_client.revoke_tmdb_session(request.user.id, session_id)
+    user_id = request.user.id
     request.user.delete()
+    if session_id:
+        tmdb_client.revoke_in_background(user_id, session_id)
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -352,8 +420,19 @@ def profile(request):
     # when the hasher's parameters changed, which changes the CHECK_REVOKE_TOKEN
     # claim and kills this session's tokens. Snapshot it before that happens.
     claim_before = get_md5_hash_password(request.user.password)
+    # A current_password is checked against the same per-username limit as
+    # login (before it is verified), and a wrong one counts toward it. Edits
+    # that send no password are unaffected.
+    failure_key = _login_failure_key(request.user.username)
+    if isinstance(request.data, dict) and request.data.get("current_password"):
+        limited = _login_limited_response(failure_key)
+        if limited:
+            return limited
     serializer = UserProfileUpdateSerializer(data=request.data, context={"request": request})
-    serializer.is_valid(raise_exception=True)
+    if not serializer.is_valid():
+        if serializer.password_rejected:
+            _record_login_failure(failure_key)
+        raise ValidationError(serializer.errors)
     data = serializer.validated_data
 
     user = request.user
@@ -373,12 +452,15 @@ def profile(request):
             if email_changed and _email_taken_under_lock(new_email, exclude_pk=user.pk):
                 return Response({"email": [EMAIL_TAKEN]}, status=status.HTTP_400_BAD_REQUEST)
             user.save()
+            if old_email and user.email.lower() != old_email.lower():
+                # After commit and off the request thread: a stalled mail
+                # server must not keep the token revoke/reissue below from running.
+                username, user_pk = user.username, user.pk
+                transaction.on_commit(lambda: _notify_email_changed(user_pk, username, old_email))
     except IntegrityError:
         return Response(
             {"username": ["This username is already taken."]}, status=status.HTTP_400_BAD_REQUEST
         )
-    if old_email and user.email.lower() != old_email.lower():
-        _notify_email_changed(user, old_email)
     body = dict(UserSerializer(user).data)
     if data.get("new_password"):
         # Revoke first, then issue the fresh pair, so this session survives
@@ -392,38 +474,47 @@ def profile(request):
     return Response(body)
 
 
-def _notify_email_changed(user, old_email):
-    """Tell the previous address its account email changed (best-effort)."""
+def _notify_email_changed(user_pk, username, old_email):
+    """Tell the previous address its account email changed (best-effort, on a
+    background thread, so it takes plain values and never touches the ORM)."""
     from django.core.mail import send_mail
 
-    try:
-        send_mail(
-            subject="Your CINE DB email was changed",
-            message=(
-                f"Hi {user.username},\n\n"
-                f"The email address on your CINE DB account was just changed from this "
-                f"address to a new one.\n\n"
-                f"If you didn't do this, reset your password and contact support right away."
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[old_email],
-            fail_silently=False,
-        )
-    except Exception:
-        # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
-        # password_reset_request's send_mail. The email change itself already
-        # succeeded and must not be reported as failed because of this.
-        logger.exception("Failed to send email-change notice for user %s", user.pk)
+    def send():
+        try:
+            send_mail(
+                subject="Your CINE DB email was changed",
+                message=(
+                    f"Hi {username},\n\n"
+                    f"The email address on your CINE DB account was just changed from this "
+                    f"address to a new one.\n\n"
+                    f"If you didn't do this, reset your password and contact support right away."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[old_email],
+                fail_silently=False,
+            )
+        except Exception:
+            # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
+            # password_reset_request's send_mail. The email change itself already
+            # succeeded and must not be reported as failed because of this.
+            logger.exception("Failed to send email-change notice for user %s", user_pk)
+
+    _in_background(send)
 
 
 def _reencode_avatar(file, image_format):
     """Decode and re-save the upload in its own format, so EXIF (GPS, camera
     serial, timestamps) and anything else embedded is dropped. The EXIF
     orientation is applied to the pixels first, so the photo still displays
-    upright. Animated images keep their first frame."""
+    upright. Animated images keep their first frame. The result is scaled down
+    to fit AVATAR_MAX_SIDE, before the transpose, which copies the image."""
     file.seek(0)
     with Image.open(file) as img:
         icc_profile = img.info.get("icc_profile")
+        bound = (AVATAR_MAX_SIDE, AVATAR_MAX_SIDE)
+        if image_format == "JPEG":
+            img.draft(img.mode, bound)  # decode at a reduced scale where JPEG allows
+        img.thumbnail(bound)
         img = ImageOps.exif_transpose(img)
         if image_format == "JPEG" and img.mode not in ("RGB", "L", "CMYK"):
             img = img.convert("RGB")
@@ -444,12 +535,15 @@ def avatar(request):
     profile, _ = Profile.objects.get_or_create(user=request.user)
 
     if request.method == "DELETE":
-        if profile.avatar:
-            old_name = profile.avatar.name
-            profile.avatar = None
-            with transaction.atomic():
-                profile.save()
+        with transaction.atomic():
+            # Locked like a replace, so it can't race one into an orphan.
+            locked = Profile.objects.select_for_update().get(pk=profile.pk)
+            if locked.avatar:
+                old_name = locked.avatar.name
+                locked.avatar = None
+                locked.save()
                 delete_avatar_on_commit(old_name)
+        request.user.profile = locked  # the response reads the row just saved
         return Response(UserSerializer(request.user).data)
 
     file = request.FILES.get("avatar")
@@ -471,6 +565,14 @@ def avatar(request):
             # process-global state and isn't thread-safe.
             if img.width * img.height > Image.MAX_IMAGE_PIXELS:
                 return invalid
+            # Far below the decoder limit: a few-hundred-KB single-colour PNG
+            # of ~90M px decodes to several hundred MB. Checked from the header,
+            # before any pixels are decoded.
+            if img.width * img.height > AVATAR_MAX_PIXELS:
+                return Response(
+                    {"detail": "Image is too large. Use one under 16 megapixels."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             image_format = img.format
             img.verify()
         file.seek(0)
@@ -497,17 +599,24 @@ def avatar(request):
 
     # The old file goes only after the new one is stored and the row committed,
     # so a failed replace leaves the current photo in place and served.
-    old_name = profile.avatar.name if profile.avatar else ""
-    profile.avatar = file
+    locked = None
     try:
         with transaction.atomic():
-            profile.save()  # stores the file first, then the row
-            if old_name != profile.avatar.name:
+            # Locked, so a concurrent upload waits and then sees this one's
+            # file as its old one, instead of both deleting the same old file
+            # and orphaning one new file. Decoding stays outside the lock.
+            locked = Profile.objects.select_for_update().get(pk=profile.pk)
+            old_name = locked.avatar.name if locked.avatar else ""
+            locked.avatar = file
+            locked.save()  # stores the file first, then the row
+            if old_name != locked.avatar.name:
                 delete_avatar_on_commit(old_name)
     except Exception:
         # Broad on purpose, and re-raised: storage and DB errors both land
         # here, and either way the newly written file must not be orphaned.
-        if profile.avatar._committed and profile.avatar.name != old_name:
-            profile.avatar.storage.delete(profile.avatar.name)
+        # `locked` is None if the lock itself failed: nothing new was stored.
+        if locked is not None and locked.avatar._committed and locked.avatar.name != old_name:
+            locked.avatar.storage.delete(locked.avatar.name)
         raise
+    request.user.profile = locked  # the response reads the row just saved
     return Response(UserSerializer(request.user).data)

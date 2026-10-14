@@ -47,3 +47,31 @@ test("a new search from the TV tab stays on the TV tab", async ({ page }, testIn
   await expect(page.locator(".ant-tabs-tab-active")).toHaveText("TV Shows");
   await expect(page.getByText("Show for better call")).toBeVisible();
 });
+
+test("the search box shows the term from the address and from a picked recent search", async ({ page }, testInfo) => {
+  const openBox = async () => {
+    // The phone's search box lives in a drawer that may still be open.
+    if (testInfo.project.name === "mobile-chrome" && !(await page.locator("#mobile-search").isVisible())) {
+      await page.locator(".app-bottom-nav").getByRole("button", { name: "Search" }).click();
+    }
+    return page.getByPlaceholder(/search movies/i).filter({ visible: true });
+  };
+  await page.goto("/search?q=nolan&tab=people");
+  await expect(page.getByText("Person for nolan")).toBeVisible();
+  await expect(await openBox()).toHaveValue("nolan");
+
+  // Record two recent searches from the box, then pick the first one again.
+  for (const term of ["fincher", "villeneuve"]) {
+    const box = await openBox();
+    await box.fill(term);
+    await box.press("Enter");
+    await expect(page.getByText(`Person for ${term}`)).toBeVisible();
+  }
+  const box = await openBox();
+  await box.fill("");
+  await box.blur();
+  await box.click();
+  await page.getByRole("menuitem", { name: "fincher" }).click();
+  await expect(page.getByText("Person for fincher")).toBeVisible();
+  await expect(await openBox()).toHaveValue("fincher");
+});

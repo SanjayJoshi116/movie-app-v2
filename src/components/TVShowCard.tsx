@@ -88,7 +88,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                         setShowMarkWatchedModal(true);
                       }
                     }}
-                    aria-label={isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}
+                    aria-label={`${isWatched(tvShow.id, "tv") ? "Unmark watched" : "Mark as watched"}: ${tvShow.name}`}
                   />
                 </Tooltip>
                 <Tooltip title={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}>
@@ -107,7 +107,7 @@ const TVShowCard = ({ tvShow, onKnowMore }: Props) => {
                         showError(getApiError(err, "Failed to update watchlist."));
                       }
                     }}
-                    aria-label={isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-label={`${isInWatchlist(tvShow.id, "tv") ? "Remove from watchlist" : "Add to watchlist"}: ${tvShow.name}`}
                   />
                 </Tooltip>
                 <Button

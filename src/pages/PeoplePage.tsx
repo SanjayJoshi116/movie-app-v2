@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Row, Col, Typography, Input } from "antd";
+import { Row, Col, Typography, Input, Empty } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadMoreError } from "../components/LoadMoreError";
@@ -89,11 +89,14 @@ function PeoplePage() {
       />
 
       {loading ? (
-        <Row gutter={[16, 20]}>
-          <SkeletonCard count={12} />
-        </Row>
+        <SkeletonCard count={12} />
       ) : error ? (
         <LoadError onRetry={retry} />
+      ) : allPeople.length === 0 ? (
+        <Empty
+          description={searchTerm ? `No people match "${searchTerm}".` : "No people to show."}
+          style={{ padding: "60px 0" }}
+        />
       ) : (
         <>
           <Row gutter={[16, 20]}>
@@ -105,9 +108,9 @@ function PeoplePage() {
           </Row>
 
           {loadingMore && (
-            <Row gutter={[16, 20]} style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16 }}>
               <SkeletonCard count={6} />
-            </Row>
+            </div>
           )}
           {loadMoreError != null && !loadingMore && <LoadMoreError error={loadMoreError} onRetry={retryLoadMore} />}
 

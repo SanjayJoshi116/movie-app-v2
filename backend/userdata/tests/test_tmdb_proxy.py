@@ -1,5 +1,8 @@
 import ipaddress
 import re
+import socket
+import threading
+import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,7 +15,6 @@ from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
-from urllib3.util.retry import Retry
 
 from userdata import tmdb_proxy_views
 
@@ -87,21 +89,87 @@ class TmdbProxyTests(APITestCase):
         )
 
 
+def _gunicorn_timeout():
+    entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
+    match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
+    assert match, "docker-entrypoint.sh must set gunicorn --timeout explicitly"
+    return int(match.group(1))
+
+
 class TmdbProxyTimeBudgetTests(SimpleTestCase):
-    def test_worst_case_fits_under_gunicorn_timeout(self):
-        entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
-        match = re.search(r"gunicorn .*--timeout (\d+)", entrypoint)
-        self.assertIsNotNone(match, "docker-entrypoint.sh must set gunicorn --timeout explicitly")
+    def test_deadline_fits_under_gunicorn_timeout(self):
         # 5s headroom for the view itself, JSON parsing, and the response write.
-        self.assertLess(tmdb_proxy_views.WORST_CASE_SECONDS, int(match.group(1)) - 5)
+        self.assertLessEqual(tmdb_proxy_views.PROXY_DEADLINE_SECONDS, _gunicorn_timeout() - 5)
 
     def test_session_uses_the_budgeted_retry(self):
         adapter = tmdb_proxy_views._session.get_adapter("https://api.themoviedb.org/3/movie/550")
         self.assertIs(adapter.max_retries, tmdb_proxy_views.RETRY)
 
-    def test_old_configuration_would_have_exceeded_the_budget(self):
-        old = tmdb_proxy_views._worst_case_seconds(Retry(total=4, connect=4, read=4, backoff_factor=0.5), 20, 20)
-        self.assertGreater(old, 30)
+
+class TmdbProxyDeadlineTests(APITestCase):
+    """The bound is elapsed time for the whole call, not a model of attempts."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        caches["tmdb"].clear()
+
+    @patch.object(tmdb_proxy_views, "PROXY_DEADLINE_SECONDS", 0.3)
+    def test_hanging_fetch_returns_502_within_the_deadline_and_isnt_cached(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        with patch("userdata.tmdb_proxy_views._session.get", side_effect=lambda *a, **k: release.wait(10)):
+            started = time.monotonic()
+            res = self.client.get("/api/tmdb/movie/550")
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertEqual(caches["tmdb"].get(tmdb_proxy_views._cache_key("movie/550", [])), None)
+
+    @patch.object(tmdb_proxy_views, "PROXY_DEADLINE_SECONDS", 0.5)
+    def test_connect_hanging_on_every_resolved_address_still_returns_502_in_time(self):
+        # The real urllib3 connect loop: four addresses, each attempt slow to
+        # fail. Attempts x addresses x delay is well past the deadline.
+        addresses = [str(ipaddress.IPv4Address(4000 + i)) for i in range(4)]
+        infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, 443)) for a in addresses]
+        tried = []
+        done = threading.Event()
+        real_get = tmdb_proxy_views._session.get
+        real_getaddrinfo, real_connect = socket.getaddrinfo, socket.socket.connect
+
+        # Only the TMDB call's own thread gets the fakes; anything else in the
+        # test process that resolves or connects keeps the real functions.
+        def in_tmdb_thread():
+            return threading.current_thread().name.startswith("tmdb-deadline")
+
+        def fake_getaddrinfo(*args, **kwargs):
+            return infos if in_tmdb_thread() else real_getaddrinfo(*args, **kwargs)
+
+        def slow_connect(sock, addr):
+            if not in_tmdb_thread():
+                return real_connect(sock, addr)
+            tried.append(addr[0])
+            time.sleep(0.2)
+            raise TimeoutError("timed out")
+
+        def tracked_get(*args, **kwargs):
+            try:
+                return real_get(*args, **kwargs)
+            finally:
+                done.set()
+
+        with patch("socket.getaddrinfo", fake_getaddrinfo), \
+                patch("socket.socket.connect", slow_connect), \
+                patch("userdata.tmdb_proxy_views._session.get", side_effect=tracked_get):
+            started = time.monotonic()
+            res = self.client.get("/api/tmdb/movie/550")
+            elapsed = time.monotonic() - started
+            # Keep the fakes in place until the abandoned call has finished, so
+            # it can never reach the real network.
+            self.assertTrue(done.wait(15))
+
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertLess(elapsed, 2)
+        self.assertGreaterEqual(len(set(tried)), 2)  # it really walked the addresses
 
 
 @patch("userdata.tmdb_proxy_views._session.get")

@@ -66,6 +66,8 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True, required=False)
     new_password = serializers.CharField(write_only=True, required=False)
 
+    password_rejected = False
+
     def validate_username(self, value):
         user = self.context["request"].user
         if User.objects.exclude(pk=user.pk).filter(username=value).exists():
@@ -91,6 +93,7 @@ class UserProfileUpdateSerializer(serializers.Serializer):
         if not data.get("current_password"):
             raise serializers.ValidationError({"current_password": f"Required to change {purpose}."})
         if not self.context["request"].user.check_password(data["current_password"]):
+            self.password_rejected = True  # the view counts it toward the per-username limit
             raise serializers.ValidationError({"current_password": "Incorrect password."})
 
     def validate(self, data):
@@ -156,7 +159,7 @@ class MediaIdentityMixin(serializers.Serializer):
 
 class WatchlistEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average")
+    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
     addedAt = serializers.DateTimeField(source="added_at", read_only=True)
 
     class Meta:
@@ -167,7 +170,7 @@ class WatchlistEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
 
 class WatchedEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average")
+    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
     watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
     watchedTz = serializers.CharField(source="watched_tz", read_only=True)
     originalLanguage = serializers.CharField(
@@ -223,7 +226,7 @@ class RatingEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
 
 class UserListItemSerializer(MediaIdentityMixin, serializers.ModelSerializer):
     posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average")
+    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
     addedAt = serializers.DateTimeField(source="added_at", read_only=True)
 
     class Meta:
@@ -269,7 +272,7 @@ class BulkEntrySerializer(serializers.Serializer):
 class BulkMediaEntrySerializer(BulkEntrySerializer):
     posterPath = serializers.CharField(max_length=500, allow_null=True, allow_blank=True, required=False)
     # The CSV import sends null for an unparseable score; it's stored as 0.
-    voteAverage = FiniteFloatField(allow_null=True, required=False)
+    voteAverage = FiniteFloatField(allow_null=True, required=False, min_value=0, max_value=10)
 
 
 class BulkWatchedEntrySerializer(BulkMediaEntrySerializer):
@@ -338,8 +341,8 @@ class FollowPersonInputSerializer(serializers.Serializer):
 
 
 class EpisodeProgressInputSerializer(serializers.Serializer):
-    season = serializers.IntegerField(min_value=1, max_value=INT32_MAX, default=1)
-    episode = serializers.IntegerField(min_value=1, max_value=INT32_MAX, default=1)
+    season = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
+    episode = serializers.IntegerField(min_value=1, max_value=INT32_MAX)
 
 
 class BulkFollowedPersonSerializer(serializers.Serializer):

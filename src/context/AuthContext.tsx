@@ -20,6 +20,12 @@ interface AuthContextType {
   logout(): void;
   updateProfile(data: ProfileUpdateData): Promise<void>;
   setUserData(updated: AuthUser): void;
+  /** True after this tab went from signed in to signed out (sign-out, account
+   *  deletion, or a sign-out in another tab) until the next sign-in. The route
+   *  guard then doesn't carry the last page into the next sign-in, which may
+   *  be someone else's. A forced logout reloads the tab, so it stays false and
+   *  keeps its return path. Optional only so test doubles can leave it out. */
+  signedOutInThisTab?: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -40,11 +46,14 @@ function readStoredUser(): AuthUser | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [signedOutInThisTab, setSignedOutInThisTab] = useState(false);
   const userRef = useRef<AuthUser | null>(null);
 
   // Every user change goes through here, so userApi's request guard always
   // knows which account this tab shows before the next request can go out.
   const setUser = useCallback((next: AuthUser | null) => {
+    if (next) setSignedOutInThisTab(false);
+    else if (userRef.current) setSignedOutInThisTab(true);
     userRef.current = next;
     bindSessionUser(next?.id ?? null);
     setUserState(next);
@@ -126,8 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUserData]);
 
   const value = useMemo<AuthContextType>(
-    () => ({ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile, setUserData }),
-    [user, isLoading, login, register, logout, updateProfile, setUserData]
+    () => ({ user, isLoading, isAuthenticated: user !== null, login, register, logout, updateProfile, setUserData, signedOutInThisTab }),
+    [user, isLoading, login, register, logout, updateProfile, setUserData, signedOutInThisTab]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

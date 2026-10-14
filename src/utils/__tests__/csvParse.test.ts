@@ -1,4 +1,4 @@
-import { parseCSV, parseCSVForImport, parseBackupCSV } from "../csvParse";
+import { normalizeWatchedAt, parseCSV, parseCSVForImport, parseBackupCSV } from "../csvParse";
 import { buildCSVString } from "../export";
 
 describe("parseCSV", () => {
@@ -95,6 +95,29 @@ describe("parseCSVForImport watched times (data-backup)", () => {
     const rows = parseCSVForImport(csv).rows;
     expect(rows.map((r) => r.mediaId)).toEqual([1, 2, 3, 4]);
     expect(rows.map((r) => r.watchedAt)).toEqual([undefined, undefined, undefined, "2024-03-01T20:00:00Z"]);
+  });
+
+  it("drops a non-ISO or offset-less time for that row only", () => {
+    const csv = buildCSVString([
+      exportRow({ tmdb_id: 1, watched_at: "05/01/2024" }),
+      exportRow({ tmdb_id: 2, watched_at: "May 1, 2024" }),
+      exportRow({ tmdb_id: 3, watched_at: "2024-05-01T10:00" }),
+      exportRow({ tmdb_id: 4 }),
+    ]);
+    const rows = parseCSVForImport(csv).rows;
+    expect(rows.map((r) => r.mediaId)).toEqual([1, 2, 3, 4]);
+    expect(rows.map((r) => r.watchedAt)).toEqual([undefined, undefined, undefined, "2024-03-01T20:00:00Z"]);
+  });
+
+  it("keeps a date alone as noon UTC on that day", () => {
+    const rows = parseCSVForImport(buildCSVString([exportRow({ watched_at: "2024-05-01", watched_tz: "" })])).rows;
+    expect(rows[0]!.watchedAt).toBe("2024-05-01T12:00:00Z");
+  });
+
+  it("keeps the API's own format (microseconds, Z) and explicit offsets unchanged", () => {
+    for (const value of ["2024-03-01T20:00:00.123456Z", "2024-03-01T20:00:00+05:30", "2024-03-01T20:00-0800"]) {
+      expect(normalizeWatchedAt(value)).toBe(value);
+    }
   });
 
   it("leaves a file without the columns as before", () => {

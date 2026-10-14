@@ -50,11 +50,23 @@ export function downloadJSON(data: unknown, filename: string): void {
 }
 
 function triggerDownload(content: string | Blob, filename: string, type: string): void {
-  const blob = content instanceof Blob ? content : new Blob([content], { type });
+  downloadBlob(content instanceof Blob ? content : new Blob([content], { type }), filename);
+}
+
+/**
+ * Save a file. Every download goes through here. The anchor is attached while
+ * it's clicked, and the object URL is revoked a tick later: the browser reads
+ * the URL after click() returns, and revoking it synchronously cancelled
+ * downloads in some browsers (Safari, older Firefox).
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

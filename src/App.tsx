@@ -11,7 +11,7 @@ import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
 import { browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
-import { AUTH_ONLY_PATHS, postLoginPath } from "./utils/postLoginPath";
+import { AUTH_ONLY_PATHS, postLoginPath, loginRedirectState } from "./utils/postLoginPath";
 import "./App.css";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -40,7 +40,7 @@ function AppInner() {
   // UI context only: useAppContext() also subscribes to the watched/watchlist/
   // ratings contexts, which re-rendered the whole route tree on every change.
   const { theme, clearGenres } = useUIContext();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, signedOutInThisTab } = useAuth();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterValues | null>(null);
   const [activeSortBy, setActiveSortBy] = useState<SortOption>(DEFAULT_SORT);
@@ -64,11 +64,21 @@ function AppInner() {
     if (appliedScope !== null) clearGenres();
   }, [appliedScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Applied filters and sort end with the session, like UIContext's settings.
+  const [filtersForSignedIn, setFiltersForSignedIn] = useState(isAuthenticated);
+  if (filtersForSignedIn !== isAuthenticated) {
+    setFiltersForSignedIn(isAuthenticated);
+    if (!isAuthenticated) {
+      setActiveFilters(null);
+      setActiveSortBy(DEFAULT_SORT);
+    }
+  }
+
   const isAuthOnlyPath = AUTH_ONLY_PATHS.includes(location.pathname);
   // Reset links stay public and reachable when signed in (an emailed link must work).
   const isPublicPath = isAuthOnlyPath || location.pathname.startsWith("/reset-password/");
   if (!isLoading && !isAuthenticated && !isPublicPath) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={loginRedirectState(location, signedOutInThisTab)} replace />;
   }
   if (isAuthOnlyPath) {
     // Blank while the session restores, so a signed-in user never sees the form flash.

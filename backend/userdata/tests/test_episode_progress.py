@@ -17,11 +17,12 @@ class EpisodeProgressTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIsNone(res.data)
 
-    def test_post_then_patch_round_trip(self):
+    def test_post_then_post_round_trip(self):
+        # POST sets and updates progress; PATCH is gone (405, test_input_bounds).
         res = self.client.post(URL, {"season": 1, "episode": 3}, format="json")
         self.assertEqual(res.data, {"showId": 1396, "season": 1, "episode": 3})
 
-        self.client.patch(URL, {"season": 2, "episode": 1}, format="json")
+        self.client.post(URL, {"season": 2, "episode": 1}, format="json")
         self.assertEqual(self.client.get(URL).data, {"showId": 1396, "season": 2, "episode": 1})
         self.assertEqual(EpisodeProgress.objects.filter(user=self.user).count(), 1)
 

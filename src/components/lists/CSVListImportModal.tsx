@@ -7,10 +7,11 @@ import { useToast } from "../../hooks/useToast";
 import { useListsContext } from "../../context/useListsContext";
 import { parseCSVForImport } from "../../utils/csvParse";
 import type { ParsedEntry } from "../../utils/csvParse";
-import { bulkAddListItems } from "../../api/userApi";
+import { bulkAddListItems, sessionGuard, SessionEndedError } from "../../api/userApi";
 import { orderForImport } from "../../utils/listImport";
 import { getApiError, IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { FONT_SIZE } from "../../constants/typography";
+import { downloadBlob } from "../../utils/export";
 
 const { Text } = Typography;
 
@@ -25,13 +26,10 @@ function downloadTemplate(type: "movie" | "tv") {
     type === "movie"
       ? ["id,title", "550,Fight Club", "13,Forrest Gump"]
       : ["id,title", "1396,Breaking Bad", "66732,Stranger Things"];
-  const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = type === "movie" ? "list_movies_template.csv" : "list_tv_template.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    new Blob([rows.join("\n")], { type: "text/csv" }),
+    type === "movie" ? "list_movies_template.csv" : "list_tv_template.csv",
+  );
 }
 
 const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
@@ -69,12 +67,16 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
 
   const handleSubmit = async () => {
     if (parsed.length === 0 || selectedListId === null) return;
+    // Checked before every write: after a sign-out, and a sign-in as someone
+    // else in this tab, the rest of the import must not land in that account.
+    const guard = sessionGuard();
     setLoading(true);
     try {
       // Posters and scores, paced to the TMDB proxy's rate limit.
       const { found, missing } = await lookupImportPosters(
         parsed.map((row) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
         (done, total) => setProgress({ done, total }),
+        () => !guard.isCurrent(),
       );
       setProgress(null);
 
@@ -92,7 +94,9 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
           })),
           () => undefined,
         ),
+        { guard },
       );
+      guard.check();
 
       // The items are saved even if this fails; only what's on screen is stale.
       const refreshed = await reloadLists().then(() => true, () => false);
@@ -108,10 +112,15 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
       }
       if (!refreshed && added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
+      // Signed out mid-import: drop it. Nothing more is written, and nothing
+      // is shown or reloaded for whoever signs in next.
+      if (err instanceof SessionEndedError) return;
       showError(getApiError(err, "Import failed. Please try again."));
     } finally {
-      setProgress(null);
-      setLoading(false);
+      if (guard.isCurrent()) {
+        setProgress(null);
+        setLoading(false);
+      }
     }
   };
 
@@ -128,7 +137,17 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
   const preview = parsed.slice(0, 10);
 
   return (
-    <Modal title="Import CSV to List" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
+    <Modal
+      title="Import CSV to List"
+      open={open}
+      // A running import can't be closed, so it can't be started twice at once.
+      onCancel={loading ? undefined : handleClose}
+      maskClosable={!loading}
+      keyboard={!loading}
+      closable={!loading}
+      footer={null}
+      destroyOnHidden
+    >
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
           Upload a CSV with columns <code>id</code> (TMDB ID) and <code>title</code>. An optional <code>type</code> column
@@ -170,6 +189,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
         ref={fileInputRef}
         type="file"
         accept=".csv"
+        aria-label="CSV file to import"
         onChange={handleFileChange}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />

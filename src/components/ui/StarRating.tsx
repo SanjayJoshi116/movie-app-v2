@@ -13,7 +13,9 @@ export function StarRating({ value, onChange, max = 10 }: Props) {
       count={max}
       value={value}
       onChange={onChange}
-      style={{ fontSize: 22, color: RATING_GOLD }}
+      // Star size and gap shrink on narrow phones (App.css), so ten stars stay on one line.
+      className="star-rating"
+      style={{ color: RATING_GOLD }}
     />
   );
 }

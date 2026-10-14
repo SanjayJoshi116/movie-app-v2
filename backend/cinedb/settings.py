@@ -165,8 +165,10 @@ REST_FRAMEWORK = {
         "login": "10/min",
         "register": "5/min",
         "password_reset": "5/hour",
+        "password_reset_confirm": "10/hour",
         "tmdb_proxy": "120/min",
         "notifications": "30/min",
+        "followed_recs": "30/min",
         "token_refresh": "60/min",
     },
     # How many reverse proxies sit in front of Django. DRF then takes the
@@ -247,6 +249,9 @@ EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@cinedb.app")
+# Seconds before an SMTP connect or socket operation gives up. Without it a
+# stalled mail server holds a reset-mail thread forever.
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 # Reset links expire after 1 hour (Django default is 3 days); the reset

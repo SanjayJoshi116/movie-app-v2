@@ -89,7 +89,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                         setShowMarkWatchedModal(true);
                       }
                     }}
-                    aria-label={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}
+                    aria-label={`${isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}: ${title}`}
                   />
                 </Tooltip>
                 <Tooltip title={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}>
@@ -108,7 +108,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                         showError(getApiError(err, "Failed to update watchlist."));
                       }
                     }}
-                    aria-label={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}
+                    aria-label={`${isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}: ${title}`}
                   />
                 </Tooltip>
                 <Button

@@ -22,6 +22,9 @@ import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, WATCHED_GREEN } from "../constants/ui";
 import type { WatchedEntry } from "../types";
+import { parseIntParam } from "../utils/queryParams";
+
+const PAGE_SIZES = [12, 24, 48, 96] as const;
 
 const SORT_FNS: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
   "watched-desc": (a, b) => (b.watchedAt ?? "").localeCompare(a.watchedAt ?? ""),
@@ -50,8 +53,9 @@ function WatchedPage() {
       defaultSort: "watched-desc",
     });
 
-  const page = Number(searchParams.get("page") ?? "1") || 1;
-  const pageSize = Number(searchParams.get("pageSize") ?? "48") || 48;
+  // A hand-edited ?page=-2 or ?pageSize=1.5 falls back instead of slicing oddly.
+  const page = parseIntParam(searchParams.get("page"), { fallback: 1, min: 1 });
+  const pageSize = parseIntParam(searchParams.get("pageSize"), { fallback: 48, allowed: PAGE_SIZES });
 
   const setPageState = (p: number, ps: number) => {
     setSearchParams(prev => {
@@ -248,7 +252,7 @@ function WatchedPage() {
                 pageSize={pageSize}
                 total={filtered.length}
                 showSizeChanger
-                pageSizeOptions={[12, 24, 48, 96]}
+                pageSizeOptions={[...PAGE_SIZES]}
                 onChange={(p, ps) => {
                   setPageState(ps !== pageSize ? 1 : p, ps);
                   window.scrollTo({ top: 0, behavior: "smooth" });

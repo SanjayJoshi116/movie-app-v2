@@ -14,7 +14,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from .tmdb_client import TMDB_BASE
+from .tmdb_client import TMDB_BASE, call_with_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +25,17 @@ logger = logging.getLogger(__name__)
 #
 # Time budget: gunicorn's sync workers are killed after --timeout (30s,
 # docker-entrypoint.sh), which turns into a bare nginx 502 and a lost worker.
-# The old 20s timeout x 5 attempts could hold a worker ~100s, so connect
-# retries (cheap, the reset case above) are kept and read retries cut;
-# test_tmdb_proxy enforces WORST_CASE_SECONDS against the gunicorn timeout.
+# Per-attempt timeouts and retries can't bound a call: urllib3 tries the
+# connect once per address DNS returns (api.tmdb.org has four), so a model of
+# attempts x timeouts said ~22s while the real worst case was ~37s. The whole
+# call runs under a wall-clock deadline instead (tmdb_client.call_with_deadline);
+# test_tmdb_proxy pins PROXY_DEADLINE_SECONDS under the gunicorn timeout. The
+# retry and per-attempt timeouts below are still what handles the transient
+# connection resets described above.
 CONNECT_TIMEOUT = 3.05
 READ_TIMEOUT = 6
 RETRY = Retry(total=2, connect=2, read=1, backoff_factor=0.5)
-
-
-def _worst_case_seconds(retry, connect_timeout, read_timeout):
-    """Upper bound for one proxied call, retries and backoff included.
-
-    Only read+1 attempts can get as far as reading (urllib3 classifies errors
-    while reading as read errors); the rest fail during connect. Backoff is
-    urllib3's: none before the first retry, then factor * 2**(n-1). requests'
-    read timeout is per socket read, so a server trickling bytes isn't bounded
-    by this — that's not the failure mode seen from TMDB.
-    """
-    reading = retry.read + 1
-    connect_only = retry.total - retry.read
-    backoff = sum(retry.backoff_factor * 2 ** (n - 1) for n in range(2, retry.total + 1))
-    return reading * (connect_timeout + read_timeout) + connect_only * connect_timeout + backoff
-
-
-WORST_CASE_SECONDS = _worst_case_seconds(RETRY, CONNECT_TIMEOUT, READ_TIMEOUT)
+PROXY_DEADLINE_SECONDS = 20
 
 _session = requests.Session()
 _session.mount("https://", HTTPAdapter(max_retries=RETRY))
@@ -120,13 +107,17 @@ def tmdb_proxy(request, tmdb_path):
         cached = _cache_get(key)
         if cached is not None:
             return Response(cached, headers={"X-Cache": "HIT"})
-    try:
+    def fetch():
         r = _session.get(
             f"{TMDB_BASE}/{tmdb_path}",
             params=[*params, ("api_key", settings.TMDB_API_KEY)],
             timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
         )
-        data = r.json()
+        return r, r.json()
+
+    try:
+        # A deadline overrun is a requests.Timeout, so it lands in the 502 below.
+        r, data = call_with_deadline(fetch, PROXY_DEADLINE_SECONDS)
     except (requests.RequestException, ValueError):
         logger.exception("tmdb_proxy request failed for path %s", tmdb_path)
         return Response({"error": "TMDB request failed."}, status=502)

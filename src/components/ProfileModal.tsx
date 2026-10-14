@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, Typography, Alert, theme } from "antd";
+import { Modal, Form, Input, Button, Divider, Tag, Space, Popconfirm, Tabs, Avatar, Typography, Alert, Spin, theme } from "antd";
 import {
   CheckCircleOutlined,
   DownloadOutlined,
@@ -27,6 +27,9 @@ import {
 import userApi from "../api/userApi";
 import { getApiError } from "../utils/apiError";
 import { FONT_SIZE } from "../constants/typography";
+import { AVATAR_INITIALS_TEXT } from "../constants/ui";
+import { avatarColor } from "../utils/colors";
+import { getInitials } from "../utils/initials";
 import { resolveAvatarUrl } from "../constants/media";
 
 interface Props {
@@ -57,8 +60,9 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [importAllOpen, setImportAllOpen] = useState(false);
-  // null = the status check failed: neither "connected" nor "not connected" is known.
-  const [tmdbConnected, setTmdbConnected] = useState<boolean | null>(false);
+  // undefined = still checking, null = the check failed: until it answers,
+  // neither "connected" nor "not connected" is known.
+  const [tmdbConnected, setTmdbConnected] = useState<boolean | null | undefined>(undefined);
   const [tmdbStatusRetry, setTmdbStatusRetry] = useState(0);
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -260,8 +264,18 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
   const accountTab = (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-        <Avatar size={72} src={avatarUrl} style={{ backgroundColor: avatarUrl ? undefined : token.colorPrimary, fontSize: FONT_SIZE.display, flexShrink: 0 }}>
-          {!avatarUrl && (user?.username?.slice(0, 2).toUpperCase() ?? "")}
+        <Avatar
+          size={72}
+          src={avatarUrl}
+          style={{
+            // Same fallback as the sidebar and bottom-nav avatars.
+            backgroundColor: avatarUrl || !user ? undefined : avatarColor(user.username),
+            color: AVATAR_INITIALS_TEXT,
+            fontSize: FONT_SIZE.display,
+            flexShrink: 0,
+          }}
+        >
+          {!avatarUrl && user ? getInitials(user) : null}
         </Avatar>
         <Space direction="vertical" size={4}>
           <input
@@ -410,10 +424,15 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
       </Space>
 
       <Divider style={{ margin: "20px 0 12px" }}>TMDB Account</Divider>
-      {tmdbConnected === null ? (
+      {tmdbConnected === undefined ? (
+        <Space size={8}>
+          <Spin size="small" />
+          <Typography.Text type="secondary">Checking TMDB connection…</Typography.Text>
+        </Space>
+      ) : tmdbConnected === null ? (
         <Typography.Text type="secondary">
           Couldn't check your TMDB connection.{" "}
-          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setTmdbStatusRetry((n) => n + 1)}>
+          <Button type="link" size="small" style={{ padding: 0 }} onClick={() => { setTmdbConnected(undefined); setTmdbStatusRetry((n) => n + 1); }}>
             Retry
           </Button>
         </Typography.Text>

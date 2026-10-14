@@ -7,7 +7,7 @@ Makes every data load in the UI end in a visible, honest state, so the user can 
 ## Requirements
 
 ### Requirement: Library collections distinguish loading, failure and empty
-The watchlist, watched history, ratings and lists collections SHALL report whether they are loading, failed to load, or loaded. When an authenticated user's collection hasn't finished its first load, it SHALL count as loading, not as loaded and empty. A failed load SHALL be recorded as an error that the user can retry. It SHALL NOT be shown as an empty collection.
+The watchlist, watched history, ratings and lists collections SHALL report whether they are loading, failed to load, or loaded. When an authenticated user's collection hasn't finished its first load for the current session, it SHALL count as loading, not as loaded and empty, from the first render after sign-in. A failed load SHALL be recorded as an error that the user can retry. It SHALL NOT be shown as an empty collection.
 
 #### Scenario: First render before data arrives
 - **WHEN** an authenticated user opens the Watchlist page and the watchlist request hasn't completed
@@ -32,6 +32,10 @@ The watchlist, watched history, ratings and lists collections SHALL report wheth
 #### Scenario: Background refresh fails after a successful load
 - **WHEN** a collection already loaded successfully and a later reload of it fails
 - **THEN** the items already shown stay visible and the user sees an error notification
+
+#### Scenario: Signing in on a deep page
+- **WHEN** a signed-out user opens `/watched?page=3`, signs in, and returns there, and their history has more than two pages
+- **THEN** the page stays on page 3, and the empty state is never shown while the history loads
 
 ### Requirement: Paginated grids show only the current query's results
 Browse, search and people grids that load page by page SHALL show only results for the current category or query. Changing the category or query SHALL clear the previous results. A first page that fails to load SHALL show an error with Retry. A page response that arrives for an earlier category or query SHALL be discarded.
@@ -113,10 +117,15 @@ A show's episode progress SHALL reset when the show changes. A progress response
 
 ### Requirement: Recommendations failure retries in place
 When the For You page fails to load recommendations and has nothing to show,
-it SHALL show an error with a Retry control. Retry SHALL refetch the
-recommendations in place and show the loading state while it does. It SHALL NOT
-reload the browser tab, so the rest of the app's in-memory state (search term,
-filters, other pages' caches) survives.
+it SHALL show an error with a Retry control. When some recommendation groups
+are shown and another group's request fails, the page SHALL keep the groups it
+has and show an inline error with Retry above them. A failed group SHALL NOT
+hide the loading or "still computing" state of the groups that are still being
+prepared. Retry SHALL refetch the recommendations in place and show the loading
+state while it does. It SHALL NOT reload the browser tab, so the rest of the
+app's in-memory state (search term, filters, other pages' caches) survives.
+When the watched history the page depends on failed to load, the page SHALL
+show an error with Retry for it, not "No watched titles yet".
 
 #### Scenario: Retry after a failed load
 - **WHEN** the recommendations requests fail and the user presses Retry
@@ -125,6 +134,18 @@ filters, other pages' caches) survives.
 #### Scenario: Retry fails again
 - **WHEN** the user presses Retry and the requests fail again
 - **THEN** the error with Retry is shown again
+
+#### Scenario: One group fails after others loaded
+- **WHEN** the "For You" groups have loaded and the followed-people recommendations request fails
+- **THEN** the loaded groups stay visible and an inline error with Retry says some recommendations couldn't be loaded
+
+#### Scenario: A group fails while another is still computing
+- **WHEN** the followed-people request fails while the personalized groups are still being prepared and nothing is shown yet
+- **THEN** the page still says recommendations are being prepared, and the failure is shown with Retry alongside it
+
+#### Scenario: Watched history failed to load
+- **WHEN** the user opens For You and the watched-history request failed
+- **THEN** the page shows an error with Retry, not "No watched titles yet", and Retry requests the watched history again
 
 ### Requirement: Following and Calendar failures are not shown as empty
 When the followed-people list or the release calendar fails to load, the page SHALL show an error state with a Retry action instead of its empty state. Retry SHALL request the data again. Person cards elsewhere in the app SHALL NOT present a failed followed-people load as "not following".
@@ -138,7 +159,7 @@ When the followed-people list or the release calendar fails to load, the page SH
 - **THEN** an error with a Retry button is shown instead of "no releases"
 
 ### Requirement: Secondary sections and status checks don't fake an answer
-A secondary section whose data fails to load (the Following page's "recommended from people you follow") SHALL show a short error with Retry instead of disappearing. A status check that fails (whether a TMDB account is connected) SHALL show an unknown state instead of a definite answer.
+A secondary section whose data fails to load (the Following page's "recommended from people you follow") SHALL show a short error with Retry instead of disappearing. A status check that fails (whether a TMDB account is connected) SHALL show an unknown state instead of a definite answer. Until a status check answers, the UI SHALL show it as loading and SHALL NOT offer an action that assumes one answer.
 
 #### Scenario: Followed-people recommendations fail
 - **WHEN** the Following page lists people but its recommendations request fails
@@ -147,6 +168,10 @@ A secondary section whose data fails to load (the Following page's "recommended 
 #### Scenario: TMDB status check fails
 - **WHEN** the profile dialog opens and the TMDB-connection check fails
 - **THEN** the dialog doesn't offer "Connect TMDB" as if the account were not connected, and says the status couldn't be checked
+
+#### Scenario: TMDB status check still running
+- **WHEN** the profile dialog opens and the TMDB-connection check hasn't answered
+- **THEN** the TMDB section shows a loading state and offers neither "Connect TMDB Account" nor "Disconnect"
 
 ### Requirement: A superseded response never replaces the current one
 When the user changes what a view shows (a filter, a media type) while an earlier request is still in flight, the view SHALL show only the response for its current choice. A response for a choice the user has left SHALL be discarded.
@@ -167,7 +192,7 @@ Infinite-scrolling browse pages SHALL stop requesting more pages at the last pag
 - **THEN** no request for page 501 is sent, and the list ends without an error
 
 ### Requirement: A failed next page stops auto-loading until the user retries
-When an infinite-scrolling grid's request for its next page fails, the grid SHALL keep the results already shown, SHALL show an inline message with a Retry control at the end of the results, and SHALL NOT request that page again until the user activates Retry, however long the end of the grid stays in view. Activating Retry SHALL request the same page again. Changing the category or query SHALL clear the message.
+When an infinite-scrolling grid's request for its next page fails, the grid SHALL keep the results already shown, SHALL show an inline message with a Retry control at the end of the results, and SHALL NOT request that page again until the user activates Retry, however long the end of the grid stays in view. Activating Retry SHALL request the same page again. Changing the category or query SHALL clear the message. When the first page fails, the grid SHALL request no further pages, whatever is in view, until a retry of the first page succeeds.
 
 #### Scenario: Next page fails while the end of the grid is visible
 - **WHEN** the user scrolls to the end of a browse, people or search grid and the next-page request fails
@@ -181,6 +206,14 @@ When an infinite-scrolling grid's request for its next page fails, the grid SHAL
 - **WHEN** a next-page request has failed and the user switches category or search query
 - **THEN** the message is gone and the new results load normally
 
+#### Scenario: First page fails on Home
+- **WHEN** the first page of a Home or Anime category fails to load
+- **THEN** the page shows its load error, and no request for any other page is sent while it does
+
+#### Scenario: Category change whose first page fails
+- **WHEN** the user has loaded five pages of one Home category, switches to another, and that category's first page fails
+- **THEN** no request for page 6 (or any other page) of either category is sent
+
 ### Requirement: Episode progress that fails to load isn't shown as no progress
 When loading a TV show's episode progress fails, the page SHALL say the progress couldn't be loaded and offer to try again. While the load has failed, it SHALL NOT offer to start tracking or to edit or advance progress, so a save can't overwrite the stored position.
 
@@ -191,3 +224,28 @@ When loading a TV show's episode progress fails, the page SHALL say the progress
 #### Scenario: Retry succeeds
 - **WHEN** the user presses Retry and the request succeeds
 - **THEN** the page shows "Currently on S03E04"
+
+### Requirement: Person credits failures are not shown as no credits
+When a person's details load but their movie or TV credit requests fail, the person page SHALL show an error with Retry in the credits area. It SHALL say the person has no credits only when the credit requests succeeded and returned none.
+
+#### Scenario: Credit requests fail
+- **WHEN** a person page loads the person but both credit requests fail
+- **THEN** the credits area shows an error with Retry, not "No credits available", and Retry requests the credits again
+
+#### Scenario: Person with no credits
+- **WHEN** both credit requests succeed with empty lists and there are no photos
+- **THEN** the page says no credits are available
+
+### Requirement: A search with no matches says so
+When a People search completes with no results, the People page SHALL show an empty state that names the search, not a blank grid.
+
+#### Scenario: People search with no matches
+- **WHEN** the user searches People for a name that matches nobody
+- **THEN** the page says no people match that search
+
+### Requirement: Background reloads keep the shown content
+A page that already shows a loaded collection SHALL keep showing it while that collection reloads in the background. A full-page loading state SHALL be shown only while there is nothing loaded yet.
+
+#### Scenario: Lists reload after a write
+- **WHEN** the Lists page shows the user's lists and the lists reload in the background
+- **THEN** the list cards stay visible during the reload

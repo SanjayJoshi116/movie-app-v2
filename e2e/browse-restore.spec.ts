@@ -89,6 +89,40 @@ test.describe("Anime media-type switch", () => {
   });
 });
 
+test.describe("Anime mode switch requests", () => {
+  test("Airing Today → Movies sends one grid request, without TV air dates", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([animeTv]) }));
+    await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([animeMovie]) }));
+    const urls = recordDiscover(page);
+    await page.goto("/anime");
+    await expect(page.getByText("Grid Anime Show").first()).toBeVisible();
+    const airing = page.waitForRequest((r) => r.url().includes("/api/tmdb/discover/tv") && r.url().includes("air_date.gte"));
+    await page.getByRole("button", { name: "Airing Today" }).click();
+    await airing;
+
+    await page.getByText("Anime Movies", { exact: true }).click();
+    await expect(page.getByText("Grid Anime Movie").first()).toBeVisible();
+    // The grid's requests carry a page number; the hero's don't.
+    const grid = urls.movie.filter((u) => u.searchParams.has("page"));
+    expect(grid.map((u) => u.href)).toHaveLength(1);
+    for (const url of urls.movie) expect(url.searchParams.has("air_date.gte"), url.href).toBe(false);
+  });
+
+  test("category buttons are disabled while filters decide the results", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([animeTv]) }));
+    await page.goto("/anime");
+    await expect(page.getByText("Grid Anime Show").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Airing Today" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Toggle filters" }).click();
+    const drawer = page.locator(".ant-drawer-content").filter({ hasText: "Filter & Sort" });
+    await drawer.getByLabel("Min TMDB Rating (0–10)").fill("7");
+    await drawer.getByRole("button", { name: "Apply Filters" }).click();
+    await expect(drawer).toBeHidden();
+    await expect(page.getByRole("button", { name: "Airing Today" })).toBeDisabled();
+  });
+});
+
 test.describe("For You left mid-computation", () => {
   const WATCHED = {
     id: 1, mediaId: 550, mediaType: "movie", title: "Fight Club", posterPath: null, voteAverage: 8.4,

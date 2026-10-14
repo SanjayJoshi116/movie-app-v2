@@ -3,6 +3,104 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.25.0] - 2026-10-14
+
+Bug-audit release, part 10. Fixes from the fifth audit: backend account and input hardening (`harden-account-input`, backlog item 30), the 0.24.0 import and progress follow-ups (`fix-import-followups`, item 31), frontend state fixes (`fix-frontend-state`, item 33), bounded TMDB calls during requests (`bound-tmdb-calls`, item 27), and frontend honest states and accessibility (`honest-states-a11y`, item 32). All five are archived under `openspec/changes/archive/`. Items 28, 29 and 34 remain open.
+
+### ⚠️ Notes for deploy
+- **One migration:** `0025_loginfailure` adds the `userdata_loginfailure` table (per-username failed-password counts). Counts held in the cache are dropped on deploy, so any username currently locked out is unlocked once.
+- **New settings:** `EMAIL_TIMEOUT` (default 10 s, env-overridable), throttle rates `password_reset_confirm` (10/hour) and `followed_recs` (30/min).
+- **API changes:** `PATCH /api/episode-progress/<id>/` now returns `405` (use `POST`, which requires both `season` and `episode`). `voteAverage` outside 0–10 is rejected with `400`. The app's own client is unaffected by either.
+- **No nginx or Docker changes.** Items 30 and 27 are backend only; items 31, 33 and 32 are frontend, apart from one notifications field (`personName` falls back to "Person <id>").
+
+### Security
+- **The per-username login lockout really lasts an hour.** In production, every failure reset the lock's expiry to 5 minutes, and a parallel burst of failures counted as about one. Failures are now counted in a database table, atomically, over a window that runs from the first failure. `Retry-After` gives the real time left.
+- **Wrong passwords on a profile update or account deletion count toward the same limit**, and both return `429` while the username is locked. A stolen session could previously guess the password about 5,000 times a day. Profile edits that don't send a password are unaffected.
+- **A password reset clears the lockout**, so someone locked out by another person's guessing can sign in right after resetting.
+- **Reset confirmation has its own rate limit**, so a few rejected passwords on the confirm form no longer block requesting a new link, or the reverse.
+- **Avatar uploads over 16 megapixels are rejected** before decoding, and stored avatars are scaled down to at most 1024 px a side. A small single-colour PNG could make one upload use most of a GB of memory.
+- **Followed-people recommendations are rate limited per user** (30/min), like the other endpoints that spend TMDB quota.
+
+### Fixed
+- **A crafted `voteAverage` can no longer break Stats.** Values outside 0–10 are rejected on every write, and Stats ignores any already stored.
+- **A stalled mail server can't half-apply an email change.** The previous-address notice is sent after the change commits, on a background thread, and every mail connection gives up after `EMAIL_TIMEOUT`. Before, the request could be killed after the change was saved but before the session's new tokens were issued.
+- **Episode progress needs both season and episode.** A `PATCH` with only `episode` used to reset the season to 1.
+- **Two avatar uploads at once leave one file.** One upload's new file used to stay on disk, served, even after account deletion.
+- **Adding to a list that is being deleted gives `404`**, not `500`.
+- **The email-uniqueness lock folds case the way the uniqueness check does** (`upper`), so two addresses the check calls equal always take the same lock.
+
+### Fixed — import and progress follow-ups (`fix-import-followups`, backlog item 31)
+- **An import can't write into the next account.** A backup restore or CSV import that is still running when you sign out stops before its next write, and its poster lookups stop too. Before, signing in as someone else in the same tab sent the rest of the import with that account's session.
+- **Import dialogs can't be closed while they run**, so an import can't be started twice at once. A second run alongside the first created every list twice.
+- **Removing episode progress while "Next Episode" is saving really removes it.** It waits for the advance and then runs, and its message is its own. It used to report "removed" with the advance's result while progress had moved on. Episode-progress results that arrive after sign-out are also dropped.
+- **A rate-limited poster lookup pauses all lookups** for the wait the server asks, instead of only itself, so the others don't use up their retries in the same window.
+- **CSV watched times must be ISO 8601 with an offset.** Other formats (`05/01/2024`) are dropped for that row only, instead of failing a whole 500-row batch. A date alone (`2024-05-01`) is kept as noon UTC, so it shows on that day instead of the day before in western time zones.
+- **Notifications:** a late answer from an earlier check can't replace a newer one, follow changes refresh after a 1.5 s pause (following many people quickly no longer hits the rate limit), and restoring follows refreshes them.
+- **Opening Profile no longer fetches your followed people.**
+- **A followed person with a blank name shows as "Person <id>"** on cards and in notifications.
+- **The filter drawer seeds only genres of the media type you're browsing.**
+
+### Fixed — frontend state (`fix-frontend-state`, backlog item 33)
+- **A failed first page on Home or Anime no longer loads page after page behind the error screen.** Infinite scroll stays off until Retry succeeds. Before, the scroll trigger stayed in view and fetched again after every page it loaded, spending the TMDB rate limit.
+- **Browse settings end with the session.** Signing out resets the search term, "include adult", genre picks, and the applied filters and sort, so the next account in the tab starts from the defaults.
+- **Follow buttons wait for your followed-people list.** They're disabled while it loads, so a follow made during the load can't be undone by it, and people you follow never show "Follow".
+- **Library screens follow the order you acted in:**
+  - A reload that started before a write is run again instead of dropping what you just added.
+  - Clear All (and clearing a list) waits for pending adds, and adds made during a clear wait for it.
+  - Unmarking while a mark is still saving now unmarks.
+  - Saving a rating twice sends one request.
+- **Library pages count as loading from the first render after sign-in**, so `/watched?page=3` keeps its page and the empty state doesn't flash.
+- **Mark-seen can't be undone by a notifications check that raced it.**
+- **Downloads aren't cut short.** CSV, backup, template and calendar downloads release the file only after the download has started.
+- **A request replayed after a token refresh can't start a second refresh.**
+- **After signing out, the next sign-in in the tab goes to the default page**, not the previous account's last page. An expired session still returns you to where you were.
+
+### Fixed — TMDB calls during requests (`bound-tmdb-calls`, backlog item 27)
+- **No request can be held past the server's timeout by TMDB.** Every TMDB call made while a request waits now has a wall-clock limit for the whole call, every connection attempt included: the TMDB proxy (20 s), connecting a TMDB account and rating sync (10 s), and Stats' genre lookup (8 s per call). The proxy's old limit assumed one connection attempt per try, but TMDB's host has four addresses and each was tried in turn, so a stalled TMDB could hold a request about 37 s, past the 30 s at which the server kills it.
+- **Account deletion and TMDB disconnect never wait on TMDB.** The account is deleted (or the session cleared) first, and the TMDB session is revoked afterwards in the background. A slow TMDB used to be able to stop an account deletion after revoking the session.
+- **Reconnecting TMDB can't leave a revoked session stored.** The new session is saved before the old one is revoked. If saving fails, the old session is kept and not revoked.
+- **Rating sync to TMDB happens after the local save, within 10 s.** Deleting a rating removes it locally first. A slow TMDB delays the save by at most the limit and never fails it. Before, a stalled sync could get the request killed after the rating was saved, so the app showed an error for a change that had in fact succeeded.
+
+### Fixed — honest states (`honest-states-a11y`, backlog item 32)
+- **Cancel in a list's Delete confirm no longer opens the list**, and confirming deletes it without opening a "List not found" page. Clicks in the confirm popup bubbled up to the card.
+- **For You says when something failed instead of showing less.** A failed watched-history load shows an error with Retry, not "No watched titles yet". When one recommendation group fails after others loaded, the others stay and a warning with Retry appears. A failed group no longer hides the "Crunching…" state of groups still being prepared.
+- **A person page whose credits failed to load says so**, with Retry, instead of "No credits available". Retry reloads only the credits. If one of the two credit lists failed, the tabs that loaded stay, with a warning above them.
+- **Readable errors on the register, forgot-password and reset-password pages.** A network failure or a proxy error page no longer reads as "Invalid or expired reset link.", "Make sure the backend is running" is gone, and a nested error can't show `[object Object]`.
+- **The Lists page keeps its cards while lists reload** in the background, instead of blanking to a spinner.
+- **A People search with no matches says so**, instead of an empty grid.
+- **Edit Profile shows "Checking TMDB connection…" until it knows**, so a connected account is never offered "Connect TMDB Account" for a moment.
+- **Hand-edited addresses fall back to defaults:** `/watched?page=-2`, `?page=1.5` and `?pageSize=-5` show page 1 at 48 per page, and an unknown `?tab=` on Stats or Search shows the default tab instead of a blank panel.
+
+### Changed — browse and search (`honest-states-a11y`, backlog item 32)
+- **"Include Adult Content" applies with Apply**, like every other control in the filter drawer. It used to change the results the moment it was switched, outside the draft.
+- **Movies/TV/Anime category buttons are disabled while a search or filter decides the results.** They had no effect then but resent the same request.
+- **Switching Anime between TV and Movies sends one request.** The first used to be a movie request with TV "Airing Today" parameters.
+- **Search results use the same cards as the Movies and TV pages**, so they have a watchlist button too.
+- **A year range entered backwards (2020 → 1990) is applied as 1990–2020.** The year fields now go up to five years ahead instead of stopping at 2030.
+
+### Accessibility (`honest-states-a11y`, backlog item 32)
+- The filter drawer's fields are linked to their labels, and the adult content switch is announced by name.
+- Add to List rows are real checkboxes named after each list (Tab and Space work, a row click toggles once).
+- Card buttons name their title ("Add to watchlist: Fight Club"), so a grid's buttons can be told apart.
+- Opening the phone Search drawer no longer puts two `id="global-search"` elements on the page.
+- The search box shows the search in effect after opening a `?q=` address or picking a recent search.
+- The ten-star rating stays on one line on 320 px phones.
+
+### Theme and conventions (`honest-states-a11y`, backlog item 32)
+- The detail-page watchlist icon uses the same colors as the cards (blue when in the watchlist, the theme's text color otherwise), not always gold.
+- The detail backdrop fades into the light theme's background in light mode, and card shadows are tuned per theme.
+- The profile dialog's fallback avatar uses the same initials and color as the sidebar's.
+- Stats uses the shared rating colors; budget and revenue are formatted the US way regardless of browser locale.
+- A person with two roles in one cast no longer repeats a React key.
+
+### Docs
+- `docs/ARCHITECTURE.md`: why the failure counter is a table and not the cache, the separate reset buckets, the avatar caps and the after-commit email notice; the adult switch in the filter draft, per-group For You failures, credits-only Retry, query-value fallbacks and the portaled-confirm propagation fix.
+- CLAUDE.md: the new throttle scopes, and that every password check goes through the shared failure counter; import session guards, inflight actions/`runExclusive`/`guardedReload`, browse-state reset on sign-out, `personLabel`, and `call_with_deadline` budgets for every TMDB call made during a request.
+- README: new test files and the `guardedReload`, `personLabel`, `queryParams` and `initials` utilities in the project tree; new e2e counts.
+- `docs/BUG_BACKLOG.md`: items 30, 31, 33, 27 and 32 archived. Item 30's backfill-budget note moved to item 28, its same-day notification note to item 29.
+- CLAUDE.md: the adult switch is part of the filter draft; drawer label wiring; `SearchBox` `id` prop and term sync; `parseIntParam`/`pickKey` for address values; `getInitials`; Search uses `Movie`/`TVShowCard`; card button names include the title.
+- Item 32's two plausibles checked (SearchBox sync and 320 px stars reproduced and fixed).
+
 ## [0.24.0] - 2026-10-13
 
 Bug-audit release, part 9. Implements the last four OpenSpec changes from `docs/BUG_BACKLOG.md`: `spec-test-gaps` (21c), `fix-recs-correctness` (item 23), `fix-import-export-2` (item 24) and `fix-write-guards-2` (item 25). All are archived under `openspec/changes/archive/`, and every backlog item is now done.
@@ -167,7 +265,7 @@ Bug-audit release, part 7. Implements three OpenSpec changes from `docs/BUG_BACK
 - **Unverified on the dev machine (no Docker):** `nginx -t` on the new CSP line and the `tmdb_proxy_cache` table creation. `test_nginx_conf.py` checks the config statically.
 
 ### Performance (`speed-up-pages`)
-- **Dev API calls are same-origin.** The clients default to relative URLs (`/api`, `/api/tmdb`, media `""`), and CRA proxies them to `127.0.0.1:8000`. That removes the CORS preflight on every call and the ~300 ms IPv6 → IPv4 fallback on every new connection (`localhost` resolved to `::1` while `runserver` listens on IPv4 only).
+- **Dev API calls are same-origin.** The clients default to relative URLs (`/api`, `/api/tmdb`, media `""`), and CRA proxies them to Django on port 8000 over IPv4. That removes the CORS preflight on every call and the ~300 ms IPv6 → IPv4 fallback on every new connection (`localhost` resolved to `::1` while `runserver` listens on IPv4 only).
 - **Movie and TV detail pages load in one TMDB request** (`append_to_response`) instead of 5–6. Each appended part goes through shape guards (`src/utils/appended.ts`), so a missing or malformed part empties only its own section.
 - **Identical TMDB requests in flight are shared** (`sharedGet` in `src/api/tmdb.ts`), so the dev double mount and two components asking at once cost one request. A failure reaches every waiter and isn't kept.
 - **The TMDB proxy caches successful responses** in its own `tmdb` cache alias: 10 min for lists and search, 6 h for details, 24 h for genres and configuration, with an `X-Cache: HIT|MISS|BYPASS` header. Requests carrying a TMDB `session_id`/`guest_session_id`, and `account`/`authentication` paths, are never cached, and neither are errors.
@@ -219,7 +317,7 @@ Bug-audit release, part 6. A third and fourth audit (2026-10-09) logged backlog 
 - **Imports can't flood TMDB.** A metadata backfill run fetches at most 100 titles, newest watches first. A title TMDB doesn't know is now marked in the database, so other server processes and restarts never refetch it. It used to be held per process, so the same missing titles were fetched again by every worker after every restart. The in-memory failure backoff is capped at 10,000 entries.
 - **Reviews (5000 characters) and list descriptions (200) are capped**, on single and bulk writes. They had no limit, so one account could store multi-megabyte values that every load of its ratings or lists pulled into a server worker. Text already stored above the caps still loads. The rating dialog shows a character count.
 - **Repeated failed logins for one username are limited.** After 20 failures within an hour, from any number of IPs, sign-in for that username returns `429` until the hour passes, whether or not the password is right. This is on top of the per-IP limit. Password reset still works.
-- **Password-reset email is sent in the background**, so the response time no longer shows whether an email is registered. Registration still says when an email is taken; that's accepted and documented in `docs/ARCHITECTURE.md`.
+- **Password-reset email is sent in the background**, so the response time no longer shows whether an email is registered. The remaining trade-offs are documented in `docs/ARCHITECTURE.md`.
 - **Profile photos are re-encoded on upload.** Location, camera serial and other embedded details are removed, the photo stays upright, and a truncated image is rejected.
 - **The nginx access log never records password-reset links or TMDB callback tokens**, in either the request line or the referer. The reset page's own API call carries the reset link as its referer.
 - **Oversized backups are refused before unpacking.** The importer rejects files over 50 MB, or ZIPs whose entries would expand past 50 MB each or 200 MB in total, so a crafted ZIP can't freeze the tab.
@@ -229,7 +327,7 @@ Bug-audit release, part 6. A third and fourth audit (2026-10-09) logged backlog 
 
 ### Docs
 - `docs/BUG_BACKLOG.md`: items 16–25 from the third and fourth audits. The fourth round added cross-cutting passes (sibling hunt, cross-feature flows, adversarial security, spec conformance) and the first live Playwright run of the app.
-- `docs/ARCHITECTURE.md`: rationale for each security change above, and the accepted trade-offs (signup reveals taken emails; a known username can be kept out of password login for up to an hour).
+- `docs/ARCHITECTURE.md`: rationale for each security change above, and the trade-offs accepted with them.
 - CLAUDE.md: `TRUSTED_PROXY_COUNT`'s settings default is 0 (compose sets 1), and the new log, backfill, avatar and nginx conventions.
 
 ### Tests
@@ -247,7 +345,7 @@ Bug-audit release, part 5. Implements the five OpenSpec changes from the second 
 - **Node 22** is now declared (`.nvmrc`, `engines`). A newer Node only warns.
 - `TRUSTED_PROXY_COUNT` is now set from the environment in compose (default 1). Behind an extra proxy or TLS terminator, set it in the shell or the root `.env`.
 - The Docker checks for this release (`nginx -t`, the cache/404 curls, `docker compose config`) were waived on the dev machine (no Docker there). `test_nginx_conf.py` checks the config statically; verify the rest on first deploy.
-- Still open, accepted: two react-router advisories (GHSA-wrjc-x8rr-h8h6, GHSA-337j-9hxr-rhxg) that are fixed only in v7. One is SSR-only. The other needs an attacker-controlled navigation target, which the app never uses.
+- Two react-router advisories are fixed only in v7 and don't apply to how the app uses the router. They wait for a v7 upgrade (see `docs/BUG_BACKLOG.md`, item 14).
 
 ### Fixed — sessions across tabs (`fix-session-sync`)
 - Each tab is bound to the account it shows. Signing out in another tab signs this one out, signing in as a different account in another tab reloads this one, and a profile update in another tab is adopted. Until the other tab's change arrives, the API client refuses to send a request with another account's token. Writes used to land in the wrong account.
@@ -570,7 +668,7 @@ Bug-audit release. Implements four OpenSpec changes (`harden-security-p0`, `fix-
 - Added `predev`/`prestart` npm scripts (`kill-port 3000 8000`) so a stale process left on those ports from a previous run no longer silently blocks the next `npm run dev`.
 
 ### Fixed
-- LAN access broke as a side effect of the Express removal above: Express always talked to Django via `localhost:8000` internally, so Django's `ALLOWED_HOSTS` check never saw a request's real Host header; with the browser now hitting Django directly, a LAN device (e.g. `192.168.x.x:8000`) got a `DisallowedHost` 400 on login. `backend/cinedb/settings.py` now appends `"*"` to `ALLOWED_HOSTS` under `DEBUG`, mirroring the wildcard `CORS_ALLOW_ALL_ORIGINS` already gets in dev.
+- LAN access broke as a side effect of the Express removal above: Express always talked to Django via `localhost:8000` internally, so Django's `ALLOWED_HOSTS` check never saw a request's real Host header; with the browser now hitting Django directly, a LAN device (e.g. `<host-lan-ip>:8000`) got a `DisallowedHost` 400 on login. `backend/cinedb/settings.py` now appends `"*"` to `ALLOWED_HOSTS` under `DEBUG`, mirroring the wildcard `CORS_ALLOW_ALL_ORIGINS` already gets in dev.
 - The new `tmdb_proxy` view saw sporadic 502s under normal use — a movie/TV detail page fires ~6 concurrent proxy requests, and a bare per-call `requests.get()` (fresh TLS handshake each time, no pooling) occasionally hit a transient connection reset under that burst, unlike the old Express/axios proxy which kept a persistent connection pool. Now uses a shared module-level `requests.Session()` with an `HTTPAdapter`/`Retry` (2 retries, 0.3s backoff) mounted on it, and the timeout raised from 10s to 20s.
 
 ## [0.15.3] - 2026-07-14

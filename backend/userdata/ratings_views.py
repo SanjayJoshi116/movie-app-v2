@@ -26,17 +26,26 @@ def _tmdb_session_id(user):
         return ""
 
 
-def _sync_rating_to_tmdb(user, entry):
-    """Mirror a rating to the user's connected TMDB account, if any. Best-effort:
-    a TMDB failure is logged and never fails the local write."""
+def _sync_to_tmdb(user, action, call):
+    """Mirror a rating change to the user's connected TMDB account, if any,
+    after the local change is saved. Best-effort and bounded: a TMDB failure,
+    or TMDB not answering within TMDB_CALL_DEADLINE, is logged and never fails
+    the local write. It runs in the request, not in the background, so changes
+    reach TMDB in the order they were made: background syncs on different
+    server processes could arrive out of order."""
     session_id = _tmdb_session_id(user)
     if not session_id:
         return
     try:
-        tmdb_client.post_rating(entry.media_type, entry.media_id, session_id, entry.user_rating)
+        tmdb_client.call_with_deadline(call, tmdb_client.TMDB_CALL_DEADLINE, session_id)
     except (requests.RequestException, ValueError) as e:
         # Type only: str(e) carries the request URL, session_id included.
-        logger.warning("TMDB rating sync failed for user %s (%s)", user.pk, type(e).__name__)
+        logger.warning("TMDB rating %s failed for user %s (%s)", action, user.pk, type(e).__name__)
+
+
+def _sync_rating_to_tmdb(user, entry):
+    media_type, media_id, value = entry.media_type, entry.media_id, entry.user_rating
+    _sync_to_tmdb(user, "sync", lambda session_id: tmdb_client.post_rating(media_type, media_id, session_id, value))
 
 
 @api_view(["GET", "POST"])
@@ -87,13 +96,11 @@ def ratings_list(request):
 def ratings_detail(request, pk):
     entry = get_object_or_404(RatingEntry, pk=pk, user=request.user)
     if request.method == "DELETE":
-        session_id = _tmdb_session_id(request.user)
-        if session_id:
-            try:
-                tmdb_client.delete_rating(entry.media_type, entry.media_id, session_id)
-            except (requests.RequestException, ValueError) as e:
-                logger.warning("TMDB rating delete failed for user %s (%s)", request.user.pk, type(e).__name__)
+        media_type, media_id = entry.media_type, entry.media_id
+        # Locally first: a TMDB failure (or a killed worker) never keeps the row.
         entry.delete()
+        _sync_to_tmdb(request.user, "delete",
+                      lambda session_id: tmdb_client.delete_rating(media_type, media_id, session_id))
         schedule_refresh(request.user.id)
         return Response(status=status.HTTP_204_NO_CONTENT)
     old_rating, old_review = entry.user_rating, entry.review

@@ -94,3 +94,30 @@ describe("cross-tab session sync", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+describe("signedOutInThisTab (auth-session: return path)", () => {
+  it("is false on a signed-in start, true after a sign-out here, false again after signing in", async () => {
+    const auth = await mountSignedIn();
+    expect(auth.current.signedOutInThisTab).toBe(false);
+    act(() => auth.current.logout());
+    expect(auth.current.signedOutInThisTab).toBe(true);
+    signIn(USER_B);
+    otherTab(() => undefined, "cinedb_user");
+    await waitFor(() => expect(auth.current.user?.id).toBe(2));
+    expect(auth.current.signedOutInThisTab).toBe(false);
+  });
+
+  it("is true after another tab signs out", async () => {
+    const auth = await mountSignedIn();
+    otherTab(() => localStorage.clear(), null);
+    expect(auth.current.signedOutInThisTab).toBe(true);
+  });
+
+  it("is false when the tab starts signed out", async () => {
+    localStorage.clear();
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.signedOutInThisTab).toBe(false);
+  });
+});
+

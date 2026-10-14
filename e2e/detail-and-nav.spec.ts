@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, expect, mockAuthedBase, paginated, movieDetail, tvDetail } from "./fixtures";
 import type { FollowedPersonEntry, PersonalizedRecSection } from "../src/api/userApi";
-import type { UserListDTO, WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
+import type { UserListDTO, UserListItemDTO, WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
 
 /** The row of Statistic facts (rating, runtime, seasons...) under the title. */
 const factsRow = (page: Page) =>
@@ -330,7 +330,16 @@ test.describe("Browse grids hide watched titles", () => {
       route.fulfill({ json: { results: [BROWSE_MOVIES[0]], total_pages: 1, total_results: 1, page: 1 } }));
     await page.goto("/search?q=Movie");
     await expect(page.getByRole("link", { name: "Movie 1" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Unmark watched" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Unmark watched: Movie 1" })).toBeVisible();
+  });
+
+  test("search result cards have the browse cards' watchlist button, named per title", async ({ page }) => {
+    await page.route("**/api/tmdb/search/movie**", (route) =>
+      route.fulfill({ json: { results: [BROWSE_MOVIES[0]], total_pages: 1, total_results: 1, page: 1 } }));
+    await page.goto("/search?q=Movie");
+    await expect(page.getByRole("button", { name: "Add to watchlist: Movie 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mark as watched: Movie 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Know more about Movie 1" })).toBeVisible();
   });
 });
 
@@ -355,6 +364,29 @@ test.describe("Add to List dialog", () => {
     await open.click();
     await expect(dialog.getByPlaceholder("Search lists…")).toHaveValue("");
     await expect(dialog.getByText("Weekend")).toBeVisible();
+  });
+
+  test("each list is a named checkbox that Space toggles", async ({ page }) => {
+    const added: string[] = [];
+    await page.route("**/api/lists/**", (route) => {
+      if (route.request().method() === "POST") {
+        added.push(new URL(route.request().url()).pathname);
+        return route.fulfill({ status: 201, json: {
+          id: 9, mediaId: 100, mediaType: "movie", title: "Movie 1", posterPath: null, voteAverage: 7, addedAt: "2026-01-03T00:00:00Z",
+        } satisfies UserListItemDTO });
+      }
+      return route.fulfill({ json: paginated(LISTS) });
+    });
+    await page.route("**/api/tmdb/movie/100**", (route) => route.fulfill({ json: movieDetail() }));
+    await page.goto("/movie/100");
+    await page.getByRole("button", { name: /Add to List/i }).click();
+    const dialog = page.getByRole("dialog", { name: "Add to List" });
+    const fav = dialog.getByRole("checkbox", { name: "Favourites" });
+    await expect(fav).not.toBeChecked();
+    await fav.focus();
+    await page.keyboard.press("Space");
+    await expect(fav).toBeChecked();
+    expect(added).toEqual(["/api/lists/1/items/"]);
   });
 
   test("a failed lists load shows Retry, not \"No lists yet\"", async ({ page }) => {

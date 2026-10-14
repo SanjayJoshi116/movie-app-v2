@@ -1,3 +1,4 @@
+from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -43,22 +44,33 @@ def lists_detail(request, pk):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _not_found_if_list_gone(request, list_pk, error):
+    """An item insert failed its list FK: the list was deleted mid-request.
+    That's a 404; any other integrity error is a real bug and re-raises."""
+    if UserList.objects.filter(pk=list_pk, user=request.user).exists():
+        raise error
+    return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def list_items_create(request, list_pk):
     user_list = get_object_or_404(UserList, pk=list_pk, user=request.user)
     serializer = UserListItemSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    item, created = UserListItem.objects.get_or_create(
-        user_list=user_list,
-        media_id=serializer.validated_data["media_id"],
-        media_type=serializer.validated_data["media_type"],
-        defaults={
-            "title": serializer.validated_data["title"],
-            "poster_path": serializer.validated_data.get("poster_path"),
-            "vote_average": serializer.validated_data.get("vote_average", 0),
-        },
-    )
+    try:
+        item, created = UserListItem.objects.get_or_create(
+            user_list=user_list,
+            media_id=serializer.validated_data["media_id"],
+            media_type=serializer.validated_data["media_type"],
+            defaults={
+                "title": serializer.validated_data["title"],
+                "poster_path": serializer.validated_data.get("poster_path"),
+                "vote_average": serializer.validated_data.get("vote_average", 0),
+            },
+        )
+    except IntegrityError as error:
+        return _not_found_if_list_gone(request, list_pk, error)
     return Response(
         UserListItemSerializer(item).data,
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -87,13 +99,17 @@ def list_items_bulk(request, list_pk):
 
     # A list item's entry is a watchlist entry's: media identity, title,
     # poster, vote and an optional addedAt.
-    return bulk_import(
-        request,
-        model=UserListItem,
-        entry_serializer=BulkWatchlistEntrySerializer,
-        build=build,
-        scope={"user_list": user_list},
-    )
+    try:
+        return bulk_import(
+            request,
+            model=UserListItem,
+            entry_serializer=BulkWatchlistEntrySerializer,
+            build=build,
+            scope={"user_list": user_list},
+        )
+    except IntegrityError as error:
+        # The list FK is deferred, so this surfaces at bulk_import's commit.
+        return _not_found_if_list_gone(request, list_pk, error)
 
 
 @api_view(["DELETE"])

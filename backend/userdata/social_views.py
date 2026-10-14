@@ -5,9 +5,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from django.core.cache import cache
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 
 from .bulk_import import bulk_import, timestamp_or_now
 from .models import EpisodeProgress, FollowedPerson, WatchedEntry
@@ -56,7 +57,7 @@ def episode_progress_bulk(request):
     )
 
 
-@api_view(["GET", "POST", "PATCH", "DELETE"])
+@api_view(["GET", "POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def episode_progress(request, show_id: int):
     if request.method == "GET":
@@ -231,8 +232,16 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     return [(fp, cached.get(_credits_key(fp.person_id), [])) for fp in followed]
 
 
+class FollowedRecsThrottle(UserRateThrottle):
+    """Up to 10 TMDB fetches per call on the server's key; the page asks once
+    per load, so this is far above real use."""
+
+    scope = "followed_recs"
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([FollowedRecsThrottle])
 def followed_people_recommendations(request):
     # One section per person in the UI, so only the most recent follows.
     results = _fetch_followed_people_credits(request.user, limit=10, budget_seconds=FOLLOWED_RECS_BUDGET_SECONDS)

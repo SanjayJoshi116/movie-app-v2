@@ -70,11 +70,15 @@ When the debug setting isn't explicitly enabled, the backend SHALL run with debu
 - **THEN** the backend runs with debug on and accepts LAN-address hosts, as it does today, and emails go to the console without any extra setting
 
 ### Requirement: TMDB proxy responds within a bounded time
-The TMDB passthrough endpoint SHALL return a response within a bounded worst-case time, retries included. That time SHALL be below the application server's worker timeout, so a slow or unresponsive TMDB results in the endpoint's own error response (`502`) rather than the worker being killed and the request failing at the reverse proxy.
+The TMDB passthrough endpoint SHALL return a response within a bounded worst-case time, retries included. That time SHALL be below the application server's worker timeout, so a slow or unresponsive TMDB results in the endpoint's own error response (`502`) rather than the worker being killed and the request failing at the reverse proxy. The bound SHALL be a limit on elapsed time for the whole TMDB call, so it SHALL hold however many network addresses TMDB's host name resolves to and however many of them fail to connect.
 
 #### Scenario: TMDB stops responding
 - **WHEN** TMDB accepts connections but never sends a response to a proxied request
 - **THEN** the endpoint returns `502` with a generic error before the application server's worker timeout elapses, and the worker stays available for other requests
+
+#### Scenario: Every address drops connection attempts
+- **WHEN** TMDB's host name resolves to four addresses and connection attempts to each of them hang until they time out
+- **THEN** the endpoint still returns `502` before the application server's worker timeout elapses
 
 ### Requirement: TMDB proxy forwards query parameters faithfully
 The TMDB proxy SHALL forward every query parameter value the client sends, including every value of a repeated parameter. The values of a repeated parameter SHALL keep the order the client sent them in. The proxy MAY group parameters by name, since TMDB doesn't depend on the order of different parameters. It SHALL always use the server's own TMDB API key, and SHALL NOT forward an `api_key` supplied by the client.

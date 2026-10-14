@@ -1,4 +1,4 @@
-import { test, expect, mockAuthedBase } from "./fixtures";
+import { test, expect, mockAuthedBase, movieDetail } from "./fixtures";
 
 // Unmocked TMDB calls get an empty page from the fixtures' catch-all; any
 // unmocked app API call fails the test (see e2e/fixtures.ts).
@@ -160,6 +160,32 @@ test.describe("Responsive layout", () => {
     await page.goto("/watchlist");
     await expect(page.locator(".app-bottom-nav")).toBeVisible();
     await expect(page.locator('.app-bottom-nav button[aria-label="Toggle filters"]')).toHaveCount(0);
+  });
+
+  test("phone: opening the Search drawer adds no duplicate id", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await mockAuthedBase(page);
+    await page.goto("/movies");
+    await page.locator(".app-bottom-nav").getByRole("button", { name: "Search" }).click();
+    await expect(page.locator("#mobile-search")).toBeVisible();
+    const duplicates = await page.evaluate(() => {
+      const seen = new Map<string, number>();
+      document.querySelectorAll("[id]").forEach((el) => seen.set(el.id, (seen.get(el.id) ?? 0) + 1));
+      return Array.from(seen).filter(([, n]) => n > 1).map(([id]) => id);
+    });
+    expect(duplicates).toEqual([]);
+  });
+
+  test("very narrow phone: the ten-star rating stays on one line", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await mockAuthedBase(page);
+    await page.route("**/api/tmdb/movie/100**", (route) => route.fulfill({ json: movieDetail() }));
+    await page.goto("/movie/100");
+    await page.getByRole("button", { name: "Rate this movie" }).click();
+    const stars = page.locator(".ant-modal .ant-rate li");
+    await expect(stars).toHaveCount(10);
+    const tops = await stars.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(1);
   });
 
   test("very narrow phone: bottom nav doesn't overflow or clip", async ({ page }) => {

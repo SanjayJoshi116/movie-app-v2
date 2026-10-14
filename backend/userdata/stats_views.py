@@ -23,10 +23,13 @@ _GENRE_CACHE_TTL = 86400  # 24 hours
 # After a failed lookup the built-in names are used, and TMDB is tried again
 # after this long instead of after a full day.
 _GENRE_FALLBACK_TTL = 300
-# (connect, read) per genre call. The two calls run back to back on a cold
-# cache, so 2 * (connect + read) must stay well under gunicorn's --timeout
+# (connect, read) per attempt of a genre call, and a wall-clock deadline per
+# call: per-attempt timeouts alone don't bound it, because the connect is tried
+# once per address DNS returns. The two calls run back to back on a cold cache,
+# so 2 * GENRE_LOOKUP_DEADLINE must stay well under gunicorn's --timeout
 # (docker-entrypoint.sh); test_stats_genres pins the margin.
 GENRE_LOOKUP_TIMEOUT = (3.05, 5)
+GENRE_LOOKUP_DEADLINE = 8
 
 
 def round_half_up(value: float, places: int = 1) -> float:
@@ -55,10 +58,12 @@ def _get_cached_genre_names() -> dict[int, str]:
     global _genre_name_cache, _genre_cache_ts, _genre_cache_ttl
     if not _genre_name_cache or (_time.time() - _genre_cache_ts) > _genre_cache_ttl:
         try:
-            _genre_name_cache = {
-                **tmdb_client.get_genre_names("movie", GENRE_LOOKUP_TIMEOUT, fallback=False),
-                **tmdb_client.get_genre_names("tv", GENRE_LOOKUP_TIMEOUT, fallback=False),
-            }
+            def lookup(media_type):
+                return tmdb_client.call_with_deadline(
+                    tmdb_client.get_genre_names, GENRE_LOOKUP_DEADLINE,
+                    media_type, GENRE_LOOKUP_TIMEOUT, fallback=False,
+                )
+            _genre_name_cache = {**lookup("movie"), **lookup("tv")}
             _genre_cache_ttl = _GENRE_CACHE_TTL
         except (requests.RequestException, ValueError, KeyError, TypeError) as e:
             logger.warning("Genre names lookup failed, using built-in names: %s", type(e).__name__)
@@ -122,8 +127,9 @@ def stats(request):
     ]
 
     # 0 is what's stored for "no score" (unreleased titles, CSV rows without
-    # one), so it would only drag the average down.
-    scored = [w.vote_average for w in watched_list if w.vote_average and w.vote_average > 0]
+    # one), so it would only drag the average down. Values over 10 predate the
+    # input bounds (crafted imports); one huge one made round_half_up raise.
+    scored = [w.vote_average for w in watched_list if w.vote_average and 0 < w.vote_average <= 10]
     avg_tmdb_rating = round_half_up(sum(scored) / len(scored)) if scored else None
 
     total_runtime_minutes = sum(w.runtime_minutes or 0 for w in watched_list)

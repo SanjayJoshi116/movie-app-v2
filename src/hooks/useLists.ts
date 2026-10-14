@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import userApi, { currentSessionGeneration, isCurrentSession } from "../api/userApi";
 import { fetchAllPages } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
+import { guardedReload } from "../utils/guardedReload";
 import type { UserList, UserListDTO, UserListItemDTO, WatchlistInput } from "../types";
 
 function mapListData(data: UserListDTO[]): UserList[] {
@@ -25,33 +26,58 @@ function mapListData(data: UserListDTO[]): UserList[] {
 
 export function useLists() {
   const { isAuthenticated } = useAuth();
-  const [lists, setLists] = useState<UserList[]>([]);
-  const [isLoading, setIsLoading] = useState(isAuthenticated);
+  const [lists, setListsState] = useState<UserList[]>([]);
+  // The session generation of the last finished load. Until it's this
+  // session's, lists are loading, so the first render after sign-in never
+  // reads as loaded and empty.
+  const [loadedGen, setLoadedGen] = useState<number | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const isLoading = isAuthenticated && (reloading || loadedGen !== currentSessionGeneration());
   const [error, setError] = useState<unknown>(null);
-  const inflight = useRef(createInflight());
+  // Bumped as each write settles: a reload that started earlier is rerun.
+  const writeSeq = useRef(0);
+  // Each list's item writes, clear, delete and edits share one group, so a
+  // clear or delete is ordered with that list's item writes only.
+  const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
+  // Item writes can be queued behind a clear: read the lists as they are when
+  // the write runs, not as they were when it was clicked. The ref changes
+  // together with the state, because a queued write runs before React re-renders.
+  const listsRef = useRef(lists);
+  const setLists = useCallback((next: UserList[] | ((prev: UserList[]) => UserList[])) => {
+    listsRef.current = typeof next === "function" ? next(listsRef.current) : next;
+    setListsState(listsRef.current);
+  }, []);
 
   const fetchLists = useCallback(async () => {
     if (!isAuthenticated) return;
     // A response that lands after sign-out belongs to the previous account.
     const gen = currentSessionGeneration();
-    setIsLoading(true);
+    setReloading(true);
     try {
-      const data = await fetchAllPages<UserListDTO>(userApi, "/lists/");
-      if (!isCurrentSession(gen)) return;
-      setLists(mapListData(data));
-      setError(null);
+      await guardedReload(
+        writeSeq,
+        () => fetchAllPages<UserListDTO>(userApi, "/lists/"),
+        (data) => {
+          if (!isCurrentSession(gen)) return;
+          setLists(mapListData(data));
+          setError(null);
+        },
+      );
     } catch (err) {
       if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
     } finally {
-      if (isCurrentSession(gen)) setIsLoading(false);
+      if (isCurrentSession(gen)) {
+        setReloading(false);
+        setLoadedGen(gen);
+      }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, setLists]);
 
   useEffect(() => {
-    if (!isAuthenticated) { setLists([]); setError(null); setIsLoading(false); return; }
+    if (!isAuthenticated) { setLists([]); setError(null); setReloading(false); return; }
     fetchLists().catch(() => { /* recorded in `error` */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -69,30 +95,30 @@ export function useLists() {
       // Newest first, like the API (-created_at), so a reload doesn't move it.
       setLists((prev) => [created, ...prev]);
       return created;
-    }), [isAuthenticated]);
+    }), [isAuthenticated, setLists]);
 
-  const deleteList = useCallback((id: number) => inflight.current.run(`list-${id}`, async () => {
+  const deleteList = useCallback((id: number) => inflight.current.group(id).runExclusive(async () => {
     if (!isAuthenticated) return;
     const gen = currentSessionGeneration();
     await userApi.delete(`/lists/${id}/`);
     if (!isCurrentSession(gen)) return;
     setLists((prev) => prev.filter((l) => l.id !== id));
-  }), [isAuthenticated]);
+  }, "delete"), [isAuthenticated, setLists]);
 
-  // Shares the list's slot with delete/clear: one write per list at a time.
+  // In the list's group: waits for a pending clear or delete of that list.
   const updateList = useCallback((id: number, patch: { name?: string; description?: string }) =>
-    inflight.current.run(`list-${id}`, async () => {
+    inflight.current.group(id).run("details", async () => {
       if (!isAuthenticated) return;
       const gen = currentSessionGeneration();
       const { data } = await userApi.patch<UserListDTO>(`/lists/${id}/`, patch);
       if (!isCurrentSession(gen)) return;
       setLists((prev) => prev.map((l) => (l.id !== id ? l : { ...l, name: data.name, description: data.description })));
-    }), [isAuthenticated]);
+    }, `update:${JSON.stringify(patch)}`), [isAuthenticated, setLists]);
 
   const addToList = useCallback((listId: number, entry: WatchlistInput) =>
-    inflight.current.run(`${listId}-${entry.type}-${entry.id}`, async () => {
+    inflight.current.group(listId).run(`${entry.type}-${entry.id}`, async () => {
     if (!isAuthenticated) return;
-    const list = lists.find((l) => l.id === listId);
+    const list = listsRef.current.find((l) => l.id === listId);
     if (list?.items.some((i) => i.id === entry.id && i.type === entry.type)) return;
     const gen = currentSessionGeneration();
     const { data } = await userApi.post<UserListItemDTO>(`/lists/${listId}/items/`, {
@@ -125,12 +151,12 @@ export function useLists() {
         };
       })
     );
-  }), [isAuthenticated, lists]);
+  }, "add"), [isAuthenticated, setLists]);
 
   const removeFromList = useCallback((listId: number, itemId: number, type: string) =>
-    inflight.current.run(`${listId}-${type}-${itemId}`, async () => {
+    inflight.current.group(listId).run(`${type}-${itemId}`, async () => {
     if (!isAuthenticated) return;
-    const list = lists.find((l) => l.id === listId);
+    const list = listsRef.current.find((l) => l.id === listId);
     const item = list?.items.find((i) => i.id === itemId && i.type === type) as { _itemId?: number } | undefined;
     if (!item?._itemId) return;
     const gen = currentSessionGeneration();
@@ -143,9 +169,11 @@ export function useLists() {
           : { ...l, items: l.items.filter((i) => !(i.id === itemId && i.type === type)) }
       )
     );
-  }), [isAuthenticated, lists]);
+  }, "remove"), [isAuthenticated, setLists]);
 
-  const clearList = useCallback((listId: number) => inflight.current.run(`list-${listId}`, async () => {
+  // Waits for the list's pending item writes, and item writes started
+  // meanwhile wait for it, so the list follows the order the user acted in.
+  const clearList = useCallback((listId: number) => inflight.current.group(listId).runExclusive(async () => {
     if (!isAuthenticated) return;
     const gen = currentSessionGeneration();
     await userApi.delete(`/lists/${listId}/items/clear/`);
@@ -153,7 +181,7 @@ export function useLists() {
     setLists((prev) =>
       prev.map((l) => (l.id !== listId ? l : { ...l, items: [] }))
     );
-  }), [isAuthenticated]);
+  }, "clear"), [isAuthenticated, setLists]);
 
   const isInList = useCallback((listId: number, id: number, type: string): boolean => {
     const list = lists.find((l) => l.id === listId);

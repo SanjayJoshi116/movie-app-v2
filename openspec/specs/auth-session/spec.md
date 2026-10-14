@@ -18,7 +18,7 @@ The client SHALL store both the access token and the refresh token returned by e
 - **THEN** the stored refresh token is replaced by the new one before any further request is sent
 
 ### Requirement: Concurrent unauthorized responses trigger at most one refresh
-When several in-flight requests get `401` because the access token expired, the client SHALL perform a single refresh and replay every affected request with the new access token. A `401` for a request that was sent with an access token that has since been replaced SHALL be replayed with the current access token without starting another refresh. The client SHALL end the session only when the server rejects the refresh token itself. If the refresh fails for any other reason (rate limit, server error, timeout, network failure), the affected requests SHALL fail with that error and the user SHALL stay signed in, so a later request can refresh again.
+When several in-flight requests get `401` because the access token expired, the client SHALL perform a single refresh and replay every affected request with the new access token. A `401` for a request that was sent with an access token that has since been replaced SHALL be replayed with the current access token without starting another refresh. A request that was already replayed after a refresh, whether it started the refresh or waited for it, SHALL NOT start another refresh if it gets `401` again: it SHALL fail with that error. The client SHALL end the session only when the server rejects the refresh token itself. If the refresh fails for any other reason (rate limit, server error, timeout, network failure), the affected requests SHALL fail with that error and the user SHALL stay signed in, so a later request can refresh again.
 
 #### Scenario: Burst of expired requests
 - **WHEN** five requests are sent with an expired access token and all receive `401`
@@ -35,6 +35,10 @@ When several in-flight requests get `401` because the access token expired, the 
 #### Scenario: Refresh is rate-limited or the server is unreachable
 - **WHEN** the refresh request gets `429`, a `5xx`, times out, or fails with a network error
 - **THEN** the original request fails with that error, the stored tokens are kept, the user is not sent to the login page, and the next request that gets `401` attempts a refresh again
+
+#### Scenario: A queued request is rejected again after the refresh
+- **WHEN** a request waited for a refresh, was replayed with the new token, and gets `401` again
+- **THEN** it fails with that `401`, and no second refresh request is made for it
 
 ### Requirement: Credential changes revoke other sessions
 When a user changes their password from their profile, or completes a password reset, the system SHALL revoke every refresh token issued for that account before the change. That includes a refresh token rotated by a refresh request that was in flight while the change happened. Access tokens issued before the change SHALL be rejected from the moment the change is saved, not when they expire. After a profile password change, the response SHALL include a new access and refresh token pair, which the client SHALL store so the session that made the change stays signed in. Any profile update that invalidates the current session's tokens as a side effect (for example, the stored password hash being upgraded while the current password is verified) SHALL also return a new token pair, so the session that made the update stays signed in.
@@ -87,7 +91,7 @@ The system SHALL provide a logout endpoint that accepts a refresh token and revo
 - **THEN** it responds with a client error (not a server error), and the client still completes local logout
 
 ### Requirement: Client teardown removes all account-scoped data
-On any logout, explicit or forced by a failed refresh, the client SHALL remove the stored tokens and cached user, all per-tab cached data (cached recommendations, cached search results, list/filter state), and the recent-search history. A different user who then signs in within the same tab SHALL see none of the previous user's data. This SHALL hold whichever page the user is on when the logout happens. In particular, no page SHALL write account-scoped data back to storage after the teardown has run (for example, while the page unmounts because of the logout).
+On any logout, explicit or forced by a failed refresh, the client SHALL remove the stored tokens and cached user, all per-tab cached data (cached recommendations, cached search results, list/filter state), and the recent-search history. It SHALL also reset the browse settings held in memory (search term, "include adult", genre picks, and the applied browse filters and sort) to their defaults. A different user who then signs in within the same tab SHALL see none of the previous user's data or settings. This SHALL hold whichever page the user is on when the logout happens. In particular, no page SHALL write account-scoped data back to storage after the teardown has run (for example, while the page unmounts because of the logout).
 
 #### Scenario: Switching accounts in one tab
 - **WHEN** user A views their recommendations and searches, logs out, and user B logs in within the same browser tab
@@ -100,6 +104,10 @@ On any logout, explicit or forced by a failed refresh, the client SHALL remove t
 #### Scenario: Logging out from a page that caches its results
 - **WHEN** user A is on the recommendations page (or the search results page) and logs out from there, and user B then logs in within the same tab and opens that page
 - **THEN** B sees B's own data or a loading state, and no cached recommendations or search results from A are present in session storage after A's logout
+
+#### Scenario: Adult content setting
+- **WHEN** user A turns on "include adult" and picks a genre on Movies, signs out, and user B signs in within the same tab and opens Movies
+- **THEN** B's results exclude adult titles and have no genre filter
 
 ### Requirement: Automatic retries never repeat writes
 The authenticated API client SHALL automatically retry a request after a `500` response only when the request method is `GET`, `HEAD`, or `OPTIONS`. Requests with any other method SHALL surface the `500` to the caller without retrying.
@@ -176,7 +184,7 @@ A request for public TMDB data that is answered as unauthorized SHALL NOT end th
 - **THEN** the request is retried without credentials and the page loads, and the user stays signed in
 
 ### Requirement: Responses for a previous session are discarded
-A response to a request made while one account was signed in SHALL NOT change what the app shows after that account has signed out. This applies to the library (watched, watchlist, ratings, lists), followed people, the notifications and their error state, whether the response is a load or a write, and whether it succeeds or fails.
+A response to a request made while one account was signed in SHALL NOT change what the app shows after that account has signed out. This applies to the library (watched, watchlist, ratings, lists), followed people, episode progress, the notifications and their error state, and imports, whether the response is a load or a write, and whether it succeeds or fails.
 
 #### Scenario: Slow notifications poll across an account switch
 - **WHEN** user A signs out while A's notifications poll is still in flight, user B signs in in the same tab, and A's response then arrives
@@ -190,9 +198,25 @@ A response to a request made while one account was signed in SHALL NOT change wh
 - **WHEN** A's last notifications poll failed and A signs out, then B signs in
 - **THEN** B's bell doesn't show A's error until B's own poll has run
 
+#### Scenario: Episode progress saved across an account switch
+- **WHEN** user A saves a show's episode progress, signs out before the response arrives, and user B signs in and opens the same show
+- **THEN** B sees B's own progress for that show, not A's
+
 ### Requirement: A forced logout returns the user to their page after signing in
-When the session ends because a token refresh was rejected, the client SHALL send the user to the sign-in page. After signing in, the user SHALL return to the page they were on, with the same address (path, query and fragment), unless that page is a sign-in, registration or password-reset page.
+When the session ends because a token refresh was rejected, the client SHALL send the user to the sign-in page. After signing in, the user SHALL return to the page they were on, with the same address (path, query and fragment), unless that page is a sign-in, registration or password-reset page. When the session ends on purpose instead (the user signs out, deletes the account, or signs out in another tab), the next sign-in in that tab SHALL go to the default page. A user who opens a protected page while signed out SHALL still return to it after signing in.
 
 #### Scenario: Session expires on a list page
 - **WHEN** a user is on `/lists/7?sort=title` and a request triggers a token refresh that the server rejects
 - **THEN** the user lands on the sign-in page, and after signing in they are on `/lists/7?sort=title`
+
+#### Scenario: Sign out, then someone else signs in
+- **WHEN** user A is on `/search?q=something` and signs out, and user B signs in within the same tab
+- **THEN** B lands on the default page, not `/search?q=something`
+
+#### Scenario: Signed out in another tab
+- **WHEN** user A is on `/lists/7` in one tab and signs out in another tab, and then signs in again in the first tab
+- **THEN** the first tab lands on the default page
+
+#### Scenario: Opening a link while signed out
+- **WHEN** a signed-out user opens a link to `/lists/7` and signs in
+- **THEN** they land on `/lists/7`

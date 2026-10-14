@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Space, Button, Alert, Radio } from "antd";
@@ -37,9 +37,12 @@ const ANIME_MOVIE_CATEGORIES = [
   { key: "anime-movies-top-rated", label: "Top Rated" },
 ];
 
+const defaultAnimeCategory = (tab: "tv" | "movies") => (tab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
+
 // Discover params per category. "Airing Today" filters by today's episode air
 // date (TMDB's /tv/airing_today ignores with_keywords, so it can't be used);
 // sorting by first_air_date.desc used to surface not-yet-aired shows instead.
+
 function categoryParams(category: string): Record<string, string | number> {
   switch (category) {
     case "anime-tv-top-rated":
@@ -82,8 +85,6 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     isReturning && savedActiveCategory ? savedActiveCategory : "anime-tv-popular"
   );
 
-  const isRestoringRef = useRef(isReturning);
-
   useEffect(() => {
     if (!isReturning) {
       setSearchTerm("");
@@ -91,14 +92,10 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reports the initial mode (a restore included); the toggle reports changes itself.
   useEffect(() => {
-    if (!isRestoringRef.current) {
-      // User manually switched tab — reset category and clear results
-      setActiveCategory(animeTab === "tv" ? "anime-tv-popular" : "anime-movies-popular");
-      setAllItems([]);
-    }
     onMediaTypeChange(animeTab);
-  }, [animeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scopeMediaType = animeTab === "tv" ? "tv" : "movie";
   const validGenres = genresFor(scopeMediaType, selectedGenres);
@@ -142,17 +139,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       restore: { isReturning, savedLoadedPages, savedScrollY },
     });
 
-  // Once the first load (including any restore) finishes, treat later tab
-  // switches as user-initiated rather than part of a restore.
-  const prevLoadingRef = useRef(loading);
-  useEffect(() => {
-    if (prevLoadingRef.current && !loading) {
-      isRestoringRef.current = false;
-    }
-    prevLoadingRef.current = loading;
-  }, [loading]);
-
-  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !loadMoreError);
+  const sentinelRef = useInfiniteScroll(loadMore, hasMore && !loading && !error && !loadMoreError);
 
   // Lets browser Back (not just the in-app Back button) restore this page.
   const stashBrowseState = () =>
@@ -191,6 +178,10 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
           clearGenres();
           onMediaTypeChange(tab);
           setAnimeTab(tab);
+          // The new mode's category in the same render, or the first request
+          // pairs the new mode with the old mode's category params.
+          setActiveCategory(defaultAnimeCategory(tab));
+          setAllItems([]);
         }}
         style={{ marginBottom: 16 }}
       >
@@ -212,6 +203,8 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
           <Button
             key={cat.key}
             type={activeCategory === cat.key ? "primary" : "default"}
+            // A search or filter decides the results; a category can't change them then.
+            disabled={Boolean(searchTerm) || hasFilters}
             onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}

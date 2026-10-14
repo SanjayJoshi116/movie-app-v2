@@ -1,7 +1,7 @@
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { fetchNewReleaseNotifications, markNotificationsSeen } from "../../api/userApi";
-import { NotificationsProvider, useNotifications } from "../useNotifications";
+import { FOLLOW_REFRESH_DEBOUNCE_MS, NotificationsProvider, useNotifications } from "../useNotifications";
 import { AuthContext } from "../../context/AuthContext";
 import { FollowedPeopleContext, type FollowedPeopleContextType } from "../../context/FollowedPeopleContext";
 
@@ -51,6 +51,31 @@ describe("useNotifications", () => {
     expect(result.current.items).toEqual([]);
   });
 
+  it("ignores a poll that started while the mark-seen request was in flight", async () => {
+    jest.useFakeTimers();
+    try {
+      mockPoll.mockResolvedValueOnce({ data: { items: [], unreadCount: 0 } });
+      const { result } = renderHook(() => useNotifications(), { wrapper });
+      await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(1));
+
+      let finishMark!: (v: unknown) => void;
+      mockMarkSeen.mockReturnValueOnce(new Promise((res) => { finishMark = res; }));
+      let marking!: Promise<void>;
+      act(() => { marking = result.current.markSeen(); });
+      // The next scheduled poll starts after the click, before the server has the mark.
+      let answerPoll!: (v: unknown) => void;
+      mockPoll.mockReturnValueOnce(new Promise((res) => { answerPoll = res; }));
+      act(() => { jest.advanceTimersByTime(3 * 60 * 1000); });
+      expect(mockPoll).toHaveBeenCalledTimes(2);
+
+      await act(async () => { finishMark({}); await marking; });
+      await act(async () => { answerPoll({ data: unread }); });
+      expect(result.current.unreadCount).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("applies a poll when nothing was marked seen meanwhile", async () => {
     mockPoll.mockResolvedValue({ data: unread });
     const { result } = renderHook(() => useNotifications(), { wrapper });
@@ -60,24 +85,66 @@ describe("useNotifications", () => {
 });
 
 describe("refresh after a follow change", () => {
-  beforeEach(() => mockPoll.mockReset().mockResolvedValue({ data: { items: [], unreadCount: 0 } }));
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockPoll.mockReset().mockResolvedValue({ data: { items: [], unreadCount: 0 } });
+  });
+  afterEach(() => jest.useRealTimers());
 
-  it("polls again when the followed-people change counter moves, not on mount", async () => {
-    const followCtx = (changes: number) => ({ changes } as unknown as FollowedPeopleContextType);
-    let changes = 0;
+  /** A FollowedPeopleContext whose change counter the test moves. */
+  function renderWithFollows() {
+    const state = { changes: 0 };
     const withFollows = ({ children }: { children: React.ReactNode }) =>
       React.createElement(
         AuthContext.Provider, { value: auth },
         React.createElement(
-          FollowedPeopleContext.Provider, { value: followCtx(changes) },
+          FollowedPeopleContext.Provider, { value: { changes: state.changes } as unknown as FollowedPeopleContextType },
           React.createElement(NotificationsProvider, null, children),
         ),
       );
-    const { rerender } = renderHook(() => useNotifications(), { wrapper: withFollows });
+    const view = renderHook(() => useNotifications(), { wrapper: withFollows });
+    const change = () => { state.changes += 1; view.rerender(); };
+    return { ...view, change };
+  }
+
+  it("polls again shortly after the followed-people change counter moves, not on mount", async () => {
+    const { change } = renderWithFollows();
     await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(1));
 
-    changes = 1;
-    rerender();
+    change();
+    act(() => { jest.advanceTimersByTime(FOLLOW_REFRESH_DEBOUNCE_MS - 1); });
+    expect(mockPoll).toHaveBeenCalledTimes(1);
+    act(() => { jest.advanceTimersByTime(1); });
     await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(2));
+  });
+
+  it("refreshes once for a burst of follow changes", async () => {
+    const { change } = renderWithFollows();
+    await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(1));
+
+    for (let i = 0; i < 5; i++) {
+      change();
+      act(() => { jest.advanceTimersByTime(200); });
+    }
+    act(() => { jest.advanceTimersByTime(FOLLOW_REFRESH_DEBOUNCE_MS); });
+    await waitFor(() => expect(mockPoll).toHaveBeenCalledTimes(2));
+    act(() => { jest.advanceTimersByTime(FOLLOW_REFRESH_DEBOUNCE_MS * 2); });
+    expect(mockPoll).toHaveBeenCalledTimes(2);
+  });
+
+  it("an earlier refresh that answers last doesn't replace the newer one", async () => {
+    const answers: ((v: unknown) => void)[] = [];
+    mockPoll.mockImplementation(() => new Promise((res) => { answers.push(res); }));
+    const { result, change } = renderWithFollows();
+    await waitFor(() => expect(answers).toHaveLength(1)); // the mount poll, still pending
+
+    change();
+    act(() => { jest.advanceTimersByTime(FOLLOW_REFRESH_DEBOUNCE_MS); });
+    await waitFor(() => expect(answers).toHaveLength(2));
+
+    await act(async () => { answers[1]!({ data: unread }); });
+    await act(async () => { answers[0]!({ data: { items: [], unreadCount: 0 } }); });
+    expect(result.current.unreadCount).toBe(1);
+    expect(result.current.items).toHaveLength(1);
   });
 });

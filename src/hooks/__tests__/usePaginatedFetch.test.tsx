@@ -32,6 +32,47 @@ describe("usePaginatedFetch", () => {
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
+  it("loads no further page while page 1 has failed", async () => {
+    const fetchPage = jest.fn().mockRejectedValue(new Error("down"));
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+
+    for (let i = 0; i < 3; i++) await act(async () => { await result.current.loadMore(); });
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("after a category change whose page 1 fails, requests no page of either category", async () => {
+    const fetchA = jest.fn().mockImplementation(async (n: number) => page([n * 10, n * 10 + 1]));
+    const fetchB = jest.fn().mockRejectedValue(new Error("down"));
+    const { result, rerender } = renderHook(
+      ({ fetchPage }) => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }),
+      { wrapper, initialProps: { fetchPage: fetchA } },
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    await act(async () => { await result.current.loadMore(); });
+    await waitFor(() => expect(result.current.currentPage).toBe(2));
+
+    rerender({ fetchPage: fetchB });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+    const aCalls = fetchA.mock.calls.length;
+    for (let i = 0; i < 3; i++) await act(async () => { await result.current.loadMore(); });
+    expect(fetchB).toHaveBeenCalledTimes(1);
+    expect(fetchA).toHaveBeenCalledTimes(aCalls);
+  });
+
+  it("pages again once a retry of page 1 succeeds", async () => {
+    const fetchPage = jest.fn()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockImplementation(async (n: number) => page([n * 10]));
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore: noRestore }), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await act(async () => { await result.current.loadMore(); });
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+  });
+
   it("clears the previous query's items when fetchPage changes", async () => {
     const second = deferred<PageResult<Item>>();
     const fetchA = jest.fn().mockResolvedValue(page([1, 2]));

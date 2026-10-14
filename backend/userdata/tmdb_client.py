@@ -1,7 +1,11 @@
 import logging
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 import requests
+from django.db import transaction
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -27,6 +31,40 @@ STATIC_GENRE_NAMES = {
 }
 
 
+# (connect, read) for every call. requests applies a scalar timeout to connect
+# and to each read separately, so the old `timeout=10` meant ~20s per attempt.
+TMDB_TIMEOUT = (3.05, 6)
+
+# Wall-clock limit for one TMDB call made while a request waits (connect,
+# token, rating sync). Per-attempt timeouts can't bound a call on their own:
+# urllib3 tries the connect once per address DNS returns (api.tmdb.org has
+# four), so the elapsed time depends on DNS. Endpoint budgets are calls x
+# deadline, pinned under gunicorn's --timeout by the tests.
+TMDB_CALL_DEADLINE = 10
+
+# Only HTTP runs here (CLAUDE.md's worker-thread rule): an abandoned call can
+# finish on its own after its deadline without touching the DB or the cache.
+# Bounded, so an outage queues calls (which then fail at their deadline)
+# instead of spawning threads without limit.
+_DEADLINE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tmdb-deadline")
+
+
+class TMDBDeadlineExceeded(requests.Timeout):
+    """A TMDB call ran past its wall-clock deadline. A requests.Timeout, so any
+    `except requests.RequestException` already treats it as a failed call."""
+
+
+def call_with_deadline(fn, deadline, *args, **kwargs):
+    """Run fn(*args, **kwargs) (a TMDB HTTP call) and give up after `deadline`
+    seconds of elapsed time, every connect attempt and retry included."""
+    future = _DEADLINE_POOL.submit(fn, *args, **kwargs)
+    try:
+        return future.result(timeout=deadline)
+    except FutureTimeout:
+        future.cancel()  # still queued: it never runs
+        raise TMDBDeadlineExceeded(f"TMDB call exceeded its {deadline}s deadline") from None
+
+
 def is_not_found(exc):
     """True when TMDB answered 404: the title or person doesn't exist (any
     more). That's a settled answer, not an outage, so callers store or return
@@ -35,7 +73,7 @@ def is_not_found(exc):
     return isinstance(exc, requests.HTTPError) and response is not None and response.status_code == 404
 
 
-def _get(path, params=None, timeout=10):
+def _get(path, params=None, timeout=TMDB_TIMEOUT):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
     r = requests.get(f"{TMDB_BASE}{path}", params=p, timeout=timeout)
     r.raise_for_status()
@@ -81,7 +119,7 @@ def get_details_with_cast(media_id, media_type):
     }
 
 
-def get_genre_names(media_type, timeout=10, *, fallback=True):
+def get_genre_names(media_type, timeout=TMDB_TIMEOUT, *, fallback=True):
     """Return {genre_id: name} map for movie or tv. Falls back to a static
     map on request failure so callers never get an empty result, unless
     `fallback` is off: then the failure is raised, for a caller that needs to
@@ -97,14 +135,14 @@ def get_genre_names(media_type, timeout=10, *, fallback=True):
 
 def _post(path, body=None, params=None):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.post(f"{TMDB_BASE}{path}", params=p, json=body or {}, timeout=10)
+    r = requests.post(f"{TMDB_BASE}{path}", params=p, json=body or {}, timeout=TMDB_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
 
 def _delete(path, params=None, json=None):
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.delete(f"{TMDB_BASE}{path}", params=p, json=json, timeout=10)
+    r = requests.delete(f"{TMDB_BASE}{path}", params=p, json=json, timeout=TMDB_TIMEOUT)
     r.raise_for_status()
     return r.json()
 
@@ -121,6 +159,22 @@ def revoke_tmdb_session(user_id, session_id):
     except (requests.RequestException, ValueError) as e:
         logger.warning("TMDB session revoke failed for user %s (%s)", user_id, type(e).__name__)
         return False
+
+
+def revoke_in_background(user_id, session_id):
+    """Revoke a TMDB session after the current transaction commits, on a daemon
+    thread, so no request waits on TMDB for it. Callers change the local state
+    first (store the new session, clear the old one, delete the account): a
+    request killed partway can then never leave a revoked session stored. The
+    thread only does HTTP, and revoke_tmdb_session logs failures by type."""
+    transaction.on_commit(lambda: _start_background(revoke_tmdb_session, user_id, session_id))
+
+
+def _start_background(target, *args):
+    """A daemon thread for HTTP-only work (tests run it inline)."""
+    thread = threading.Thread(target=target, args=args, daemon=True)
+    thread.start()
+    return thread
 
 
 def get_request_token():

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
-import { bulkImport } from "../api/userApi";
+import { bulkImport, sessionGuard, SessionEndedError } from "../api/userApi";
 import { lookupImportPosters, missingPostersNote } from "../utils/importPosters";
 import { ImportProgress } from "./ImportProgress";
 import { useToast } from "../hooks/useToast";
@@ -70,12 +70,16 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
 
   const handleSubmit = async () => {
     if (parsed.length === 0) return;
+    // Checked before every write: after a sign-out, and a sign-in as someone
+    // else in this tab, the rest of the import must not land in that account.
+    const guard = sessionGuard();
     setLoading(true);
     try {
       // Posters and scores, paced to the TMDB proxy's rate limit.
       const { found, missing } = await lookupImportPosters(
         parsed.map((row) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
         (done, total) => setProgress({ done, total }),
+        () => !guard.isCurrent(),
       );
       setProgress(null);
 
@@ -91,7 +95,9 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
           ...(row.watchedAt ? { watchedAt: row.watchedAt } : {}),
           ...(row.watchedTz ? { watchedTz: row.watchedTz } : {}),
         })),
+        { guard },
       );
+      guard.check();
       // The entries are saved even if this fails; only what's on screen is stale.
       const refreshed = await reloadWatched().then(() => true, () => false);
       const summary = `${result.added} added, ${result.skipped} already watched`;
@@ -106,10 +112,15 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
       }
       if (!refreshed && result.added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
+      // Signed out mid-import: drop it. Nothing more is written, and nothing
+      // is shown or reloaded for whoever signs in next.
+      if (err instanceof SessionEndedError) return;
       showError(getApiError(err, "Failed to import watched movies. Please try again."));
     } finally {
-      setProgress(null);
-      setLoading(false);
+      if (guard.isCurrent()) {
+        setProgress(null);
+        setLoading(false);
+      }
     }
   };
 
@@ -128,7 +139,11 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     <Modal
       title="Import Watched from CSV"
       open={open}
-      onCancel={handleClose}
+      // A running import can't be closed, so it can't be started twice at once.
+      onCancel={loading ? undefined : handleClose}
+      maskClosable={!loading}
+      keyboard={!loading}
+      closable={!loading}
       footer={null}
       destroyOnHidden
     >
@@ -161,6 +176,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         ref={fileInputRef}
         type="file"
         accept=".csv"
+        aria-label="CSV file to import"
         onChange={handleFileChange}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />

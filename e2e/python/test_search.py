@@ -131,3 +131,11 @@ class TestSearchEdgeCases:
         authed_page.get_by_placeholder("Search movies, shows or people…").fill("a")
         authed_page.get_by_placeholder("Search movies, shows or people…").press("Enter")
         expect(authed_page).to_have_url(search_url("a"), timeout=5_000)
+
+
+class TestSearchTabs:
+    def test_unknown_tab_shows_movies(self, authed_page: Page):
+        mount_search_routes(authed_page)
+        authed_page.goto("/search?" + urlencode({"q": "matrix", "tab": "nope"}))
+        expect(authed_page.get_by_role("tab", name="Movies")).to_have_attribute("aria-selected", "true", timeout=8_000)
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=8_000)

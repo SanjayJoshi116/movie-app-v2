@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import { useNavigate } from "react-router-dom";
 import { LoadError } from "../components/LoadError";
+import { isPlainClick } from "../components/CardLink";
 
 /** Unknown paths: say so (keeping the typed address) instead of silently redirecting. */
 export default function NotFoundPage() {
@@ -14,7 +15,7 @@ export default function NotFoundPage() {
         type="primary"
         href="/movies"
         onClick={(e) => {
-          if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+          if (isPlainClick(e)) {
             e.preventDefault();
             navigate("/movies");
           }

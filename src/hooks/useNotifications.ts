@@ -10,6 +10,8 @@ import { useAuth } from "../context/AuthContext";
 import { FollowedPeopleContext } from "../context/FollowedPeopleContext";
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
+/** Follow changes this close together cause one refresh (People: follow ten in a row). */
+export const FOLLOW_REFRESH_DEBOUNCE_MS = 1500;
 
 function useNotificationsState() {
   const { isAuthenticated } = useAuth();
@@ -19,15 +21,19 @@ function useNotificationsState() {
   // Bumped by markSeen. A poll that started before the latest mark-seen would
   // otherwise bring the badge back with the server's pre-mark answer.
   const seenEpochRef = useRef(0);
+  // Only the latest refresh may apply: an earlier one that answers last (a
+  // poll, or the refresh for a previous follow) would replace newer results.
+  const requestIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
     // A poll still in flight at sign-out answers for the previous account:
     // its items reveal whom that account follows.
     const gen = currentSessionGeneration();
     const seenEpoch = seenEpochRef.current;
+    const requestId = ++requestIdRef.current;
     try {
       const { data } = await fetchNewReleaseNotifications();
-      if (!isCurrentSession(gen) || seenEpoch !== seenEpochRef.current) return;
+      if (!isCurrentSession(gen) || seenEpoch !== seenEpochRef.current || requestId !== requestIdRef.current) return;
       // Defensive: an unmocked/misconfigured route or unexpected backend
       // response could return something other than {items, unreadCount} —
       // fall back rather than let a downstream .map() throw on undefined.
@@ -35,7 +41,7 @@ function useNotificationsState() {
       setUnreadCount(data.unreadCount ?? 0);
       setHasError(false);
     } catch {
-      if (!isCurrentSession(gen)) return;
+      if (!isCurrentSession(gen) || requestId !== requestIdRef.current) return;
       // Background poll — no toast (would be noisy every 3 min if TMDB is
       // rate-limited), but surface it in the dropdown so it's not silently
       // invisible forever.
@@ -55,15 +61,19 @@ function useNotificationsState() {
     return () => clearInterval(interval);
   }, [isAuthenticated, refresh]);
 
-  // A follow or unfollow changes what's news: refresh now, not at the next
-  // 3-minute tick. Read straight from the context, because useFollowedPeople()
-  // would start that provider's lazy fetch.
+  // A follow or unfollow (or a restore) changes what's news: refresh soon,
+  // not at the next 3-minute tick. Debounced, so a burst of follows is one
+  // request and stays under the notifications rate limit. Read straight from
+  // the context, because useFollowedPeople() would start that provider's lazy fetch.
   const followChanges = useContext(FollowedPeopleContext)?.changes ?? 0;
   const seenFollowChanges = useRef(followChanges);
   useEffect(() => {
     if (followChanges === seenFollowChanges.current) return;
     seenFollowChanges.current = followChanges;
-    if (isAuthenticated) refresh();
+    if (!isAuthenticated) return;
+    const timer = setTimeout(refresh, FOLLOW_REFRESH_DEBOUNCE_MS);
+    // A newer change restarts the wait; sign-out or unmount drops it.
+    return () => clearTimeout(timer);
   }, [followChanges, isAuthenticated, refresh]);
 
   const markSeen = useCallback(async () => {
@@ -74,6 +84,10 @@ function useNotificationsState() {
       await markNotificationsSeen();
     } catch {
       // best-effort — a failed mark-seen just means the badge may reappear next poll
+    } finally {
+      // Again once the server has it: a poll that started while the POST was in
+      // flight can still get the pre-mark answer.
+      seenEpochRef.current += 1;
     }
   }, []);
 

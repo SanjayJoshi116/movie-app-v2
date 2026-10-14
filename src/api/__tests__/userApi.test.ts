@@ -13,6 +13,7 @@ type Server = {
   failFirst: Record<string, number>; // path -> status to return on its first hit
   onRefresh?: () => void; // runs when a refresh request reaches the server (simulate other tabs)
   refreshFailure?: number | "network"; // refresh fails this way (transient) instead of rotating
+  denied?: Set<string>; // paths that answer 401 whatever the token
 };
 
 let server: Server;
@@ -45,6 +46,7 @@ async function fakeAdapter(config: InternalAxiosRequestConfig): Promise<AxiosRes
 
   if (server.gates[path]) await server.gates[path];
   if (server.failFirst[path] && server.hits[path] === 1) return reply(config, server.failFirst[path]);
+  if (server.denied?.has(path)) return reply(config, 401);
   if (String(config.headers?.Authorization ?? "") !== `Bearer ${server.access}`) return reply(config, 401);
   return reply(config, 200, { ok: true, path });
 }
@@ -116,6 +118,25 @@ describe("token refresh", () => {
     expect(localStorage.getItem("cinedb_access")).toBeNull();
     expect(localStorage.getItem("cinedb_user")).toBeNull();
     expect(sessionStorage.length).toBe(0);
+  });
+});
+
+describe("replayed requests", () => {
+  it("a queued request that gets 401 again after the refresh fails without a second refresh", async () => {
+    expireAccess();
+    server.denied = new Set(["/denied/"]);
+    // Released together, so one 401 starts the refresh and the other waits in the queue.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    server.gates["/a/"] = gate;
+    server.gates["/denied/"] = gate;
+    const a = userApi.get("/a/");
+    const denied = userApi.get("/denied/");
+    release();
+    await expect(a).resolves.toMatchObject({ status: 200 });
+    await expect(denied).rejects.toMatchObject({ response: { status: 401 } });
+    expect(server.refreshCalls).toBe(1);
+    expect(localStorage.getItem("cinedb_refresh")).not.toBeNull(); // still signed in
   });
 });
 

@@ -192,3 +192,11 @@ class TestStatsDates:
         authed_page.get_by_role("tab", name="Recently Watched").click()
         expect(authed_page.get_by_text("15-01-2024")).to_be_visible(timeout=8_000)
         expect(authed_page.get_by_text("2024-01-15")).to_have_count(0)
+
+
+class TestStatsTabs:
+    def test_unknown_tab_shows_the_default_tab(self, authed_page: Page):
+        authed_page.route("**/api/stats/**", lambda r: fulfill_json(r, MOCK_STATS))
+        authed_page.goto("/stats?tab=nope")
+        expect(authed_page.get_by_role("heading", name="Your Stats")).to_be_visible(timeout=8_000)
+        expect(authed_page.get_by_role("tab", name="Top Rated")).to_have_attribute("aria-selected", "true")

@@ -277,3 +277,19 @@ class TestTmdbErrors:
         expect(authed_page.locator(".ant-message-notice-content")).to_contain_text(
             "Can't reach the server. Check your connection and try again.", timeout=8_000
         )
+
+    def test_status_check_pending_offers_neither_action(self, authed_page: Page):
+        goto_movies(authed_page)
+        held = []
+        authed_page.route("**/api/tmdb-auth/status/**", lambda r: held.append(r))
+        authed_page.locator(".ant-avatar").first.click()
+        expect(authed_page.locator(".ant-modal")).to_be_visible(timeout=5_000)
+        open_data_tab(authed_page)
+        modal = authed_page.locator(".ant-modal")
+        expect(modal.get_by_text("Checking TMDB connection…")).to_be_visible(timeout=5_000)
+        expect(modal.get_by_role("button", name="Connect TMDB Account")).to_have_count(0)
+        expect(modal.get_by_role("button", name="Disconnect")).to_have_count(0)
+
+        assert held, "the status check was never requested"
+        fulfill_json(held[0], {"connected": False})
+        expect(modal.get_by_role("button", name="Connect TMDB Account")).to_be_visible(timeout=5_000)

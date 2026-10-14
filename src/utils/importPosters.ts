@@ -15,6 +15,7 @@ export interface PosterInfo {
 export async function lookupImportPosters(
   rows: { mediaId: number; type: MediaType }[],
   onProgress?: (done: number, total: number) => void,
+  shouldStop?: () => boolean,
 ): Promise<{ found: (PosterInfo | undefined)[]; missing: number }> {
   const { results, missing } = await pacedLookup(
     rows,
@@ -22,7 +23,7 @@ export async function lookupImportPosters(
       const { data } = await (row.type === "tv" ? fetchTVPoster(row.mediaId) : fetchMoviePoster(row.mediaId));
       return { posterPath: data.poster_path ?? null, voteAverage: data.vote_average };
     },
-    { onProgress },
+    { onProgress, shouldStop },
   );
   return { found: results, missing };
 }

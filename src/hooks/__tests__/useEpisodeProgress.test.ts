@@ -4,11 +4,14 @@ import { useEpisodeProgress } from "../useEpisodeProgress";
 import { AuthContext } from "../../context/AuthContext";
 import { getEpisodeProgress, setEpisodeProgress, deleteEpisodeProgress } from "../../api/userApi";
 
+let mockGeneration = 0;
 jest.mock("../../api/userApi", () => ({
   __esModule: true,
   getEpisodeProgress: jest.fn(),
   setEpisodeProgress: jest.fn(),
   deleteEpisodeProgress: jest.fn(),
+  currentSessionGeneration: () => mockGeneration,
+  isCurrentSession: (gen: number) => gen === mockGeneration,
 }));
 
 const mockGet = getEpisodeProgress as jest.Mock;
@@ -37,7 +40,10 @@ function deferred<T>() {
 
 const progress = (showId: number, season: number, episode: number) => ({ data: { showId, season, episode } });
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockGeneration = 0;
+});
 
 describe("useEpisodeProgress", () => {
   it("loads the show's progress", async () => {
@@ -119,5 +125,71 @@ describe("useEpisodeProgress", () => {
     });
     expect(result.current.busy).toBe(false);
     expect(result.current.progress).toEqual({ showId: 1396, season: 1, episode: 2 });
+  });
+
+  it("Remove during Next waits for Next, then removes, and reports its own outcome", async () => {
+    mockGet.mockResolvedValue(progress(1396, 1, 1));
+    const advance = deferred<ReturnType<typeof progress>>();
+    mockSet.mockReturnValue(advance.promise);
+    const remove = deferred<object>();
+    mockDelete.mockReturnValue(remove.promise);
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let next!: Promise<void>;
+    let cleared = false;
+    act(() => {
+      next = result.current.update(1, 2);
+      void result.current.clear().then(() => { cleared = true; });
+    });
+    expect(mockSet).toHaveBeenCalledTimes(1);
+    expect(mockDelete).not.toHaveBeenCalled(); // queued behind Next
+
+    await act(async () => {
+      advance.resolve(progress(1396, 1, 2));
+      await next;
+    });
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(1));
+    expect(cleared).toBe(false); // not settled with Next's result
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => { remove.resolve({}); });
+    await waitFor(() => expect(cleared).toBe(true));
+    expect(result.current.progress).toBeNull();
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("a queued write still runs after the first one fails", async () => {
+    mockGet.mockResolvedValue(progress(1396, 1, 1));
+    mockSet.mockRejectedValue(new Error("500"));
+    mockDelete.mockResolvedValue({});
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      const next = result.current.update(1, 2);
+      const clear = result.current.clear();
+      await expect(next).rejects.toThrow("500");
+      await clear;
+    });
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(result.current.progress).toBeNull();
+  });
+
+  it("a write that answers after sign-out doesn't set progress", async () => {
+    mockGet.mockResolvedValue({ data: null });
+    const write = deferred<ReturnType<typeof progress>>();
+    mockSet.mockReturnValue(write.promise);
+    const { result } = renderHook(() => useEpisodeProgress(1396), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let saving!: Promise<void>;
+    act(() => { saving = result.current.update(4, 7); });
+    mockGeneration += 1; // signed out (and maybe in as someone else)
+    await act(async () => {
+      write.resolve(progress(1396, 4, 7));
+      await saving;
+    });
+    expect(result.current.progress).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { postLoginPath } from "../postLoginPath";
+import { postLoginPath, loginRedirectState } from "../postLoginPath";
 
 describe("postLoginPath", () => {
   it("keeps the query string and hash of the original location", () => {
@@ -19,3 +19,16 @@ describe("postLoginPath", () => {
     expect(postLoginPath({ from: { pathname, search: "?x=1" } })).toBe("/movies");
   });
 });
+
+describe("loginRedirectState", () => {
+  const from = { pathname: "/lists/7", search: "", hash: "" };
+  it("carries the page when this tab didn't sign out (a link opened while signed out)", () => {
+    expect(loginRedirectState(from, false)).toEqual({ from });
+    expect(loginRedirectState(from, undefined)).toEqual({ from });
+  });
+  it("drops it after a sign-out in this tab", () => {
+    expect(loginRedirectState(from, true)).toBeNull();
+    expect(postLoginPath(loginRedirectState(from, true))).toBe("/movies");
+  });
+});
+

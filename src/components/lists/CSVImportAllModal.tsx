@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useContext, useState, useRef } from "react";
 import { Modal, Button, Typography, Alert, Tag, Space } from "antd";
 import JSZip from "jszip";
 import { useToast } from "../../hooks/useToast";
@@ -6,9 +6,10 @@ import { IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { useAppContext } from "../../context/useAppContext";
 import { useListsContext } from "../../context/useListsContext";
 import userApi, {
-  bulkAddListItems, bulkImport, bulkImportEpisodeProgress, bulkImportFollowed, type BulkImportResult,
+  bulkAddListItems, bulkImport, bulkImportEpisodeProgress, bulkImportFollowed, sessionGuard, SessionEndedError,
+  type BulkImportResult, type SessionGuard,
 } from "../../api/userApi";
-import { useFollowedPeople } from "../../hooks/useFollowedPeople";
+import { FollowedPeopleContext } from "../../context/FollowedPeopleContext";
 import { lookupImportPosters } from "../../utils/importPosters";
 import { ImportProgress } from "../ImportProgress";
 import {
@@ -39,9 +40,10 @@ interface SectionResult extends BulkImportResult {
 async function enrichPosterPaths(
   rows: BackupRow[],
   onProgress: (done: number, total: number) => void,
+  guard: SessionGuard,
 ): Promise<number> {
   const without = rows.filter((r) => !r.posterPath);
-  const { found, missing } = await lookupImportPosters(without, onProgress);
+  const { found, missing } = await lookupImportPosters(without, onProgress, () => !guard.isCurrent());
   without.forEach((r, i) => {
     const info = found[i];
     if (info) r.posterPath = info.posterPath;
@@ -73,7 +75,10 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   const { showSuccess, showError } = useToast();
   const { reloadWatchlist, reloadWatched, reloadRatings } = useAppContext();
   const { createList, reloadLists } = useListsContext();
-  const { retry: reloadFollowed } = useFollowedPeople();
+  // Straight from the context: useFollowedPeople() would start the provider's
+  // lazy fetch, so every Profile open (this dialog is always rendered there)
+  // fetched /followed-people/.
+  const reloadFollowed = useContext(FollowedPeopleContext)?.reload;
   const [contents, setContents] = useState<BackupContents | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -109,8 +114,9 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     }
   };
 
-  const importLists = async (lists: BackupContents["lists"]): Promise<SectionResult> => {
+  const importLists = async (lists: BackupContents["lists"], guard: SessionGuard): Promise<SectionResult> => {
     const result: SectionResult = { label: "Lists", added: 0, skipped: 0, failed: 0 };
+    guard.check();
     // A fresh read, not the context: it may be stale, and this has to be exact
     // for re-running an import to never create a second list with the same name.
     const existing = await fetchAllPages<UserListDTO>(userApi, "/lists/");
@@ -134,6 +140,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     for (const list of orderForImport(lists, (l) => l.createdAt)) {
       let listId = takeExisting(list.name, list.createdAt);
       if (listId === undefined) {
+        guard.check(); // outside the try: an ended session isn't one failed list
         try {
           const made = await createList(list.name, list.description, list.createdAt);
           if (!made) throw new Error("not created");
@@ -152,6 +159,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
           list.entries.map((e) => ({ ...mediaFields(e), ...(e.addedAt ? { addedAt: e.addedAt } : {}) })),
           (e) => e.addedAt,
         ),
+        { guard },
       );
       result.added += r.added;
       result.skipped += r.skipped;
@@ -163,14 +171,19 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
 
   const handleSubmit = async () => {
     if (!contents) return;
+    // Every write checks this: after a sign-out (and a sign-in as someone else
+    // in this tab), the rest of the restore must not land in that account.
+    const guard = sessionGuard();
     setLoading(true);
     const sections: SectionResult[] = [];
-    // Each section runs on its own: one failing never stops the others.
+    // Each section runs on its own: one failing never stops the others. An
+    // ended session isn't a failed section; it ends the whole restore.
     const run = async (label: string, fn: () => Promise<BulkImportResult | SectionResult>, note?: string) => {
       try {
         const r = await fn();
         sections.push({ note, ...r, label });
-      } catch {
+      } catch (err) {
+        if (err instanceof SessionEndedError) throw err;
         sections.push({ label, added: 0, skipped: 0, failed: 0, error: true });
       }
     };
@@ -179,13 +192,15 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       const postersMissing = await enrichPosterPaths(
         [...contents.watchlist, ...contents.watched, ...contents.lists.flatMap((l) => l.entries)],
         (done, total) => setProgress({ done, total }),
+        guard,
       );
+      guard.check();
       setProgress(null);
       setPostersMissing(postersMissing);
 
       if (contents.watchlist.length > 0) {
         await run("Watchlist", () =>
-          bulkImport("watchlist", contents.watchlist.map((r) => ({ ...mediaFields(r), addedAt: r.addedAt }))),
+          bulkImport("watchlist", contents.watchlist.map((r) => ({ ...mediaFields(r), addedAt: r.addedAt })), { guard }),
         );
       }
       if (contents.watched.length > 0) {
@@ -199,6 +214,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
               runtimeMinutes: r.runtimeMinutes,
               platform: r.platform,
             })),
+            { guard },
           ),
         );
       }
@@ -217,12 +233,13 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
                 review: r.review ?? "",
                 ratedAt: r.ratedAt,
               })),
+              { guard },
             ),
           "restored locally, not sent to TMDB",
         );
       }
       if (contents.lists.length > 0) {
-        await run("Lists", () => importLists(contents.lists));
+        await run("Lists", () => importLists(contents.lists, guard));
       }
       if (contents.followed.length > 0) {
         await run("Following", () =>
@@ -231,16 +248,19 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
               personId: p.personId, name: p.name, profilePath: p.profilePath,
               ...(p.followedAt ? { followedAt: p.followedAt } : {}),
             })),
+            { guard },
           ),
         );
       }
       if (contents.episodeProgress.length > 0) {
-        await run("Episode progress", () => bulkImportEpisodeProgress(contents.episodeProgress));
+        await run("Episode progress", () => bulkImportEpisodeProgress(contents.episodeProgress, { guard }));
       }
 
+      guard.check();
       const reloads = await Promise.allSettled([reloadWatchlist(), reloadWatched(), reloadRatings(), reloadLists()]);
-      // Fetches again only if something on screen already uses follows.
-      if (contents.followed.length > 0) reloadFollowed();
+      // Refetches only if something on screen already uses follows; either
+      // way it counts as a follow change, so the notifications refresh.
+      if (contents.followed.length > 0) reloadFollowed?.();
 
       setResults(sections);
       const anyFailed = sections.some((s) => s.error || s.failed > 0);
@@ -249,9 +269,15 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       // The entries are saved; only what's on screen is stale.
       const anyAdded = sections.some((s) => s.added > 0);
       if (anyAdded && reloads.some((r) => r.status === "rejected")) showError(IMPORT_REFRESH_ERROR);
+    } catch (err) {
+      // Signed out mid-restore: drop it silently. What already went out
+      // landed in the account that sent it; nothing more is written.
+      if (!(err instanceof SessionEndedError)) throw err;
     } finally {
-      setProgress(null);
-      setLoading(false);
+      if (guard.isCurrent()) {
+        setProgress(null);
+        setLoading(false);
+      }
     }
   };
 
@@ -268,7 +294,18 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   const anyFailed = results?.some((s) => s.error || s.failed > 0);
 
   return (
-    <Modal title="Import All Data from Backup" open={open} onCancel={handleClose} footer={null} destroyOnHidden>
+    <Modal
+      title="Import All Data from Backup"
+      open={open}
+      // A running restore can't be closed: closing and re-running it alongside
+      // the first created every list twice.
+      onCancel={loading ? undefined : handleClose}
+      maskClosable={!loading}
+      keyboard={!loading}
+      closable={!loading}
+      footer={null}
+      destroyOnHidden
+    >
       <div style={{ marginBottom: 12 }}>
         <Text type="secondary" style={{ fontSize: FONT_SIZE.body }}>
           Upload a CINE DB backup ZIP file. Existing entries are skipped, never overwritten.
@@ -279,6 +316,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         ref={fileInputRef}
         type="file"
         accept=".zip"
+        aria-label="Backup ZIP file to import"
         onChange={handleFileChange}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />

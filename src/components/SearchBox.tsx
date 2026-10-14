@@ -10,10 +10,23 @@ const CLEAR_KEY = "__clear__";
 
 type MenuItem = Required<MenuProps>["items"][number];
 
-const SearchBox = () => {
-  const [inputValue, setInputValue] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+interface Props {
+  /** The input's id. Each mounted search box needs its own (the sidebar's and the phone drawer's can both be in the page). */
+  id?: string;
+}
+
+const SearchBox = ({ id = "global-search" }: Props) => {
   const { setSearchTerm, searchTerm } = useAppContext();
+  const [inputValue, setInputValue] = useState(searchTerm);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  // Show the term in effect whenever it changes from outside the typing
+  // (a ?q= address, a picked recent search, a reset on sign-out). Done during
+  // render, so the box never shows the old term for a frame.
+  const [shownTerm, setShownTerm] = useState(searchTerm);
+  if (searchTerm !== shownTerm) {
+    setShownTerm(searchTerm);
+    setInputValue(searchTerm);
+  }
   const { recents, addRecent, clearRecents } = useRecentSearches();
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,7 +85,7 @@ const SearchBox = () => {
       getPopupContainer={(triggerNode) => (triggerNode.parentElement as HTMLElement) ?? document.body}
     >
       <Input.Search
-        id="global-search"
+        id={id}
         name="search"
         autoComplete="off"
         value={inputValue}

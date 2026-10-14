@@ -11,6 +11,7 @@ import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { SectionRow } from "./RecommendationsPage";
 import { pageVariants, RATING_GOLD } from "../constants/ui";
 import { LoadError } from "../components/LoadError";
+import { personLabel } from "../utils/personLabel";
 
 const { Title } = Typography;
 
@@ -35,7 +36,7 @@ function FollowingPage() {
     items: followed,
     sortFns: SORT_FNS,
     defaultSort: "name-asc",
-    getTitle: (p) => p.name,
+    getTitle: (p) => personLabel(p.name, p.personId), // a blank name is searchable as "Person <id>"
   });
 
   // Keyed on who is followed, not how many: following one person and

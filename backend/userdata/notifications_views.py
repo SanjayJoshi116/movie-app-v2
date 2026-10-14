@@ -69,7 +69,8 @@ def new_release_notifications(request):
                 "title": c.get("title") or c.get("name", ""),
                 "posterPath": c.get("poster_path"),
                 "releaseDate": date_str,
-                "personName": fp.name,
+                # No person id in the item for the client to fall back on.
+                "personName": fp.name.strip() or f"Person {fp.person_id}",
                 "isUnread": release_date > last_seen_date,
             })
 

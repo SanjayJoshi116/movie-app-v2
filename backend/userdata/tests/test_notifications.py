@@ -88,6 +88,29 @@ class WatchedTitlesAreNotNotifiedTests(APITestCase):
         self.assertEqual(sorted(i["title"] for i in res.data["items"]), ["Not Yet", "Show 11"])
 
 
+class BlankNameNotificationTests(APITestCase):
+    """A follow restored without a name is still labelled (no person id in the item)."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="bea", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    @patch("userdata.tmdb_client._get")
+    def test_blank_name_shows_person_id(self, mock_get):
+        FollowedPerson.objects.create(user=self.user, person_id=287, name="  ")
+        mock_get.return_value = _cast("New One", days_ago=2)
+        res = self.client.get("/api/notifications/new-releases/")
+        self.assertEqual([i["personName"] for i in res.data["items"]], ["Person 287"])
+
+    @patch("userdata.tmdb_client._get")
+    def test_real_name_unchanged(self, mock_get):
+        FollowedPerson.objects.create(user=self.user, person_id=287, name="Brad Pitt")
+        mock_get.return_value = _cast("New One", days_ago=2)
+        res = self.client.get("/api/notifications/new-releases/")
+        self.assertEqual([i["personName"] for i in res.data["items"]], ["Brad Pitt"])
+
+
 def _cast(title, days_ago):
     date = (timezone.now().date() - timedelta(days=days_ago)).isoformat()
     return {"cast": [{"id": abs(hash(title)) % 100000, "media_type": "movie", "title": title,

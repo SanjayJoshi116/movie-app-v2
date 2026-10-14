@@ -53,6 +53,38 @@ export function isCurrentSession(generation: number): boolean {
   return generation === sessionGeneration;
 }
 
+/** Thrown by a SessionGuard's check() once the session it was taken in has ended. */
+export class SessionEndedError extends Error {
+  constructor() {
+    super("The session that started this operation has ended.");
+    this.name = "SessionEndedError";
+  }
+}
+
+export interface SessionGuard {
+  /** Throws SessionEndedError if the session this guard was taken in has ended. */
+  check(): void;
+  /** False once that session has ended. */
+  isCurrent(): boolean;
+}
+
+/**
+ * For long-running work (imports) that writes long after it started. Take it
+ * when the user starts the work and check it before every write: after a
+ * sign-out, and a sign-in as someone else in the same tab, a later write
+ * would otherwise go out with the next account's token.
+ */
+export function sessionGuard(): SessionGuard {
+  const generation = sessionGeneration;
+  const isCurrent = () => generation === sessionGeneration;
+  return {
+    isCurrent,
+    check() {
+      if (!isCurrent()) throw new SessionEndedError();
+    },
+  };
+}
+
 userApi.interceptors.request.use((config) => {
   // Before the other tab's storage event reaches us: refuse rather than send.
   if (boundUserId !== null && storedUserId() !== boundUserId) throw new SessionChangedError();
@@ -227,6 +259,9 @@ userApi.interceptors.response.use(
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then((token) => {
+          // Like the request that ran the refresh: a second 401 fails it rather
+          // than starting another refresh (and spending the token_refresh limit).
+          original._retry = true;
           original.headers.Authorization = `Bearer ${token}`;
           return userApi(original);
         });
@@ -350,16 +385,21 @@ export interface BulkImportResult {
 export function bulkImport(
   kind: "watched" | "watchlist" | "ratings",
   entries: BulkImportEntry[],
+  options?: BulkOptions,
 ): Promise<BulkImportResult> {
-  return postBulkChunks(`/${kind}/bulk/`, entries);
+  return postBulkChunks(`/${kind}/bulk/`, entries, options);
 }
 
 /**
  * Bulk-add items to one list (backup restore, CSV list import): 500 per
  * request instead of one POST per item, with each item's `addedAt` kept.
  */
-export function bulkAddListItems(listId: number, entries: BulkImportEntry[]): Promise<BulkImportResult> {
-  return postBulkChunks(`/lists/${listId}/items/bulk/`, entries);
+export function bulkAddListItems(
+  listId: number,
+  entries: BulkImportEntry[],
+  options?: BulkOptions,
+): Promise<BulkImportResult> {
+  return postBulkChunks(`/lists/${listId}/items/bulk/`, entries, options);
 }
 
 /** A followed person in a backup restore. */
@@ -371,19 +411,29 @@ export interface BulkFollowEntry {
 }
 
 /** Restore follows, create-only, keeping each follow's time. */
-export function bulkImportFollowed(entries: BulkFollowEntry[]): Promise<BulkImportResult> {
-  return postBulkChunks("/followed-people/bulk/", entries);
+export function bulkImportFollowed(entries: BulkFollowEntry[], options?: BulkOptions): Promise<BulkImportResult> {
+  return postBulkChunks("/followed-people/bulk/", entries, options);
 }
 
 /** Restore episode progress, create-only: a show already tracked keeps its position. */
-export function bulkImportEpisodeProgress(entries: EpisodeProgressData[]): Promise<BulkImportResult> {
-  return postBulkChunks("/episode-progress/bulk/", entries);
+export function bulkImportEpisodeProgress(
+  entries: EpisodeProgressData[],
+  options?: BulkOptions,
+): Promise<BulkImportResult> {
+  return postBulkChunks("/episode-progress/bulk/", entries, options);
 }
 
-async function postBulkChunks<T>(url: string, entries: T[]): Promise<BulkImportResult> {
+export interface BulkOptions {
+  /** Checked before each chunk; once its session has ended, SessionEndedError propagates. */
+  guard?: SessionGuard;
+}
+
+async function postBulkChunks<T>(url: string, entries: T[], { guard }: BulkOptions = {}): Promise<BulkImportResult> {
   const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
   for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
     const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
+    // Outside the try: a session that ended isn't a failed chunk, it ends the import.
+    guard?.check();
     try {
       const { data } = await userApi.post<{ added: number; skipped: number }>(url, { entries: chunk });
       result.added += data.added;

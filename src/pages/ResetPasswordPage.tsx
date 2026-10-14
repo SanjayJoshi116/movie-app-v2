@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { confirmPasswordReset } from "../api/userApi";
+import { getApiError } from "../utils/apiError";
 
 export default function ResetPasswordPage() {
   const { uid, token } = useParams<{ uid: string; token: string }>();
@@ -20,12 +21,9 @@ export default function ResetPasswordPage() {
       message.success("Password reset successfully. You can now sign in.");
       navigate("/login", { replace: true });
     } catch (err: unknown) {
-      const data = (err as { response?: { data?: unknown } })?.response?.data;
-      const detail =
-        (typeof data === "object" && data !== null && "detail" in data)
-          ? String((data as { detail: unknown }).detail)
-          : "Invalid or expired reset link.";
-      message.error(detail);
+      // The server's own message ("Invalid or expired reset link.") when it
+      // sent one; a 502 page or no response never reads as an expired link.
+      message.error(getApiError(err, "Couldn't reset your password. The link may have expired."));
     } finally {
       setLoading(false);
     }
