@@ -19,6 +19,7 @@ import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../type
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
 import { pickKey } from "../utils/queryParams";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 // ── Shared paginated hook ────────────────────────────────────────────────────
 
@@ -262,6 +263,7 @@ function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = pickKey(searchParams.get("tab"), ["movies", "tv", "people"], "movies");
   const urlQuery = searchParams.get("q")?.trim() ?? "";
+  usePageTitle(urlQuery ? `Search: ${urlQuery}` : "Search");
 
   // The URL carries the search, so a reload, a shared link or a return from
   // login shows it. Layout effect: the tabs read searchTerm in their first effects.

@@ -3,6 +3,8 @@ import type { TMDBProvider, TMDBProviderRegion } from "../types";
 import { PROVIDER_SEARCH_URLS } from "../constants/providers";
 import { LOGO_URL } from "../constants/ui";
 import { safeHttpUrl } from "../utils/safeUrl";
+import { pickRegion, regionName } from "../utils/region";
+import { useRegion } from "../hooks/useRegion";
 
 interface WatchProvidersProps {
   providers: Record<string, TMDBProviderRegion>;
@@ -10,19 +12,25 @@ interface WatchProvidersProps {
 }
 
 export function WatchProviders({ providers, title }: WatchProvidersProps) {
-  const us = providers["US"];
-  // Region is fixed to the US, so say so instead of "your region".
-  const sections = us
-    ? ([["Streaming", us.flatrate], ["Rent", us.rent], ["Buy", us.buy]] as Array<[string, TMDBProvider[] | undefined]>)
+  const region = useRegion();
+  // The user's region, else the US (labelled); messages name the region.
+  const picked = pickRegion(providers, region);
+  const shown = picked.data;
+  const sections = shown
+    ? ([["Streaming", shown.flatrate], ["Rent", shown.rent], ["Buy", shown.buy]] as Array<[string, TMDBProvider[] | undefined]>)
         .filter((entry): entry is [string, TMDBProvider[]] => Array.isArray(entry[1]) && entry[1].length > 0)
     : [];
-  if (!us || sections.length === 0) {
-    return <Typography.Text type="secondary">Not available to stream, rent or buy in the US.</Typography.Text>;
+  if (!shown || sections.length === 0) {
+    return (
+      <Typography.Text type="secondary">
+        Not available to stream, rent or buy in your region ({regionName(region)}).
+      </Typography.Text>
+    );
   }
 
   // TMDB's `link` is third-party data: a link only with a web scheme.
   const getProviderUrl = (p: TMDBProvider): string | null =>
-    PROVIDER_SEARCH_URLS[p.provider_id]?.(title) ?? safeHttpUrl(us.link);
+    PROVIDER_SEARCH_URLS[p.provider_id]?.(title) ?? safeHttpUrl(shown.link);
 
   const renderSection = (sectionTitle: string, list: TMDBProvider[]) => (
     <div key={sectionTitle} style={{ marginBottom: 12 }}>
@@ -50,6 +58,13 @@ export function WatchProviders({ providers, title }: WatchProvidersProps) {
   );
 
   return (
-    <>{sections.map(([sectionTitle, list]) => renderSection(sectionTitle, list))}</>
+    <>
+      <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+        {picked.fallback
+          ? `Showing United States availability: nothing listed for ${regionName(region)}.`
+          : `Region: ${regionName(picked.code)}`}
+      </Typography.Text>
+      {sections.map(([sectionTitle, list]) => renderSection(sectionTitle, list))}
+    </>
   );
 }

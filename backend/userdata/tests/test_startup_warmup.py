@@ -57,3 +57,50 @@ class EntrypointWarmupTests(TestCase):
                 self.assertEqual(res.returncode, 0, res.stderr)
                 self.assertIn("skipped", res.stdout)
                 self.assertTrue(res.stdout.rstrip().endswith("started"))
+
+
+FLUSH_LINE = next(line for line in ENTRYPOINT.splitlines() if "flushexpiredtokens" in line and not line.startswith("#"))
+GUNICORN_LINE = next(line for line in ENTRYPOINT.splitlines() if line.startswith("exec gunicorn"))
+
+
+class ExpiredTokenFlushTests(TestCase):
+    """bound-background-load: expired session records are dropped at every
+    start, bounded and best-effort."""
+
+    def test_entrypoint_flush_is_bounded_and_cannot_fail_the_script(self):
+        self.assertRegex(FLUSH_LINE, r"^timeout \d+ python manage\.py flushexpiredtokens \|\| echo ")
+        self.assertLess(ENTRYPOINT.index(FLUSH_LINE), ENTRYPOINT.index("exec gunicorn"))
+
+    def test_start_py_runs_it_through_the_bounded_helper(self):
+        start = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
+        self.assertRegex(start, r'run_warmup\(\[sys\.executable, manage, "flushexpiredtokens"\], timeout=\d+')
+        self.assertLess(start.index("flushexpiredtokens"), start.index('"runserver"'))
+
+    def test_messages_name_the_step(self):
+        from io import StringIO
+        from contextlib import redirect_stdout
+        out = StringIO()
+        with redirect_stdout(out):
+            run_warmup([sys.executable, "-c", "raise SystemExit(2)"], timeout=30, label="flushexpiredtokens")
+        self.assertIn("flushexpiredtokens exited with 2", out.getvalue())
+
+
+class ThreadedServerTests(TestCase):
+    """bound-background-load: threaded workers, and TMDB pools sized for them."""
+
+    def test_gunicorn_runs_threaded_workers(self):
+        self.assertIn("--worker-class gthread", GUNICORN_LINE)
+        threads = int(re.search(r"--threads (\d+)", GUNICORN_LINE).group(1))
+        self.assertGreaterEqual(threads, 4)
+        self.assertRegex(GUNICORN_LINE, r"--timeout \d+")  # still explicit: the budget pins read it
+
+    def test_tmdb_pools_cover_the_request_threads(self):
+        import django
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cinedb.settings")
+        django.setup()
+        from userdata import tmdb_client, tmdb_proxy_views
+        threads = int(re.search(r"--threads (\d+)", GUNICORN_LINE).group(1))
+        self.assertGreaterEqual(tmdb_client.DEADLINE_POOL_SIZE, threads)
+        self.assertGreaterEqual(tmdb_proxy_views.SESSION_POOL_SIZE, threads)
+        adapter = tmdb_proxy_views._session.get_adapter("https://api.tmdb.org")
+        self.assertEqual(adapter._pool_maxsize, tmdb_proxy_views.SESSION_POOL_SIZE)

@@ -32,6 +32,7 @@ import { mergeCredits, mergeCrew, sortCreditsNewestFirst } from "../utils/person
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { goBack } from "../utils/goBack";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 // A malformed credits body (no array) counts as no credits, not a crash.
 function toCredits(c: TMDBPersonCredits): TMDBPersonCredits {
@@ -57,6 +58,7 @@ function PersonPage() {
   const { isFollowing, follow, unfollow, error: followStatusError, loading: followStatusLoading } = useFollowedPeople();
   const { showSuccess, showError } = useToast();
   const [person, setPerson] = useState<TMDBPerson | null>(null);
+  usePageTitle(person?.name ?? "Person");
   const [movieCredits, setMovieCredits] = useState<TMDBPersonCredits | null>(null);
   const [tvCredits, setTvCredits] = useState<TMDBPersonCredits | null>(null);
   const [images, setImages] = useState<TMDBPersonImages | null>(null);

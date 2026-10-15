@@ -81,12 +81,15 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
     { key: "/following", icon: <UserAddOutlined />, label: "Following" },
   ];
 
+  // Each entry's text is a real link (Ctrl/middle-click opens a new tab).
   const menuItems: MenuProps["items"] = navDefs.map(({ key, label, icon }) => ({
     key,
-    label,
+    label: <Link to={key}>{label}</Link>,
     icon: (
       <Tooltip title={label} placement="right" open={flashKey === key || undefined}>
-        <span className="sidebar-nav-icon-target">{icon}</span>
+        {/* Also a link (out of the tab order: the label is the focusable one),
+            so the icon-only rail opens a new tab on Ctrl/middle-click too. */}
+        <Link to={key} tabIndex={-1} aria-hidden="true" className="sidebar-nav-icon-target">{icon}</Link>
       </Tooltip>
     ),
   }));
@@ -127,11 +130,12 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       <Menu
         mode="inline"
         selectedKeys={[navSection(location.pathname, navDefs.map((d) => d.key)) ?? ""]}
-        onSelect={({ key }) => {
+        onClick={({ key, domEvent }) => {
           triggerFlash(String(key));
-          navigate(String(key));
+          // The link handles clicks on the label (one history entry); the
+          // icon and padding around it navigate here.
+          if (!(domEvent.target as HTMLElement).closest("a")) navigate(String(key));
         }}
-        onDeselect={({ key }) => triggerFlash(String(key))}
         items={menuItems}
         style={{ border: "none", background: "transparent", flex: 1 }}
       />

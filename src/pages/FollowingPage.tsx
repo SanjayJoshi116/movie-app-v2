@@ -12,6 +12,7 @@ import { SectionRow } from "./RecommendationsPage";
 import { pageVariants, RATING_GOLD } from "../constants/ui";
 import { LoadError } from "../components/LoadError";
 import { personLabel } from "../utils/personLabel";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const { Title } = Typography;
 
@@ -23,6 +24,7 @@ const SORT_FNS: Record<SortKey, (a: FollowedPersonEntry, b: FollowedPersonEntry)
 };
 
 function FollowingPage() {
+  usePageTitle("Following");
   const navigate = useNavigate();
   const { followed, loading, error, retry } = useFollowedPeople();
   const [recSections, setRecSections] = useState<PersonalizedRecSection[]>([]);

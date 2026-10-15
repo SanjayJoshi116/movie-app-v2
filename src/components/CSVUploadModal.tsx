@@ -56,6 +56,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     setParseError(null);
 
     const reader = new FileReader();
+    reader.onerror = () => setParseError("Couldn't read that file.");
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const { rows, error } = parseCSVForImport(text);
@@ -89,11 +90,14 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
           mediaId: row.mediaId,
           mediaType: row.type ?? mediaType,
           title: row.title,
-          posterPath: found[i]?.posterPath ?? null,
+          // A row's own poster (the Watched export has one) beats the lookup's.
+          posterPath: row.posterPath ?? found[i]?.posterPath ?? null,
           voteAverage: found[i]?.voteAverage,
           // The Watched page's own export carries these; keep them on re-import.
           ...(row.watchedAt ? { watchedAt: row.watchedAt } : {}),
           ...(row.watchedTz ? { watchedTz: row.watchedTz } : {}),
+          ...(row.runtimeMinutes !== undefined ? { runtimeMinutes: row.runtimeMinutes } : {}),
+          ...(row.platform ? { platform: row.platform } : {}),
         })),
         { guard },
       );

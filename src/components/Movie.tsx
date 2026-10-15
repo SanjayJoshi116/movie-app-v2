@@ -141,6 +141,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
           showSuccess("Marked as watched");
         } catch (err) {
           showError(getApiError(err, "Failed to mark as watched."));
+          throw err; // the dialog stays open with what was typed
         }
         setShowMarkWatchedModal(false);
       }}

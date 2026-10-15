@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 5
 MAX_PER_RUN = 100
+# At most this many background backfills run at once per process; the rest
+# wait (holding no DB connection) and run after. Single-flight per user alone
+# let a burst of Stats visits start one thread, pool and connection each.
+MAX_CONCURRENT_BACKFILLS = 2
 BACKOFF_SECONDS = 60 * 60
 METADATA_RECHECK_DAYS = 30
 MAX_FAILED_TRACKED = 10_000
@@ -42,6 +46,7 @@ UNKNOWN_YEAR = -1
 
 _lock = threading.Lock()
 _running = set()  # user ids with a backfill thread in flight
+_backfill_slots = threading.BoundedSemaphore(MAX_CONCURRENT_BACKFILLS)
 _failed_lock = threading.Lock()  # fetch workers record failures concurrently
 _failed_at = {}  # entry pk -> monotonic time of the last transient failure
 
@@ -153,10 +158,15 @@ def backfill_entries(entries):
 
 
 def _run_backfill(user_id):
+    """Thread target. Waits for a slot before touching the DB, so a waiting
+    backfill holds no connection. The synchronous backfill inside a
+    recommendation refresh doesn't take a slot: refreshes have their own cap."""
     try:
-        backfill_entries(list(WatchedEntry.objects.filter(user_id=user_id)))
-    except DBError:
-        logger.exception("Metadata backfill failed to load entries for user %s", user_id)
+        with _backfill_slots:
+            try:
+                backfill_entries(list(WatchedEntry.objects.filter(user_id=user_id)))
+            except DBError:
+                logger.exception("Metadata backfill failed to load entries for user %s", user_id)
     finally:
         connection.close()  # this thread's own connection
         with _lock:

@@ -14,6 +14,9 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:3000",
+    // A fixed locale: the app's region default (Where to Watch, certification)
+    // comes from it, and otherwise follows the machine running the tests.
+    locale: "en-US",
     // With no retries, "on-first-retry" would never record; CI uploads these
     // with the HTML report when the job fails.
     trace: "retain-on-failure",

@@ -124,3 +124,21 @@ describe("parseCSVForImport watched times (data-backup)", () => {
     expect(parseCSVForImport("id,title\n550,Fight Club").rows).toEqual([{ mediaId: 550, title: "Fight Club" }]);
   });
 });
+
+describe("parseCSVForImport: the Watched export's extra columns", () => {
+  it("reads runtime, platform and poster back, dropping bad values per row", () => {
+    const csv = buildCSVString([
+      { title: "A", type: "movie", tmdb_id: 1, watched_at: "", runtime_minutes: 120, platform: "Netflix", poster_path: "/a.jpg" },
+      { title: "B", type: "movie", tmdb_id: 2, watched_at: "", runtime_minutes: "", platform: "", poster_path: "" },
+      { title: "C", type: "movie", tmdb_id: 3, watched_at: "", runtime_minutes: "-5", platform: "x".repeat(101), poster_path: "http://evil/a.jpg" },
+    ]);
+    const { rows, error } = parseCSVForImport(csv);
+    expect(error).toBeNull();
+    expect(rows[0]).toMatchObject({ runtimeMinutes: 120, platform: "Netflix", posterPath: "/a.jpg" });
+    for (const r of rows.slice(1)) {
+      expect(r.runtimeMinutes).toBeUndefined();
+      expect(r.platform).toBeUndefined();
+      expect(r.posterPath).toBeUndefined();
+    }
+  });
+});

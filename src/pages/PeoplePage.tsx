@@ -14,8 +14,10 @@ import type { TMDBPersonSummary } from "../types";
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
 import { stashReturnState } from "../utils/browseReturnState";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 function PeoplePage() {
+  usePageTitle("People");
   const navigate = useNavigate();
   const location = useLocation();
   const { includeAdult } = useAppContext();

@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import BottomNav from "./components/BottomNav";
 import { FilterPanel } from "./components/layout/FilterPanel";
 import ErrorBoundary from "./components/ErrorBoundary";
+import RouteAnnouncer from "./components/RouteAnnouncer";
 import { useUIContext } from "./context/UIContext";
 import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
@@ -27,7 +28,8 @@ const AnimePage = lazy(() => import("./pages/AnimePage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const ListsPage = lazy(() => import("./pages/ListsPage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
-const StatsPage = lazy(() => import("./pages/StatsPage"));const FollowingPage = lazy(() => import("./pages/FollowingPage"));
+const StatsPage = lazy(() => import("./pages/StatsPage"));
+const FollowingPage = lazy(() => import("./pages/FollowingPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
@@ -105,6 +107,7 @@ function AppInner() {
     <ConfigProvider theme={theme === "dark" ? darkThemeConfig : lightThemeConfig}>
       <AntApp>
       <div className="app-shell">
+        <RouteAnnouncer />
         {isAuthenticated && (
           <Sidebar
             isBrowsePage={isBrowsePage}

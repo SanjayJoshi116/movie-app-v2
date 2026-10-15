@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Row, Col, Card, Typography, Spin, Empty, Tabs, theme } from "antd";
 import {
   EyeOutlined,
@@ -38,6 +38,7 @@ import { LoadError } from "../components/LoadError";
 import { formatDateDMY } from "../utils/formatDate";
 import { pickKey } from "../utils/queryParams";
 import { ratingColor } from "../utils/colors";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const { Title, Text } = Typography;
 
@@ -68,11 +69,13 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function useCountUp(target: number, duration = 1200): number {
-  const [val, setVal] = useState(0);
+export function useCountUp(target: number, duration = 1200): number {
+  // Reduced motion: the final number at once, no counting animation.
+  const reduceMotion = useReducedMotion();
+  const [val, setVal] = useState(reduceMotion ? target : 0);
   const rafRef = useRef<number>(0);
   useEffect(() => {
-    if (target === 0) { setVal(0); return; }
+    if (target === 0 || reduceMotion) { setVal(target); return; }
     const start = performance.now();
     const tick = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
@@ -83,7 +86,7 @@ function useCountUp(target: number, duration = 1200): number {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [target, duration]);
+  }, [target, duration, reduceMotion]);
   return val;
 }
 
@@ -347,6 +350,7 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
 }
 
 function StatsPage() {
+  usePageTitle("Stats");
   const [data, setData] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);

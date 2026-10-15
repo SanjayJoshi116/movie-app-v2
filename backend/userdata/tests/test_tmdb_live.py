@@ -366,6 +366,15 @@ class TestLiveFrontendShapes:
         data = proxy_get("People", "person/popular", {"page": 1})
         assert_paginated("People", "person/popular", data, PERSON_SUMMARY)
 
+    def test_provider_regions(self):
+        # RegionSelect.tsx fetchProviderRegions: the Edit Profile region options
+        data = proxy_get("Region", "watch/providers/regions")
+        assert isinstance(data, dict), "Region watch/providers/regions: expected an object"
+        assert_items("Region", "watch/providers/regions", data.get("results"),
+                     {"iso_3166_1": (str, REQ), "english_name": (str, REQ)}, limit=300)
+        codes = {r["iso_3166_1"] for r in data["results"]}
+        assert "US" in codes, "Region watch/providers/regions: no US entry (the fallback region)"
+
     def test_calendar_discover(self):
         # CalendarPage.tsx: today to 7 days out, by release / first-air date (shape only)
         today, future = date.today().isoformat(), (date.today() + timedelta(days=7)).isoformat()

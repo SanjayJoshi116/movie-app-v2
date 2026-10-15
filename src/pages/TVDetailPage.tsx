@@ -11,10 +11,12 @@ import { useValidId } from "../hooks/useValidId";
 import { isNotFound } from "../utils/settled";
 import { arrayOr, objectOr, resultsOf } from "../utils/appended";
 import type { TMDBAggregateCreditsFull, TMDBImages, TMDBReview, TMDBTVDetailResponse } from "../types";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 function TVDetailPage() {
   const id = useValidId();
   const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
+  usePageTitle(tvShow?.name ?? "TV Show");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);

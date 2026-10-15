@@ -18,6 +18,13 @@ def base_url():
     return "http://localhost:3000"
 
 
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    # A fixed locale: the app's region default (Where to Watch, certification)
+    # comes from it, and otherwise follows the machine running the tests.
+    return {**browser_context_args, "locale": "en-US"}
+
+
 # ---------------------------------------------------------------------------
 # Mock data constants
 #

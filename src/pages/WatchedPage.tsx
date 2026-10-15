@@ -23,6 +23,7 @@ import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, WATCHED_GREEN } from "../constants/ui";
 import type { WatchedEntry } from "../types";
 import { parseIntParam } from "../utils/queryParams";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const PAGE_SIZES = [12, 24, 48, 96] as const;
 
@@ -33,6 +34,7 @@ const SORT_FNS: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
 };
 
 function WatchedPage() {
+  usePageTitle("Watched");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
@@ -94,6 +96,10 @@ function WatchedPage() {
       vote_average: i.voteAverage,
       watched_at: i.watchedAt,
       watched_tz: i.watchedTz ?? "",
+      // After the original columns, so older readers of this file still work.
+      runtime_minutes: i.runtimeMinutes ?? "",
+      platform: i.platform ?? "",
+      poster_path: i.posterPath ?? "",
     }));
     downloadCSV(rows, "watched.csv");
   };
@@ -233,7 +239,7 @@ function WatchedPage() {
                     tooltip="Mark unwatched"
                     icon={<EyeFilled />}
                     style={{ color: WATCHED_GREEN }}
-                    ariaLabel="Mark as unwatched"
+                    ariaLabel={`Mark as unwatched: ${item.title}`}
                   />
                 }
                 footer={

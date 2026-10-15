@@ -28,7 +28,7 @@ CINE DB is a full-stack movie and TV tracking app: a React + TypeScript frontend
 
 ## Highlights
 
-- **43 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
+- **44 REST API endpoints** across health check, TMDB proxy, auth, watchlist/watched, ratings, lists, stats, episode progress, follows, recommendations, notifications, and TMDB OAuth (`## API Overview` below)
 - **JWT auth** with silent refresh + rotation/blacklisting (coordinated across browser tabs), server-side logout, all other sessions revoked on password change/reset, email-based password reset
 - **Personalized recommendations** — K-means clustering (scikit-learn) over rating-weighted genre vectors, pre-computed and cached per user
 - **Dockerized, 3-service production stack** — nginx + React build, Django/Gunicorn, PostgreSQL (`## Docker Setup`)
@@ -92,23 +92,23 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
 
 ### Detail Pages
-- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability; both pages share the same section order and layout, each showing up to 20 recommendation/similar cards filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing); cast displays in a centered wrapping grid (no horizontal scroll); backdrop images open a full-size lightbox on click
+- **Movie & TV Detail** — Full info: cast, videos, images, reviews, recommendations, similar titles, watch providers, streaming availability (for your region, set in Edit Profile and defaulting to the device's; when TMDB lists nothing there it shows US availability and says so); both pages share the same section order and layout, each showing up to 20 recommendation/similar cards filtered to titles sharing at least half the opened title's genres (falls back to the unfiltered list rather than showing nothing); cast displays in a centered wrapping grid (no horizontal scroll); backdrop images open a full-size lightbox on click
 - **Reviews** — TMDB reviews on both Movie and TV detail pages, rendered as a 2-column card grid
 - **Add to List** — Shared modal (`AddToListModal.tsx`) with search-existing-lists and inline create-new-list, opened from the detail page or any browse/search/recommendation card — never a dead end even with zero lists yet
-- **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
+- **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; it stays put while saving and keeps what you entered if the save fails; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
 - **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time. A failed load shows Retry instead of "not tracked" (so a save can't overwrite real progress), and a double click on Next or Save sends one write
 - **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything; failed credit requests show an error with Retry (credits only), never "No credits"
 - **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; their acting and crew work both count (talk-show and news appearances don't). Manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section ("New from {name}": their last two years and upcoming work, newest first); a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
 
 ### Library
-- **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
+- **Watchlist & Watched** — Save and track movies/TV shows; tied to your account. Both paginate (12–96 per page, page and size in the URL), and removing the last items on the last page moves back a page instead of leaving it blank
 - **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
-- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); watched list refreshes immediately after import
-- **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section. Lists that share a name stay separate. Older v1/v2 backups still import. Poster lookups during any import are paced under the TMDB proxy's rate limit, with progress shown, and the result says how many rows ended up without a poster
+- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them; a file that can't be read says so; watched list refreshes immediately after import
+- **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. Poster lookups during any import are paced under the TMDB proxy's rate limit, with progress shown, and the result says how many rows ended up without a poster
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them. Genres are matched per media type (a movie genre is never sent to TV discover), a rating change refreshes recommendations, titles you rated 4 or below never seed "Because you watched", and a group still computing after polling shows Retry
 - **Release Calendar** — The most popular releases of the next 7 days (every day of the window, not only the first), grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export of what's shown (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
@@ -125,7 +125,8 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
-- **Keyboard & Screen-Reader Friendly** — Every poster card that opens a page is a real link: Tab to it, Enter to open, Ctrl/middle-click for a new tab, with a visible focus outline in both themes; icon-only buttons are labelled
+- **Keyboard & Screen-Reader Friendly** — Every poster card that opens a page is a real link: Tab to it, Enter to open, Ctrl/middle-click for a new tab, with a visible focus outline in both themes; sidebar and bottom-nav entries are links too; icon-only buttons are labelled, and card buttons name their title ("Remove from watchlist: Dune"). Each page has its own tab title ("Watchlist · CINE DB", a movie page uses the movie's name), announced to screen readers after navigation. Password fields tell password managers which is current and which is new. Secondary and muted text meets WCAG AA (4.5:1) in both themes
+- **Reduced Motion** — With the OS "reduce motion" setting on, page transitions, card hover effects, the Stats count-up and the title marquee don't animate
 - **Fast Pages** — Each movie/TV detail page loads in one TMDB request (`append_to_response`), identical requests in flight are shared, the Django proxy caches TMDB answers (10 min–24 h by kind), library lists load 500 rows per request, images are sized for display (`w342` grid posters, `w1280` backdrops), and trailers load the YouTube player only when you press play
 - **Honest Load & Error States** — Every page shows loading, an error with in-place Retry, the empty state, or content — a failed request is never shown as "nothing here". Detail pages degrade per section and show "not found" for unknown ids
 - **Back Stays in the App** — A detail or person page's Back button goes back in history only when there's an in-app page to return to; opened in a new tab or from another site, it goes to Movies, TV Shows or People. Browser Back to People restores its loaded pages and scroll
@@ -137,7 +138,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
 - **Consistent Date Format** — All dates render `dd-mm-yyyy`, independent of the viewer's browser/OS locale
 - **Local Dates Across Devices** — "Today" (Calendar, notifications, the Stats heatmap) follows the device's time zone. Each watch is logged with its time zone, so it stays on the same day on every device. The Watched page adds a zone label (e.g. `07-10-2026 · GMT+5:30`) when a watch was logged in a different time zone
-- **Animated UI** — Page transitions and card hover effects via Framer Motion
+- **Animated UI** — Page transitions and card hover effects via Framer Motion (off under reduced motion); long card titles end in an ellipsis with the full title as a tooltip
 - **Responsive Layout** — Full sidebar on desktop (≥992px), icon-only collapsed rail on tablet (768–991px), fixed bottom nav with overflow drawer on phones (<768px); the sidebar stays pinned in place while scrolling. On phones, browse pages add a Filters button to the bottom nav. The notification popup stays fully on-screen at every size
 - **Manual Sidebar Collapse** — Desktop-only toggle button (fold/unfold icon in the sidebar footer) collapses the 220px sidebar to the same 64px icon rail tablet uses; preference persists in `localStorage` (`cinedb_sidebar_collapsed`)
 - **Flash Tooltip** — Clicking a Sidebar or BottomNav icon force-shows its tooltip label for ~1.4s, confirming the destination on layouts where no text label is visible (tablet icon rail, phone bottom nav)
@@ -225,9 +226,10 @@ backend/
 │   │                            #   discover calls convert back to each type's own ids
 │   ├── tmdb_client.py           # Server-side TMDB API client
 │   └── tests/                   # pytest suite (see ## Testing)
-├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable →
-│                                #   compute_recommendations (capped at 30s) → gunicorn
-├── warmup.py                  # Time-boxed best-effort recommendations warm-up used by start.py
+├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable → flushexpiredtokens
+│                                #   (capped at 60s) → compute_recommendations (capped at 30s) → gunicorn
+│                                #   (threaded: 3 workers × 8 threads)
+├── warmup.py                  # Time-boxed best-effort startup steps (token flush, recommendations warm-up) used by start.py
 ├── pytest_dev_env.py            # pytest plugin (-p in pytest.ini): defaults DEBUG=True before settings load
 └── manage.py
 
@@ -285,6 +287,7 @@ src/
 │   ├── ProfileModal.tsx         # Edit profile, tabbed (Account / Data & TMDB / Danger Zone): avatar upload,
 │   │                            #   change password w/ strength meter, delete account (password-confirmed), TMDB OAuth connect
 │   ├── PasswordStrengthMeter.tsx # Live strength bar + label under New Password, used by ProfileModal
+│   ├── RegionSelect.tsx         # Region setting (Data & TMDB tab), options from TMDB's watch-provider regions
 │   ├── Movie.tsx / Movies.tsx
 │   ├── TVShows.tsx / TVShowCard.tsx  # TVShows maps a memoized per-item TVShowCard (mirrors Movie.tsx)
 │   ├── MovieDetails.tsx         # Includes add-to-list with checkbox toggle (add + remove)
@@ -313,6 +316,7 @@ src/
 │   │                            #   Home/Anime/People/Search; error + retry(), drops stale-query responses
 │   ├── useToast.ts              # Memoized App.useApp() toast wrapper; identical messages collapse
 │   ├── useLocalStorage.ts       # Generic localStorage hook
+│   ├── useRegion.ts             # The device's region setting (UIContext), for TMDB region data
 │   ├── useValidId.ts            # `:id` route param as a TMDB id (positive int ≤ INT32_MAX) or null;
 │   │                            #   detail/person pages show not-found instead of building a proxy path
 │   ├── useRecentSearches.ts     # Last 5 searches (shared by the Sidebar and BottomNav search boxes)
@@ -359,6 +363,7 @@ src/
 │   ├── guardedReload.ts         # Library reload rerun if a write settled while it was in flight
 │   ├── personLabel.ts           # Followed person's name, "Person <id>" when blank
 │   ├── queryParams.ts           # parseIntParam()/pickKey(): address values with safe fallbacks
+│   ├── region.ts                # deviceRegion(), regionName(), pickRegion(): region data with a labelled US fallback
 │   ├── initials.ts              # getInitials(): fallback avatar text (sidebar, bottom nav, profile)
 │   ├── settled.ts               # settledData()/isNotFound() helpers for Promise.allSettled pages
 │   ├── postLoginPath.ts         # Where to go after sign-in (state.from path+query+hash, else /movies);
@@ -663,10 +668,11 @@ src/utils/__tests__/
 ├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
-├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection
+├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection; Watched export's runtime/platform/poster
 ├── csvBom.test.ts                # Exports start with a UTF-8 BOM and still round-trip
 ├── downloadBlob.test.ts          # Anchor attached, object URL revoked only after a tick
 ├── queryParams.test.ts           # Malformed/out-of-range page, pageSize and tab values fall back
+├── region.test.ts                # Device region from the locale, region names, US fallback flagged
 ├── navSection.test.ts            # Nav highlight: exact page, a list's sub-page, detail pages under none
 ├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
@@ -685,15 +691,23 @@ src/components/__tests__/
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
+├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save
+├── MarqueeTitle.test.tsx         # Ellipsis + full-title tooltip, no scroll under reduced motion
+├── RouteAnnouncer.test.tsx       # Tab title per page, settled title announced, focus left alone
 ├── PersonCardFollow.test.tsx     # Follow disabled while follow state loads
-├── importSession.test.tsx        # Imports/restores stop after sign-out, can't close mid-run; personLabel
+├── importSession.test.tsx        # Imports/restores stop after sign-out, can't close mid-run; unreadable file,
+│                                 #   Watched columns sent, a list that couldn't be created fails; personLabel
 ├── TrailerEmbed.test.tsx         # No iframe until the thumbnail is activated
-└── WatchProviders.test.tsx       # TMDB's provider link used only if http(s)
+└── WatchProviders.test.tsx       # TMDB's provider link used only if http(s); user's region, labelled US fallback
+
+src/theme/__tests__/
+└── themeContrast.test.ts         # Secondary/tertiary text tokens >= 4.5:1 on every background, both themes
 
 src/components/layout/__tests__/
 └── FilterPanel.test.tsx          # Genres of the current type only; adult switch is a draft; labelled fields
 
 src/pages/__tests__/
+├── countUp.test.tsx              # Stats numbers final at once under reduced motion
 ├── ListsPage.test.tsx            # Delete confirm never opens the list; grid kept during a reload
 ├── RecommendationsPage.test.tsx  # Partial group failure → inline Retry; failed watched load → error
 ├── PersonPage.test.tsx           # Failed credits → error with Retry (credits only), partial tabs kept
@@ -755,7 +769,7 @@ backend/userdata/tests/
 │                                   #   40-person/15s poll budget pinned under gunicorn's timeout
 ├── test_notifications_cache.py     # Person credits in their own cache alias (acting + crew, no talk/news),
 │                                   #   polls read recent summaries only, unread = not seen at last mark-seen
-├── test_metadata_backfill.py       # One backfill per user, 100 titles per run, 404 settled in the DB
+├── test_metadata_backfill.py       # One backfill per user, 2 at once per process, 100 titles per run, 404 settled in the DB
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
@@ -767,7 +781,9 @@ backend/userdata/tests/
 ├── test_email_uniqueness.py        # Email re-checked under an advisory lock; two racing changes, one wins
 ├── test_genre_families.py          # Movie/TV genre id families and per-type discover params
 ├── test_recommendation_genres.py   # Family-based counts, no movie genre sent to TV discover, low ratings don't seed
-├── test_startup_warmup.py          # Warm-up hang or non-zero exit never blocks startup
+├── test_startup_warmup.py          # Warm-up and token flush can't block startup; threaded gunicorn, TMDB pools
+│                                   #   sized for its threads
+├── test_token_flush.py             # flushexpiredtokens drops expired session rows, keeps live ones
 ├── test_compose_config.py          # db reads only .env.db, backend/.dockerignore excludes env copies,
 │                                   #   tests and dev-only files; every FROM/image: pinned by digest
 ├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins; pip
@@ -813,13 +829,15 @@ e2e/
 ├── movies.spec.ts         # Movie/TV browse, category buttons, search, detail navigation
 ├── watchlist.spec.ts      # Empty state, add/remove, export CSV, watched list (incl. a two-page history)
 ├── detail-and-nav.spec.ts # No stray 0, Where to Watch, grid posters as links, Back targets, crew tab,
-│                           #   Mark as Watched runtime, Add to List states
+│                           #   Mark as Watched runtime, Add to List states, region change in Edit Profile
 ├── stats.spec.ts          # Genre tooltip label, keyboard heatmap, empty genres, gap months plotted
 ├── notifications.spec.ts  # Both bells share one poll; unread shown until close marks seen
 ├── write-feedback.spec.ts # Failed clear/follow/rating save leave the UI as it was; unfollow
 │                           #   from Following
 ├── accessibility.spec.ts  # Ctrl/Cmd-click opens a new tab; light-theme focus outline
 ├── load-failures.spec.ts  # Following/Calendar/profile TMDB-status failures shown, not empty states
+├── a11y-titles.spec.ts    # Page titles + announcer, nav entries as links, card buttons named by title,
+│                           #   password autocomplete, reduced motion
 ├── calendar.spec.ts       # Most popular releases in the window; iCal export follows the title filter
 ├── search-scope.spec.ts   # Searches stay on their page (People's in ?q=, no grid search mode); list page
 │                           #   highlights My Lists
@@ -830,7 +848,8 @@ e2e/
 ├── untrusted-links.spec.ts # A javascript: TMDB homepage is never a link
 ├── browse-restore.spec.ts # Genre reset on media switch, filter drawer draft (one request per Apply), People Back
 ├── import.spec.ts         # Backup ZIP and CSV import dialogs through their real file inputs
-├── library-filters.spec.ts # Per-list search kept, unmark the last item on the last page
+├── library-filters.spec.ts # Per-list search kept, last item on the last page (Watched and Watchlist),
+│                           #   Watchlist pages, a missing list is not-found
 ├── theme-readability.spec.ts # Computed-color checks for Stats, card icons, empty states, placeholders
 └── responsive.spec.ts     # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
                             #   bottom-nav no-overflow at 320px, notification popup on-screen +
@@ -935,7 +954,6 @@ Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` u
 
 **Considering:**
 - [ ] PWA / offline support (Service Workers for poster caching)
-- [ ] Regional watch provider switching
 - [ ] Per-person or per-list iCal export
 
 ---

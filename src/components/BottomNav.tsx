@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Avatar, Badge, Button, Drawer, Divider, Tooltip } from "antd";
 import {
   VideoCameraOutlined,
@@ -32,6 +32,7 @@ import { avatarColor } from "../utils/colors";
 import { getInitials } from "../utils/initials";
 import { RATING_GOLD, ON_GOLD_TEXT, AVATAR_INITIALS_TEXT } from "../constants/ui";
 import { navSection } from "../utils/navSection";
+import { isPlainClick } from "./CardLink";
 
 interface Props {
   isBrowsePage: boolean;
@@ -88,11 +89,15 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
           const isActive = item.path === activePath;
           const btn = (
             <Tooltip key={item.path} title={item.label} placement="top" open={flashKey === item.path || undefined}>
+              {/* A real link: Ctrl/middle-click opens a new tab; a plain click routes in-app. */}
               <Button
                 type="text"
                 icon={item.icon}
-                onClick={() => {
+                href={item.path}
+                onClick={(e) => {
                   triggerFlash(item.path);
+                  if (!isPlainClick(e)) return;
+                  e.preventDefault();
                   navigate(item.path);
                 }}
                 aria-label={item.label}
@@ -183,10 +188,13 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
           {moreItems.map((item) => {
             const isActive = item.path === activePath;
             return (
-              <button
+              <Link
                 key={item.path}
-                onClick={() => handleMoreNav(item.path)}
+                to={item.path}
+                onClick={() => setMoreOpen(false)}
+                aria-current={isActive ? "page" : undefined}
                 style={{
+                  textDecoration: "none",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -222,7 +230,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
                     {item.badge}
                   </span>
                 )}
-              </button>
+              </Link>
             );
           })}
         </div>

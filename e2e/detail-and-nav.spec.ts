@@ -50,8 +50,34 @@ test.describe("Where to Watch", () => {
     await page.route("**/api/tmdb/movie/100**", (route) =>
       route.fulfill({ json: movieDetail({ "watch/providers": { results: { GB: { flatrate: [provider] } } } }) }));
     await page.goto("/movie/100");
-    await expect(page.getByText("Not available to stream, rent or buy in the US.")).toBeVisible();
-    await expect(page.getByText(/your region/)).toHaveCount(0);
+    await expect(page.getByText("Not available to stream, rent or buy in your region (United States).")).toBeVisible();
+    await expect(page.getByText(/Showing United States availability/)).toHaveCount(0);
+  });
+
+  test("changing the region in Edit Profile changes Where to Watch", async ({ page, isMobile }) => {
+    await page.route("**/api/tmdb/movie/100**", (route) =>
+      route.fulfill({ json: movieDetail({ "watch/providers": { results: { GB: { link: "https://x.test", flatrate: [provider] } } } }) }));
+    await page.route("**/api/tmdb/watch/providers/regions**", (route) => route.fulfill({
+      json: { results: [
+        { iso_3166_1: "US", english_name: "United States of America" },
+        { iso_3166_1: "GB", english_name: "United Kingdom" },
+      ] },
+    }));
+    await page.route("**/api/tmdb-auth/status/**", (r) => r.fulfill({ json: { connected: false } }));
+    await page.goto("/movie/100");
+    await expect(page.getByText("Not available to stream, rent or buy in your region (United States).")).toBeVisible();
+
+    if (isMobile) await page.getByRole("button", { name: "More navigation options" }).click();
+    await page.getByRole("button", { name: "Edit profile" }).click();
+    await page.getByRole("tab", { name: "Data & TMDB" }).click();
+    await page.locator(".ant-select", { has: page.locator("#profile-region") }).click();
+    await page.getByRole("combobox", { name: "Region" }).fill("United King");
+    await page.locator(".ant-select-item-option[title=\"United Kingdom\"]").click();
+    await page.locator(".ant-modal").filter({ hasText: "Edit Profile" }).getByRole("button", { name: "Close" }).click();
+
+    await expect(page.getByRole("img", { name: "Apple TV" })).toBeVisible();
+    await expect(page.getByText("Region: United Kingdom")).toBeVisible();
+    await expect(page.getByText(/Not available to stream/)).toHaveCount(0);
   });
 });
 

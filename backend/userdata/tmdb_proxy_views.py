@@ -37,8 +37,11 @@ READ_TIMEOUT = 6
 RETRY = Retry(total=2, connect=2, read=1, backoff_factor=0.5)
 PROXY_DEADLINE_SECONDS = 20
 
+# Pool sized for concurrent request threads (gunicorn gthread), so they
+# reuse connections instead of opening and discarding extra ones.
+SESSION_POOL_SIZE = 16
 _session = requests.Session()
-_session.mount("https://", HTTPAdapter(max_retries=RETRY))
+_session.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=SESSION_POOL_SIZE, max_retries=RETRY))
 
 # Response cache (the `tmdb` alias in settings.CACHES). TMDB data is public, so
 # one user's response can serve another. Lifetimes follow how often each kind of

@@ -22,6 +22,9 @@ export const darkThemeConfig: ThemeConfig = {
     colorBgLayout: "#0d0f1a",
     colorText: "#e8e8e8",
     colorTextSecondary: "#a0a0b8",
+    // Explicit: the derived one was 4.1:1 on cards/popups. Text tokens stay
+    // >= 4.5:1 on every background here (themeContrast.test.ts pins it).
+    colorTextTertiary: "#9090a8",
     colorBorder: "#2d3060",
     colorBorderSecondary: "#232645",
   },
@@ -56,7 +59,10 @@ export const lightThemeConfig: ThemeConfig = {
     colorBgElevated: "#fffefb",
     colorBgLayout: "#f8f3e8",
     colorText: "#2b2620",
-    colorTextSecondary: "#8c8168",
+    // >= 4.5:1 on every light background (was #8c8168, 3.5:1); tertiary set
+    // explicitly too (the derived one was 3.3:1). themeContrast.test.ts pins both.
+    colorTextSecondary: "#706753",
+    colorTextTertiary: "#776e58",
     colorBorder: "#e8dfc9",
     colorBorderSecondary: "#ece2c8",
   },

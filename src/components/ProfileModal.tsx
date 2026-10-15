@@ -19,6 +19,7 @@ import CSVUploadModal from "./CSVUploadModal";
 import CSVImportAllModal from "./lists/CSVImportAllModal";
 import PasswordStrengthMeter from "./PasswordStrengthMeter";
 import { InfoTooltip } from "./InfoTooltip";
+import { RegionSelect } from "./RegionSelect";
 import { downloadAllAsZip } from "../utils/export";
 import {
   getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB, uploadAvatar, removeAvatar,
@@ -349,7 +350,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
           extra="Required to change username, email or password"
           style={{ marginBottom: 12 }}
         >
-          <Input.Password placeholder="Leave blank to keep current" />
+          <Input.Password placeholder="Leave blank to keep current" autoComplete="current-password" />
         </Form.Item>
 
         <div style={{ display: "flex", gap: 10 }}>
@@ -371,7 +372,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
             ]}
             style={{ marginBottom: 4, flex: 1 }}
           >
-            <Input.Password placeholder="New password" onChange={(e) => setNewPassword(e.target.value)} />
+            <Input.Password placeholder="New password" autoComplete="new-password" onChange={(e) => setNewPassword(e.target.value)} />
           </Form.Item>
           <Form.Item
             label="Confirm Password"
@@ -388,7 +389,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
             ]}
             style={{ marginBottom: 4, flex: 1 }}
           >
-            <Input.Password placeholder="Confirm" />
+            <Input.Password placeholder="Confirm" autoComplete="new-password" />
           </Form.Item>
         </div>
         <PasswordStrengthMeter password={newPassword} />
@@ -404,6 +405,9 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
 
   const dataTab = (
     <>
+      <Form layout="vertical">
+        <RegionSelect />
+      </Form>
       {sectionHeader(<DatabaseOutlined />, "Data")}
       <Space direction="vertical" style={{ width: "100%" }}>
         <Button block icon={<UploadOutlined />} onClick={() => setCsvOpen(true)}>
@@ -459,6 +463,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
     <>
       <Input.Password
         placeholder="Enter password to confirm"
+        autoComplete="current-password"
         value={deletePassword}
         onChange={(e) => setDeletePassword(e.target.value)}
         style={{ marginBottom: 8 }}

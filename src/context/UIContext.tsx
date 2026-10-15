@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, R
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { AuthContext } from "./AuthContext";
 import type { Theme } from "../types";
+import { deviceRegion } from "../utils/region";
 
 interface UIContextType {
   searchTerm: string;
@@ -16,6 +17,9 @@ interface UIContextType {
   clearGenres(): void;
   theme: Theme;
   toggleTheme(): void;
+  /** Region for where-to-watch data (ISO 3166-1, e.g. "IN"); a device preference. */
+  region: string;
+  setRegion(code: string): void;
 }
 
 export const UIContext = createContext<UIContextType | null>(null);
@@ -25,6 +29,8 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [includeAdult, setIncludeAdult] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [theme, setTheme] = useLocalStorage<Theme>("cinedb_theme", "dark");
+  // Like the theme, a device preference: kept across sign-out.
+  const [region, setRegion] = useLocalStorage<string>("cinedb_region", deviceRegion());
 
   // Browse settings belong to the session: on sign-out they go back to the
   // defaults, so the next account in this tab doesn't inherit "include adult"
@@ -79,11 +85,14 @@ export function UIProvider({ children }: { children: ReactNode }) {
     clearGenres,
     theme,
     toggleTheme,
+    region,
+    setRegion,
   }), [
     searchTerm, clearSearch,
     includeAdult,
     selectedGenres, toggleGenre, setGenres, clearGenres,
     theme, toggleTheme,
+    region, setRegion,
   ]);
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;

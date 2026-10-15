@@ -3,6 +3,53 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.28.0] - 2026-10-15
+
+Bug-audit release, part 13, which closes the sixth audit (backlog items 35–41 all done): accessibility, motion and page titles (`a11y-motion-titles`, item 37), bounded background load and threaded workers (`bound-background-load`, item 38), and library, region and docs polish (`polish-library-docs`, item 40). All three OpenSpec changes are archived and their specs synced.
+
+### ⚠️ Notes for deploy
+- **gunicorn now runs threaded workers** (`--workers 3 --worker-class gthread --threads 8 --timeout 30`, `docker-entrypoint.sh`). Memory stays at three processes; up to 24 requests run at once. Under `gthread`, `--timeout` guards a hung worker rather than a slow request, so the per-endpoint TMDB budgets bound requests. Checked only statically here (gunicorn doesn't run on Windows); the first Docker deploy is the real check.
+- **Expired session-token rows are deleted at every start** (`flushexpiredtokens`, capped at 60 s and best-effort in both `docker-entrypoint.sh` and `start.py`). The first start after a long uptime may delete many rows; a timeout or error only logs and startup continues.
+- **Dependency bumps:** Pillow 12.1.1 → 12.3.0, requests 2.33.0 → 2.34.2, psycopg2-binary 2.9.9 → 2.9.13 (`requirements.txt` and `constraints.txt`). Django 5.2, DRF 3.16 and gunicorn 23 stay. No migrations.
+- **Region setting:** existing users get their browser's region by default. Users outside the US now see their own country's providers and certification, with the US data labelled as such when TMDB has nothing for their country.
+
+### Added — region (`polish-library-docs`, backlog item 40)
+- **Where to Watch, the movie certification and Mark as Watched's platform list use your region,** not always the US. It defaults to the device's locale region and can be changed in Edit Profile → Data & TMDB (options from TMDB's watch-provider regions). It's kept per device like the theme, including across sign-out. When TMDB lists nothing for your region, the US data is shown and labelled ("Showing United States availability…", "R (US)").
+
+### Fixed — library and imports (`polish-library-docs`)
+- **The Watchlist paginates** like Watched (12–96 per page, page and size in the address); every entry used to render as an animated card at once. Removing the last items on the last page moves back a page.
+- **The Watched page's CSV keeps runtime, platform and poster** on export and reads them back on import, so its own export no longer loses them.
+- **A CSV file that can't be read says so** ("Couldn't read that file.") in both CSV import dialogs, instead of showing nothing.
+- **A backup restore reports a list it couldn't create as failed, even an empty one,** instead of reading as success.
+- **A missing list shows "List not found"** (the not-found state detail pages use); a failed load still offers Retry.
+- **The For You tooltip describes what recommendations are built from** (your own watches, ratings and follows). It claimed "patterns from similar viewers", which the app never used.
+
+### Fixed — accessibility and motion (`a11y-motion-titles`, backlog item 37)
+- **Motion follows the OS "reduce motion" setting:** page transitions, card hover effects and CSS animations stop, the Stats count-up shows the final number, and long titles don't scroll.
+- **Every page has its own tab title** ("Watchlist · CINE DB"; detail and person pages use the title's or person's name), and screen readers hear the new title after an in-app navigation, without focus moving.
+- **Library card buttons name their title** ("Remove from watchlist: Dune"), so a grid's buttons can be told apart.
+- **Sidebar and bottom-nav entries are real links:** a new tab on Ctrl/middle click, one history entry on a plain click.
+- **Password fields declare current and new password,** so password managers fill and save the right ones.
+- **Mark as Watched holds while saving:** the dialog can't be closed, a second confirm is ignored, and a failed save keeps what you entered.
+- **Long card titles end in an ellipsis** with the full title as a tooltip, re-measured on resize.
+- **Secondary and muted text meets WCAG AA (4.5:1)** in both themes (light secondary `#706753`, light tertiary `#776e58`, dark tertiary `#9090a8`); a contrast unit test and the readability e2e test check it.
+
+### Fixed — load (`bound-background-load`, backlog item 38)
+- **A few requests waiting on a slow TMDB no longer block the whole backend.** Three sync workers meant three such requests stalled sign-in and everything else; threaded workers give 24 slots at the same memory. The TMDB deadline pool and the proxy's connection pool grew to 16 to match.
+- **Background metadata backfills run at most 2 at a time per process,** so a burst of Stats visits no longer starts a thread, pool and DB connection per user.
+- **Expired session-token rows no longer pile up:** they're removed at every start.
+
+### Tests
+- Jest: region helpers, Where to Watch region and fallback, CSV export columns, unreadable files and the failed empty list, page titles and announcer, reduced motion (count-up, marquee), Mark as Watched holding, contrast tokens.
+- e2e: changing the region in Edit Profile, Watchlist pages and last-page removal, a missing list (`library-filters.spec.ts`), `a11y-titles.spec.ts`. Both e2e configs now pin the browser locale to `en-US`, since the region default comes from it.
+- Backend: `test_token_flush.py`, backfill concurrency cap, pool sizes pinned to the thread count; a live TMDB shape check for `watch/providers/regions`.
+
+### Docs
+- `docs/BUG_BACKLOG.md`: items 37, 38 and 40 archived; the sixth audit is closed.
+- CLAUDE.md: page titles, reduced motion, the contrast floor, threaded workers and backfill slots, the region preference (`pickRegion`, never `results.US`), library pagination, the Watched CSV columns.
+- `docs/ARCHITECTURE.md`: reduced motion, page titles and the announcer, Mark as Watched holding, contrast pinned by computation; threaded workers and capped backfills, token flushing; region as a device preference, Watchlist pagination.
+- README: features, project tree and test lists; "Regional watch provider switching" dropped from the roadmap (done).
+
 ## [0.27.0] - 2026-10-15
 
 Bug-audit release, part 12: the first changes from the sixth audit (backlog items 35–41, logged in `docs/BUG_BACKLOG.md`). Live TMDB checks (`live-tmdb-smoke`, item 41), browse results that make sense on real data (`fix-browse-results`, item 35), crew credits and a seen-based unread rule for follows (`follow-crew-credits`, item 36), and account hardening (`harden-account-input-2`, item 39). All four OpenSpec changes are archived and their specs synced. Items 37, 38 and 40 remain open.

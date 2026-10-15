@@ -57,6 +57,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
     setParsed([]);
     setParseError(null);
     const reader = new FileReader();
+    reader.onerror = () => setParseError("Couldn't read that file.");
     reader.onload = (ev) => {
       const { rows, error } = parseCSVForImport(ev.target?.result as string);
       if (error) setParseError(error);

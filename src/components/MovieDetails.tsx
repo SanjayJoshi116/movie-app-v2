@@ -29,6 +29,8 @@ import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREE
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 import { goBack } from "../utils/goBack";
+import { pickRegion, regionName } from "../utils/region";
+import { useRegion } from "../hooks/useRegion";
 
 // USD amounts: grouped the US way whatever the browser locale (no "1.000.000 $").
 const USD_AMOUNT = new Intl.NumberFormat("en-US");
@@ -56,15 +58,20 @@ interface Props {
   movie: MovieDetailData;
 }
 
-function renderCertifications(certs: ReleaseDateEntry[] | string): string {
+function renderCertifications(certs: ReleaseDateEntry[] | string, region: string): string {
   if (!certs || typeof certs === "string") return certs || "N/A";
-  const us = certs.find((c) => c.iso_3166_1 === "US");
-  if (!us) return "Not Rated";
-  const cert = us.release_dates.find((r) => r.certification);
-  return cert?.certification || "Not Rated";
+  const byRegion = Object.fromEntries(
+    certs
+      .map((c) => [c.iso_3166_1, c.release_dates.find((r) => r.certification)?.certification] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
+  const picked = pickRegion(byRegion, region);
+  if (!picked.data) return "Not Rated";
+  return picked.fallback ? `${picked.data} (US)` : picked.data;
 }
 
 const MovieDetails = ({ movie }: Props) => {
+  const region = useRegion();
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
@@ -213,7 +220,7 @@ const MovieDetails = ({ movie }: Props) => {
                 <Descriptions.Item label="Release Date">{release_date ? formatDateDMY(release_date) : "-"}</Descriptions.Item>
                 <Descriptions.Item label="Status">{status}</Descriptions.Item>
                 <Descriptions.Item label="Language">{original_language?.toUpperCase()}</Descriptions.Item>
-                <Descriptions.Item label={<>Certification<InfoTooltip title="US content rating (MPAA-style); may not reflect ratings in other regions." /></>}>{renderCertifications(certifications)}</Descriptions.Item>
+                <Descriptions.Item label={<>Certification<InfoTooltip title={`Content rating for ${regionName(region)} (the US rating, marked "(US)", when TMDB has none for it).`} /></>}>{renderCertifications(certifications, region)}</Descriptions.Item>
                 {directors && <Descriptions.Item label="Director">{directors}</Descriptions.Item>}
                 {revenue ? <Descriptions.Item label="Revenue (USD)">${USD_AMOUNT.format(revenue)}</Descriptions.Item> : null}
               </Descriptions>
@@ -277,6 +284,7 @@ const MovieDetails = ({ movie }: Props) => {
             showSuccess("Marked as watched");
           } catch (err) {
             showError(getApiError(err, "Failed to mark as watched."));
+            throw err; // the dialog stays open with what was typed
           }
           setShowMarkWatchedModal(false);
         }}

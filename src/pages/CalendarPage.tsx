@@ -16,6 +16,7 @@ import { POSTER_URL, pageVariants, RATING_GOLD } from "../constants/ui";
 import { ratingColor } from "../utils/colors";
 import { localISODate } from "../utils/formatDate";
 import { downloadBlob } from "../utils/export";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -69,6 +70,7 @@ function exportIcal(groups: DateGroup[]) {
 }
 
 function CalendarPage() {
+  usePageTitle("Release Calendar");
   const navigate = useNavigate();
   const location = useLocation();
   const { token } = theme.useToken();

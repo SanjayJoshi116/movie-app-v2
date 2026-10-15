@@ -3,8 +3,10 @@ import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getApiError } from "../utils/apiError";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function RegisterPage() {
+  usePageTitle("Create Account");
   const { register } = useAuth();
   const navigate = useNavigate();
   const { message } = App.useApp();

@@ -3,8 +3,10 @@ import { Form, Input, Button, Typography, Card, App } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { confirmPasswordReset } from "../api/userApi";
 import { getApiError } from "../utils/apiError";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function ResetPasswordPage() {
+  usePageTitle("Reset Password");
   const { uid, token } = useParams<{ uid: string; token: string }>();
   const navigate = useNavigate();
   const { message } = App.useApp();

@@ -615,3 +615,17 @@ body:not(.dark-theme) ::-webkit-scrollbar-thumb {
 .star-rating.ant-rate .ant-rate-star:not(:last-child) {
   margin-inline-end: clamp(3px, 1vw, 8px);
 }
+
+/* Reduced motion (accessibility spec): CSS transitions and animations,
+   antd's included, finish at once. framer-motion is handled by the
+   MotionConfig in index.tsx. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

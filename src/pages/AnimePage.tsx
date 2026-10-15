@@ -21,6 +21,7 @@ import { stashReturnState } from "../utils/browseReturnState";
 import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const ANIME_KEYWORD = 210024;
 
@@ -62,6 +63,7 @@ interface Props {
 }
 
 function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props) {
+  usePageTitle("Anime");
   const { selectedGenres, clearGenres, isWatched } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();

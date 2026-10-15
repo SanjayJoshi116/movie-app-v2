@@ -59,13 +59,13 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 34b | `tidy-app-config` | ✅ 2026-10-14 | App config and dev setup: prod reset links default to localhost; `.env.example` gaps; Django admin mounted; bulk upload size limit; `package.json` hardcodes the dev interpreter path |
 | 35 | `fix-browse-results` | ✅ 2026-10-15 | Calendar shows only today's movies; Rating/Release/Title sorts return junk; search term leaks between Search, People and Movies |
 | 36 | `follow-crew-credits` | ✅ 2026-10-15 | Following a director/writer never notifies; "New from X" shows old titles; late-added credits never unread |
-| 37 | `a11y-motion-titles` | ⏳ | No reduced-motion support; every route titled "CINE DB"; unnamed library card buttons; nav items aren't links; light-theme contrast |
-| 38 | `bound-background-load` | ⏳ | Unbounded concurrent metadata backfills; 3 sync gunicorn workers stall on slow TMDB; `OutstandingToken` never flushed |
+| 37 | `a11y-motion-titles` | ✅ 2026-10-15 | No reduced-motion support; every route titled "CINE DB"; unnamed library card buttons; nav items aren't links; light-theme contrast |
+| 38 | `bound-background-load` | ✅ 2026-10-15 | Unbounded concurrent metadata backfills; 3 sync gunicorn workers stall on slow TMDB; `OutstandingToken` never flushed |
 | 39 | `harden-account-input-2` | ✅ 2026-10-15 | Username change needs no password; no password-similarity check |
-| 40 | `polish-library-docs` | ⏳ | Watchlist unpaginated; US-only region; misleading For You tooltip; CSV/import small gaps; README endpoint count; dependency bumps |
+| 40 | `polish-library-docs` | ✅ 2026-10-15 | Watchlist unpaginated; US-only region; misleading For You tooltip; CSV/import small gaps; README endpoint count; dependency bumps |
 | 41 | `live-tmdb-smoke` | ✅ 2026-10-15 | Every test mocks TMDB; opt-in live shape checks for every TMDB-reading feature, fix items add query checks |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0. Open work (37, 38, 40) is under "Sixth audit (2026-10-15)" below.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. No open items; details under "Sixth audit (2026-10-15)" below.
 
 ---
 
@@ -802,7 +802,7 @@ Checked clean in this pass: the CSP covers every external origin in `src`; no `a
 
 ### Open, not yet grouped
 
-- **[low] (→ item 37)** **Light-theme secondary and tertiary text are below WCAG AA.** Re-measured: `colorTextSecondary` `#8c8168` is 3.79:1 on `#fffdf8`, 3.48:1 on `#f8f3e8` and 3.82:1 on `#fffefb`. Light mode doesn't set `colorTextTertiary`, so antd derives `rgba(0,0,0,0.45)`, about 3.3:1. `e2e/theme-readability.spec.ts` still asserts `TEXT_MIN = 3`. Same finding as item 21's polish note; still open.
+- **[low] (→ item 37, fixed in `a11y-motion-titles`)** **Light-theme secondary and tertiary text are below WCAG AA.** Re-measured: `colorTextSecondary` `#8c8168` is 3.79:1 on `#fffdf8`, 3.48:1 on `#f8f3e8` and 3.82:1 on `#fffefb`. Light mode doesn't set `colorTextTertiary`, so antd derives `rgba(0,0,0,0.45)`, about 3.3:1. `e2e/theme-readability.spec.ts` still asserts `TEXT_MIN = 3`. Same finding as item 21's polish note; still open.
 - **[low] (→ item 40)** **Docs drift:** the `genresFor` doc comment in `src/utils/browseFilters.ts` still says genres reset "in an effect, after the newly mounted page's first fetch". `App.tsx` resets them during render.
 - **Open decision:** README shows the owner's GitHub handle in the CI badge, the contributors image and the license line. It's public and the badges need it; remove only if the README must carry no personal identifiers.
 - **Docs cleanup done (2026-10-13, uncommitted):** CLAUDE.md and README no longer contain the interpreter's machine path, loopback or LAN IP literals (now "the IPv4 loopback address" and `<host-lan-ip>`), or "this machine" wording. README's Python e2e counts were stale (`test_detail.py` 19 → 25, `test_profile.py` 11 → 17; total 192). Every file path in both docs exists, and the quoted numbers (throttle rates, page sizes, gunicorn timeout, `CONN_MAX_AGE`, login limit, backfill cap, notification budget, 43 endpoints) match the code. Neither file holds secrets or open-bug details. Same pass over `features.txt` and `CHANGELOG.md`: the IP literals in CHANGELOG (0.22.0 proxy target, 0.15.x LAN example) became "Django on port 8000 over IPv4" and `<host-lan-ip>`. Accepted-weakness details were reworded to point at `docs/ARCHITECTURE.md` and item 14: the signup email reveal and username lockout (0.21.0), and the react-router advisory ids and preconditions (0.20.0). Rate-limit numbers stay, since they're public in `settings.py`. Every number in `features.txt` matches the code, and every file the 0.24.0 entry names exists. Two `features.txt` claims are wrong only because of open bugs (lockout window, item 30; TMDB flood, items 28 and 30); they're noted there.
@@ -833,7 +833,7 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **[nit] Follow and unfollow share an in-flight slot without action names** (`FollowedPeopleContext.tsx:94-117`), against the `run(key, fn, action)` convention: an unfollow issued while a follow is pending would resolve with the follow. Unreachable from today's UI (the button keeps its label until the write settles), so convention only.
 - Also: talk-show and award-show appearances ("Self" credits) feed "Because you like {actor}" (`recommendations.py:478-494`) and followed-people sections; consider skipping Talk/News/Reality genres there.
 
-### 37. `a11y-motion-titles` (frontend) (⏳)
+### 37. `a11y-motion-titles` (frontend) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-a11y-motion-titles`, specs synced into accessibility, mark-watched, theme-readability; light secondary #706753 / tertiary #776e58, dark tertiary #9090a8)
 
 - **[med] ✔ No reduced-motion support anywhere.** No `prefers-reduced-motion`, `useReducedMotion` or `MotionConfig` in `src`: page transitions (`pageVariants`), card hover scale/lift, the sidebar spring, the Stats count-up (`StatsPage.tsx` `useCountUp`) and `MarqueeTitle` scrolling all run regardless. Fix: one `<MotionConfig reducedMotion="user">` at the root plus a CSS media query, and skip the count-up.
 - **[med] ✔ Every route is titled "CINE DB".** Nothing sets `document.title` (`public/index.html:14` only), so tabs, history and bookmarks are indistinguishable, and screen readers get no page-change announcement (WCAG 2.4.2). Fix: a small `usePageTitle` per route (detail pages use the title's name), plus moving focus to the page heading on navigation.
@@ -844,7 +844,7 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **[low] Long card titles are readable only by mouse hover.** `MarqueeTitle.tsx` clips without an ellipsis or `title`, and scrolls only on `mouseenter`; touch and keyboard users never see the rest. It also measures once per title, not on resize.
 - Moved here: **light-theme secondary/tertiary text below AA** (see "Open, not yet grouped" under the fifth audit).
 
-### 38. `bound-background-load` (backend + infra) (⏳)
+### 38. `bound-background-load` (backend + infra) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-bound-background-load`, specs synced into service-health, title-metadata; gunicorn gthread 3×8, verified statically only until a Docker deploy)
 
 - **[med] ✔ Background metadata backfills have no global concurrency cap.** `metadata_backfill.request_backfill` (`metadata_backfill.py:166-172`) is single-flight per user only. Each `/stats/` visit by a user with unfilled titles starts a thread with a 5-worker TMDB pool and its own DB connection. Many users at once → unbounded threads and connections (Postgres default `max_connections` 100). Recommendation refreshes have `MAX_CONCURRENT_REFRESHES`; this path doesn't. Fix: a process-wide semaphore like `_refresh_slots`.
 - **[med] 3 sync gunicorn workers each wait on TMDB for up to 15–20 s.** `docker-entrypoint.sh:13` (`--workers 3`, sync). The proxy (`PROXY_DEADLINE_SECONDS` 20), notifications and followed-people recommendations (15 s budgets) hold a worker for the whole wait. During a TMDB slowdown 3 concurrent waits make the entire API, login and library loads included, unavailable. Item 22 accepted the public proxy; this outage case wasn't considered. Fix options: `gthread` workers (the TMDB code is thread-safe; DB-cache and connection behaviour need checking), or more workers.
@@ -856,7 +856,7 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **[low] No password-similarity check.** `AUTH_PASSWORD_VALIDATORS` (`settings.py:121-125`) lacks Django's default `UserAttributeSimilarityValidator`, and `RegisterSerializer.validate_password` (`serializers.py:20-25`) validates without the user, so "alicealice" passes for user "alice". Fix: add the validator and validate against an unsaved `User(username, email)`.
 - **[nit]** The login-failure key folds case (`auth_views.py:64-66`) while usernames are case-sensitive, so failures on "alice" also lock "Alice". `UserSerializer` exposes an unused `is_staff`.
 
-### 40. `polish-library-docs` (frontend + docs + deps) (⏳)
+### 40. `polish-library-docs` (frontend + docs + deps) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-polish-library-docs`, specs synced; deps went to Pillow 12.3.0, requests 2.34.2, psycopg2-binary 2.9.13; decided: device region + Edit Profile setting with US fallback, patch/minor dep bumps only)
 
 - **[low-med] Watchlist page has no pagination.** `WatchlistPage.tsx` renders every entry as an animated card at once (Watched paginates at 48). Slow with large watchlists.
 - **[low-med] Region is always US.** Where-to-watch (`WatchProviders.tsx:13`), certification (`MovieDetails.tsx:61`) and the mark-watched platform list (`MarkWatchedModal.tsx:65`) are fixed to `US` (labelled honestly). No region setting; non-US users get irrelevant providers. Product decision: a region preference (device default via `Intl`) or keep US.

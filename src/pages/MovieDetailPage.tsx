@@ -11,10 +11,12 @@ import { useValidId } from "../hooks/useValidId";
 import { isNotFound } from "../utils/settled";
 import { arrayOr, objectOr, resultsOf } from "../utils/appended";
 import type { TMDBCredits, TMDBImages, TMDBMovieDetailResponse } from "../types";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 function MovieDetailPage() {
   const id = useValidId();
   const [movie, setMovie] = useState<MovieDetailData | null>(null);
+  usePageTitle(movie?.title ?? "Movie");
   // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"not-found" | "failed" | null>(null);

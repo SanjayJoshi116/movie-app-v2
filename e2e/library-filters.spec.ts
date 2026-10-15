@@ -1,8 +1,8 @@
 import { test, expect, mockAuthedBase, paginated } from "./fixtures";
-import type { UserListDTO, UserListItemDTO, WatchedEntryDTO } from "../src/types/domain";
+import type { UserListDTO, UserListItemDTO, WatchedEntryDTO, WatchlistEntryDTO } from "../src/types/domain";
 
-// library-filters spec: per-list filters, and Watched never strands the user
-// on an empty page.
+// library-filters spec: per-list filters, and Watched / Watchlist never
+// strand the user on an empty page.
 
 test.beforeEach(async ({ page }) => {
   await mockAuthedBase(page);
@@ -71,4 +71,50 @@ test("unmarking the only item on the last Watched page moves to the page before"
   await expect(page.getByRole("button", { name: "Mark as unwatched" })).toHaveCount(12);
   await expect(page.getByText("Title 01")).toHaveCount(0);
   await expect(page).toHaveURL(/[?&]page=2(&|$)/);
+});
+
+test("a long Watchlist pages, and removing the last item on the last page moves back", async ({ page }) => {
+  // 50 titles at the default 48 per page: page 2 holds two. Newest first.
+  let entries: WatchlistEntryDTO[] = Array.from({ length: 50 }, (_, i) => ({
+    id: 200 + i, mediaId: 2000 + i, mediaType: "movie", title: `Pick ${String(50 - i).padStart(2, "0")}`,
+    posterPath: null, voteAverage: 7, addedAt: new Date(Date.UTC(2024, 0, 1) + (50 - i) * 3600_000).toISOString(),
+  }));
+  await page.route("**/api/watchlist/**", (route) => {
+    if (route.request().method() === "DELETE") {
+      const dbId = Number(route.request().url().match(/\/watchlist\/(\d+)\//)![1]);
+      entries = entries.filter((e) => e.id !== dbId);
+      return route.fulfill({ status: 204, body: "" });
+    }
+    return route.fulfill({ json: paginated(entries) });
+  });
+  await page.goto("/watchlist");
+  await expect(page.getByText("Pick 50")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Remove from watchlist:/ })).toHaveCount(48);
+  await expect(page.getByText("50 titles")).toBeVisible();
+
+  await page.goto("/watchlist?page=2");
+  await expect(page.getByRole("button", { name: /^Remove from watchlist:/ })).toHaveCount(2);
+  for (const title of ["Pick 02", "Pick 01"]) {
+    await page.getByRole("button", { name: `Remove from watchlist: ${title}` }).click();
+    await page.locator(".ant-popconfirm").getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByText(title)).toHaveCount(0);
+  }
+
+  await expect(page).not.toHaveURL(/[?&]page=/);
+  await expect(page.getByText("Pick 50")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Remove from watchlist:/ })).toHaveCount(48);
+});
+
+test("a list that doesn't exist shows the not-found state, and a failed load offers Retry", async ({ page }) => {
+  let fail = false;
+  await page.route("**/api/lists/**", (route) =>
+    fail ? route.fulfill({ status: 500, json: { detail: "boom" } }) : route.fulfill({ json: paginated(LISTS) }));
+  await page.goto("/lists/999");
+  await expect(page.getByText("List not found")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+
+  fail = true;
+  await page.goto("/lists/999");
+  await expect(page.getByText("Couldn't load your lists")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });

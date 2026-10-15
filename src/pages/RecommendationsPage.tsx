@@ -27,6 +27,7 @@ import FilterBar from "../components/FilterBar";
 import type { LibraryTypeFilter } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 import CardLink from "../components/CardLink";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const SS_SEARCH = "foryou_search";
 const SS_TYPE_FILTER = "foryou_type_filter";
@@ -147,6 +148,7 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
           showSuccess("Marked as watched");
         } catch (err) {
           showError(getApiError(err, "Failed to mark as watched."));
+          throw err; // the dialog stays open with what was typed
         }
         setShowMarkWatchedModal(false);
       }}
@@ -211,6 +213,7 @@ function readRecCache(): RecCache | null {
 }
 
 function RecommendationsPage() {
+  usePageTitle("For You");
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const { watchedList, isDataLoading, watchedError, reloadWatched } = useAppContext();
@@ -380,7 +383,7 @@ function RecommendationsPage() {
     >
       <Typography.Title level={2} style={{ marginBottom: 8 }}>
         For You
-        <InfoTooltip title="Blends three sources: titles similar to your watch history, patterns from similar viewers, and activity from people you follow." />
+        <InfoTooltip title="Built from your own activity: titles like the ones you watched and rated well, picks from the genres you watch most, and new work from people you follow." />
       </Typography.Title>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
         Recommendations based on {watchedList.length} watched title{watchedList.length !== 1 ? "s" : ""}

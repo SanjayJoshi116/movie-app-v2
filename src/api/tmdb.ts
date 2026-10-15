@@ -201,6 +201,13 @@ export const fetchMovieGenres = (): Promise<AxiosResponse<{ genres: Array<{ id: 
 export const fetchTVGenres = (): Promise<AxiosResponse<{ genres: Array<{ id: number; name: string }> }>> =>
   sharedGet("/genre/tv/list");
 
+// ─── Regions ──────────────────────────────────────────────────────────────────
+
+/** Countries TMDB has watch-provider data for (the region setting's options). */
+export const fetchProviderRegions = (): Promise<AxiosResponse<{
+  results: Array<{ iso_3166_1: string; english_name: string; native_name?: string }>;
+}>> => sharedGet("/watch/providers/regions");
+
 // ─── Trending ─────────────────────────────────────────────────────────────────
 
 export const fetchTrending = (

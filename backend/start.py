@@ -42,9 +42,12 @@ subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 # Idempotent; only used when DEBUG is off (DatabaseCache), harmless otherwise.
 subprocess.run([sys.executable, manage, "createcachetable"], check=True)
 
-# Step 3: Pre-compute recommendation cache (best-effort — failure or a hung
+# Step 3: Drop expired session-token rows (best-effort, bounded)
+run_warmup([sys.executable, manage, "flushexpiredtokens"], timeout=60, label="flushexpiredtokens")
+
+# Step 4: Pre-compute recommendation cache (best-effort — failure or a hung
 # TMDB call won't block startup)
 run_warmup([sys.executable, manage, "compute_recommendations"], timeout=30)
 
-# Step 4: Start server
+# Step 5: Start server
 subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)

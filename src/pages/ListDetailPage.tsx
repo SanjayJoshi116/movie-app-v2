@@ -21,6 +21,7 @@ import CSVListImportModal from "../components/lists/CSVListImportModal";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants } from "../constants/ui";
 import type { WatchlistEntry } from "../types";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const SORT_FNS = {
   "added-desc": (a: WatchlistEntry, b: WatchlistEntry) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""),
@@ -36,6 +37,7 @@ function ListDetailPage() {
   const { showSuccess, showError } = useToast();
   const { lists, isLoading, error: loadError, reloadLists, deleteList, updateList, removeFromList, clearList } = useListsContext();
   const list = lists.find((l) => l.id === listId) ?? null;
+  usePageTitle(list?.name ?? "List");
 
   const [editOpen, setEditOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -106,7 +108,7 @@ function ListDetailPage() {
         {loadError ? (
           <LoadError title="Couldn't load your lists" onRetry={() => { reloadLists().catch(() => {}); }} />
         ) : (
-          <Empty description="List not found." style={{ padding: "60px 0" }} />
+          <LoadError notFound title="List not found" subTitle="It may have been deleted, or the link is wrong." />
         )}
       </div>
     );
@@ -254,7 +256,7 @@ function ListDetailPage() {
                     tooltip="Remove"
                     icon={<DeleteOutlined />}
                     danger
-                    ariaLabel="Remove from list"
+                    ariaLabel={`Remove from list: ${item.title}`}
                   />
                 }
               />

@@ -45,8 +45,11 @@ TMDB_CALL_DEADLINE = 10
 # Only HTTP runs here (CLAUDE.md's worker-thread rule): an abandoned call can
 # finish on its own after its deadline without touching the DB or the cache.
 # Bounded, so an outage queues calls (which then fail at their deadline)
-# instead of spawning threads without limit.
-_DEADLINE_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tmdb-deadline")
+# instead of spawning threads without limit. Sized for gunicorn's 8 request
+# threads per worker plus calls abandoned at their deadline still finishing
+# (test_startup_warmup pins it against the entrypoint's --threads).
+DEADLINE_POOL_SIZE = 16
+_DEADLINE_POOL = ThreadPoolExecutor(max_workers=DEADLINE_POOL_SIZE, thread_name_prefix="tmdb-deadline")
 
 
 class TMDBDeadlineExceeded(requests.Timeout):

@@ -137,6 +137,40 @@ describe.each([
   });
 });
 
+describe.each([
+  ["watched CSV", () => <CSVUploadModal open onClose={jest.fn()} />],
+  ["list CSV", () => <CSVListImportModal open onClose={jest.fn()} lockedListId={7} />],
+])("%s file that can't be read", (_label, renderModal) => {
+  it("says so instead of showing nothing", async () => {
+    const read = jest.spyOn(FileReader.prototype, "readAsText").mockImplementation(function (this: FileReader) {
+      this.onerror?.(new ProgressEvent("error") as ProgressEvent<FileReader>);
+    });
+    render(renderModal());
+    await pickFile("rows.csv", CSV);
+    expect(await screen.findByText("Couldn't read that file.", {}, SLOW)).toBeInTheDocument();
+    read.mockRestore();
+  });
+});
+
+describe("watched CSV import keeps the export's extra columns", () => {
+  it("sends runtime and platform, and prefers the row's poster", async () => {
+    lookup.mockResolvedValue({ found: [{ posterPath: "/lookup.jpg", voteAverage: 8 }, { posterPath: "/lookup2.jpg", voteAverage: 6 }], missing: 0 });
+    render(<CSVUploadModal open onClose={jest.fn()} />);
+    await pickFile("watched.csv",
+      "title,type,tmdb_id,watched_at,runtime_minutes,platform,poster_path\n" +
+      "Fight Club,movie,550,2024-01-02T10:00:00Z,139,Netflix,/own.jpg\n" +
+      "Forrest Gump,movie,13,,,,\n");
+    await screen.findAllByText("Fight Club", {}, SLOW);
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1), SLOW);
+    const { entries } = post.mock.calls[0]![1] as { entries: Array<Record<string, unknown>> };
+    expect(entries[0]).toMatchObject({ mediaId: 550, runtimeMinutes: 139, platform: "Netflix", posterPath: "/own.jpg" });
+    expect(entries[1]).toMatchObject({ mediaId: 13, posterPath: "/lookup2.jpg" });
+    expect(entries[1]).not.toHaveProperty("runtimeMinutes");
+    expect(entries[1]).not.toHaveProperty("platform");
+  });
+});
+
 describe("backup restore", () => {
   async function startRestore() {
     const finish = pendingLookups();
@@ -169,6 +203,25 @@ describe("backup restore", () => {
 
     expect(post.mock.calls.map(([url]) => url)).toEqual(["/watchlist/bulk/"]);
     expect(mockToast.showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("counts a list it couldn't create as failed, even an empty one", async () => {
+    const saved = mockBackup.lists;
+    mockBackup.lists = [{ name: "Empty one", entries: [] }] as unknown as BackupContents["lists"];
+    const get = jest.spyOn(userApi, "get").mockResolvedValue({ data: { results: [], next: null } } as never);
+    mockLists.createList.mockRejectedValue(new Error("nope"));
+    lookup.mockImplementation(async (rows) => ({ found: rows.map(() => undefined), missing: rows.length }));
+    try {
+      render(<CSVImportAllModal open onClose={jest.fn()} />);
+      await pickFile("backup.zip", "zip");
+      fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
+      expect(await screen.findByText(/Lists: .*1 list couldn't be created/, {}, SLOW)).toBeInTheDocument();
+      expect(mockToast.showError).toHaveBeenCalledWith("Import finished with some failures. See the details.");
+      expect(mockToast.showSuccess).not.toHaveBeenCalled();
+    } finally {
+      mockBackup.lists = saved;
+      get.mockRestore();
+    }
   });
 
   it("can't be closed while running", async () => {

@@ -6,6 +6,8 @@ import type {
 } from "../types";
 import { arrayOr, objectOr } from "../utils/appended";
 import { prefillRuntime } from "../utils/watchRuntime";
+import { pickRegion } from "../utils/region";
+import { useRegion } from "../hooks/useRegion";
 
 const OTHER_VALUE = "__other__";
 
@@ -14,7 +16,9 @@ interface Props {
   mediaId: number;
   mediaType: MediaType;
   onCancel: () => void;
-  onConfirm: (details: WatchDetails) => void;
+  /** Saves; rejects on failure (after showing its own error), which keeps the
+   *  dialog open with what was entered. The caller closes it on success. */
+  onConfirm: (details: WatchDetails) => Promise<void>;
 }
 
 export interface WatchDetails {
@@ -31,8 +35,11 @@ function yearOf(date: string | undefined): number | undefined {
 
 export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm }: Props) {
   const [form] = Form.useForm();
+  const userRegion = useRegion();
   const [platform, setPlatform] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  // A save in flight: the dialog can't close and a second confirm is ignored.
+  const [saving, setSaving] = useState(false);
   const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
   // Language/year ride along from the details request we already make for the
   // runtime, so Stats doesn't have to backfill them from TMDB later.
@@ -62,7 +69,9 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
         form.setFieldsValue({ runtimeMinutes: prefillRuntime(mediaType, data) });
 
         const providers = objectOr<TMDBWatchProviderResponse>(data["watch/providers"], { results: {} });
-        const region = objectOr<Partial<TMDBProviderRegion>>(objectOr<Record<string, unknown>>(providers.results, {})["US"], {});
+        // The user's region, else the US.
+        const byRegion = objectOr<Record<string, unknown>>(providers.results, {});
+        const region = objectOr<Partial<TMDBProviderRegion>>(pickRegion(byRegion, userRegion).data, {});
         const names = Array.from(new Set(
           [...arrayOr<TMDBProvider>(region.flatrate), ...arrayOr<TMDBProvider>(region.rent), ...arrayOr<TMDBProvider>(region.buy)]
             .map((p) => p?.provider_name)
@@ -74,17 +83,25 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [open, mediaId, mediaType, form]);
+  }, [open, mediaId, mediaType, form, userRegion]);
 
-  const handleOk = () => {
-    form.validateFields().then((values) => {
-      const resolvedPlatform = values.platform === OTHER_VALUE ? values.otherPlatform?.trim() : values.platform;
-      onConfirm({
+  const handleOk = async () => {
+    if (saving) return;
+    const values = await form.validateFields().catch(() => null);
+    if (!values) return;
+    const resolvedPlatform = values.platform === OTHER_VALUE ? values.otherPlatform?.trim() : values.platform;
+    setSaving(true);
+    try {
+      await onConfirm({
         runtimeMinutes: values.runtimeMinutes ?? undefined,
         platform: resolvedPlatform || undefined,
         ...metaRef.current,
       });
-    });
+    } catch {
+      // The caller showed the error; the dialog stays open as entered.
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -92,9 +109,15 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
       title="Mark as Watched"
       open={open}
       onOk={handleOk}
-      onCancel={onCancel}
+      // While saving nothing closes it: the result (or the error, with the
+      // input kept) has to land in front of the user.
+      onCancel={saving ? undefined : onCancel}
+      maskClosable={!saving}
+      keyboard={!saving}
+      closable={!saving}
+      cancelButtonProps={{ disabled: saving }}
       okText="Mark Watched"
-      confirmLoading={loading}
+      confirmLoading={loading || saving}
       destroyOnHidden
     >
       <Spin spinning={loading}>

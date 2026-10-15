@@ -23,6 +23,7 @@ import { getApiError } from "../utils/apiError";
 import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import CardLink from "../components/CardLink";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 type SortKey = "created-desc" | "created-asc" | "name-asc" | "items-desc";
 
@@ -34,6 +35,7 @@ const SORT_FNS: Record<SortKey, (a: UserList, b: UserList) => number> = {
 };
 
 function ListsPage() {
+  usePageTitle("My Lists");
   const navigate = useNavigate();
   const { lists, isLoading, error: loadError, reloadLists, createList, deleteList } = useListsContext();
   const [createModalOpen, setCreateModalOpen] = useState(false);

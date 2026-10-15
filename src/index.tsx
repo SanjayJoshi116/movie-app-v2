@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
 import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import { ListsProvider } from "./context/ListsContext";
@@ -20,6 +21,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
+      {/* framer-motion skips transform/layout animations when the OS asks
+          for reduced motion; App.css covers CSS ones (accessibility spec). */}
+      <MotionConfig reducedMotion="user">
       <BrowserRouter>
         <AuthProvider>
           <AppProvider>
@@ -33,6 +37,7 @@ root.render(
           </AppProvider>
         </AuthProvider>
       </BrowserRouter>
+      </MotionConfig>
     </ErrorBoundary>
   </React.StrictMode>
 );

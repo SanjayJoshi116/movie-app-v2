@@ -4,8 +4,10 @@ import { Spin } from "antd";
 import { createTMDBSession } from "../api/userApi";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 function TMDBCallbackPage() {
+  usePageTitle("Connecting TMDB");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showSuccess, showError } = useToast();

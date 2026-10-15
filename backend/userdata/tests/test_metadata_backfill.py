@@ -1,3 +1,4 @@
+import threading
 import time
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
@@ -5,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.contrib.auth.models import User
 from django.utils import timezone
+from django.test import SimpleTestCase
 from rest_framework.test import APITestCase
 
 from userdata import metadata_backfill
@@ -234,3 +236,45 @@ class BackfillCompletenessTests(_Base):
         a, b = self._entry(1), self._entry(2)
         with patch.object(metadata_backfill, "MAX_PER_RUN", 1):
             self.assertTrue(backfill_entries([a, b]))
+
+
+class BackfillConcurrencyCapTests(SimpleTestCase):
+    """bound-background-load: at most MAX_CONCURRENT_BACKFILLS background
+    backfills run at once per process; the rest wait without loading entries
+    (so without a DB connection) and run after."""
+
+    def test_backfills_beyond_the_cap_wait_their_turn(self):
+        cap = metadata_backfill.MAX_CONCURRENT_BACKFILLS
+        release = threading.Event()
+        lock = threading.Lock()
+        state = {"loading": 0, "max_loading": 0, "loaded": 0}
+
+        def load(**_kw):
+            # Stands in for the DB query: it must only run inside a slot.
+            with lock:
+                state["loading"] += 1
+                state["max_loading"] = max(state["max_loading"], state["loading"])
+            release.wait(5)
+            with lock:
+                state["loading"] -= 1
+                state["loaded"] += 1
+            return []
+
+        users = range(1, cap + 4)
+        with patch.object(metadata_backfill.WatchedEntry.objects, "filter", side_effect=load), \
+                patch.object(metadata_backfill, "backfill_entries", return_value=True), \
+                patch.object(metadata_backfill.connection, "close"):
+            threads = [threading.Thread(target=metadata_backfill._run_backfill, args=(u,)) for u in users]
+            for t in threads:
+                t.start()
+            deadline = time.monotonic() + 5
+            while state["loading"] < cap and time.monotonic() < deadline:
+                time.sleep(0.01)
+            time.sleep(0.2)  # give the others a chance to (wrongly) start
+            self.assertEqual(state["loading"], cap)
+            release.set()
+            for t in threads:
+                t.join(5)
+        self.assertEqual(state["max_loading"], cap)
+        self.assertEqual(state["loaded"], len(users))
+        self.assertEqual(metadata_backfill._running, set())

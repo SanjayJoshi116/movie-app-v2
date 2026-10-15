@@ -36,7 +36,7 @@ class CallWithDeadlineTests(SimpleTestCase):
     def test_a_queued_call_that_never_started_is_cancelled(self):
         ran = threading.Event()
         # Fill every pool worker, then queue one more with a tiny deadline.
-        blockers = [tmdb_client._DEADLINE_POOL.submit(self.release.wait) for _ in range(8)]
+        blockers = [tmdb_client._DEADLINE_POOL.submit(self.release.wait) for _ in range(tmdb_client.DEADLINE_POOL_SIZE)]
         with self.assertRaises(tmdb_client.TMDBDeadlineExceeded):
             tmdb_client.call_with_deadline(ran.set, 0.2)
         self.release.set()

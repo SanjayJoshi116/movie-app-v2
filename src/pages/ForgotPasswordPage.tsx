@@ -3,8 +3,10 @@ import { Form, Input, Button, Typography, Card, App } from "antd";
 import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/userApi";
 import { getApiError } from "../utils/apiError";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function ForgotPasswordPage() {
+  usePageTitle("Forgot Password");
   const { message } = App.useApp();
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);

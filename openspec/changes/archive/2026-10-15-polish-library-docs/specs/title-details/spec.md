@@ -1,0 +1,29 @@
+## ADDED Requirements
+
+### Requirement: The user's region decides where-to-watch data
+The app SHALL have a region preference: by default the region of the device's locale (US when it has none), changeable in Edit Profile, and kept on that device like the theme. Where to Watch and the certification on movie pages SHALL use that region's TMDB data. When TMDB has nothing for that region, they SHALL show the US data instead and name the US as its region; otherwise they SHALL name the user's region.
+
+#### Scenario: Device in India
+- **WHEN** a user whose browser locale is `en-IN` opens a movie with Indian streaming providers
+- **THEN** Where to Watch lists the Indian providers and names India
+
+#### Scenario: Changed in the profile
+- **WHEN** the user picks Germany in Edit Profile
+- **THEN** Where to Watch and the certification use German data from then on, on that device
+
+#### Scenario: Nothing for the region
+- **WHEN** TMDB has no providers for the user's region but has US providers
+- **THEN** the US providers are shown under a label saying they are for the US
+
+## MODIFIED Requirements
+
+### Requirement: Where to Watch lists every way to watch in the US
+The "Where to Watch" section SHALL list the streaming, rent and buy providers of the region it shows (the user's region, or the US as a fallback) under separate headings. A heading SHALL appear only when it has at least one provider. When neither the user's region nor the US has a provider of any kind (including when the providers data is missing or malformed), the section SHALL say the title is not available to stream, rent or buy, naming the user's region rather than saying "your region".
+
+#### Scenario: Buy-only title
+- **WHEN** a title's only providers in the shown region are under "buy"
+- **THEN** the section shows a "Buy" heading with those providers and no empty "Streaming" or "Rent" heading
+
+#### Scenario: No providers anywhere
+- **WHEN** TMDB has no entry for the user's region nor for the US
+- **THEN** the section says it is not available to stream, rent or buy in the user's region

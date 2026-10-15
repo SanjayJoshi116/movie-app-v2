@@ -11,6 +11,10 @@ export interface ParsedEntry {
   watchedAt?: string;
   /** From a `watched_tz` column; the server stores an unknown zone as blank. */
   watchedTz?: string;
+  /** From a `runtime_minutes` column (Watched export): a non-negative whole number. */
+  runtimeMinutes?: number;
+  /** From a `platform` column (Watched export), trimmed. */
+  platform?: string;
 }
 
 /** One row of a CINE DB backup CSV (watchlist, watched, ratings or a list). */
@@ -137,6 +141,10 @@ function parsePositiveInt(raw: string | undefined): number | null {
   return Number.isNaN(n) || n <= 0 ? null : n;
 }
 
+/** The bulk endpoint's bounds for runtime and platform (serializers.py). */
+const MAX_RUNTIME = 2_147_483_647;
+const MAX_PLATFORM_LENGTH = 100;
+
 /** The bulk endpoints reject timestamps before 1900 (serializers.py). */
 const EARLIEST_WATCHED = Date.UTC(1900, 0, 1);
 
@@ -175,6 +183,9 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
   const typeCol = headers.findIndex((h) => h === "type" || h === "media_type");
   const watchedAtCol = headers.indexOf("watched_at");
   const watchedTzCol = headers.indexOf("watched_tz");
+  const runtimeCol = headers.indexOf("runtime_minutes");
+  const platformCol = headers.indexOf("platform");
+  const posterCol = headers.indexOf("poster_path");
 
   if (idCol === -1) {
     return {
@@ -203,6 +214,14 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     if (watchedAt) row.watchedAt = watchedAt;
     const watchedTz = watchedTzCol === -1 ? "" : (cols[watchedTzCol] ?? "").trim();
     if (watchedTz) row.watchedTz = watchedTz;
+    // Like the time, a bad value is dropped for this row only, never sent:
+    // one out-of-range value would fail the whole batch.
+    const runtimeRaw = runtimeCol === -1 ? "" : (cols[runtimeCol] ?? "").trim();
+    if (/^\d+$/.test(runtimeRaw) && Number(runtimeRaw) <= MAX_RUNTIME) row.runtimeMinutes = Number(runtimeRaw);
+    const platform = platformCol === -1 ? "" : (cols[platformCol] ?? "").trim();
+    if (platform && platform.length <= MAX_PLATFORM_LENGTH) row.platform = platform;
+    const poster = posterCol === -1 ? "" : (cols[posterCol] ?? "").trim();
+    if (poster.startsWith("/")) row.posterPath = poster;
     rows.push(row);
   }
 

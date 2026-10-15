@@ -5,12 +5,11 @@ import type { WatchedEntryDTO } from "../src/types/domain";
 
 // theme-readability spec, checked as computed contrast in the browser rather
 // than screenshots. The regression these catch is white-on-white (or
-// black-on-navy): ~1:1. Text must reach 3:1, WCAG's floor for large text and
-// UI parts; the light theme's secondary text sits near 4:1, under AA's 4.5:1
-// for small text (logged in BUG_BACKLOG), so 4.5 would fail on the palette
-// rather than on a regression. Empty heatmap cells only need to be visible
+// black-on-navy): ~1:1. Text must reach WCAG AA for small text, 4.5:1
+// (a11y-motion-titles set the secondary/tertiary tokens to clear it in both
+// themes); icons and UI parts 3:1. Empty heatmap cells only need to be visible
 // (a faint gray grid measures ~1.09:1 in light mode; white-on-white is 1.0).
-const TEXT_MIN = 3;
+const TEXT_MIN = 4.5;
 const ICON_MIN = 3;
 const CELL_MIN = 1.05;
 

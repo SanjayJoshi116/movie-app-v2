@@ -125,13 +125,13 @@ test("remove an existing rating: deleted, dialog closes, title shows unrated", a
   expect(deletes).toEqual(["/api/ratings/31/"]);
   await expect(dialog).toBeHidden();
   await expect(page.getByText("My: 8/10")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Rate", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rate: Fight Club", exact: true })).toBeVisible();
 });
 
 test("unrated title: the rating dialog offers no remove action", async ({ page }) => {
   await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: paginated([FIGHT_CLUB]) }));
   await page.goto("/watchlist");
-  await page.getByRole("button", { name: "Rate", exact: true }).click();
+  await page.getByRole("button", { name: "Rate: Fight Club", exact: true }).click();
   const dialog = page.locator(".ant-modal");
   await expect(dialog.getByRole("button", { name: "Save" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Remove rating" })).toHaveCount(0);
@@ -145,13 +145,19 @@ test("mark as watched fails: error shown, no success, item stays not watched", a
       : route.fulfill({ json: paginated([]) })
   );
   await page.goto("/watchlist");
-  await page.getByRole("button", { name: "Mark watched", exact: true }).click();
-  await page.locator(".ant-modal").getByRole("button", { name: "Mark Watched" }).click();
+  await page.getByRole("button", { name: "Mark watched: Fight Club", exact: true }).click();
+  const dialog = page.locator(".ant-modal");
+  await dialog.getByLabel("Runtime (minutes)").fill("139");
+  await dialog.getByRole("button", { name: "Mark Watched" }).click();
 
   await expect(errorToast(page)).toContainText("Failed to mark as watched.");
   await expect(successToast(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Mark watched", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark unwatched", exact: true })).toHaveCount(0);
+  // mark-watched spec: a failed save keeps the dialog open with what was typed.
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Runtime (minutes)")).toHaveValue("139");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Mark watched: Fight Club", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark unwatched: Fight Club", exact: true })).toHaveCount(0);
 });
 
 test("episode progress save fails: error shown, editor keeps the chosen season and episode", async ({ page }) => {
@@ -217,7 +223,7 @@ test("the rating dialog can't be closed while its save is in flight", async ({ p
     } satisfies RatingEntryDTO });
   });
   await page.goto("/watchlist");
-  await page.getByRole("button", { name: "Rate", exact: true }).click();
+  await page.getByRole("button", { name: "Rate: Fight Club", exact: true }).click();
   const dialog = page.locator(".ant-modal");
   await dialog.locator(".ant-rate-star").nth(7).click();
   await dialog.getByRole("button", { name: "Save" }).click();

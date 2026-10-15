@@ -26,6 +26,7 @@ import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "
 import { pageVariants, POSTER_THUMB_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { pageableTotal } from "../utils/tmdbPages";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const MOVIE_CATEGORIES = [
   { key: "discover", label: "Discover" },
@@ -49,6 +50,7 @@ interface Props {
 }
 
 function HomePage({ tab, externalFilters, externalSortBy }: Props) {
+  usePageTitle(tab === "movies" ? "Movies" : "TV Shows");
   const { selectedGenres, clearGenres, isWatched, watchedList } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();

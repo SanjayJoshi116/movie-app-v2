@@ -33,7 +33,11 @@ interface SectionResult extends BulkImportResult {
   label: string;
   error?: boolean;
   note?: string;
+  /** Lists that couldn't be created: a failure even when the list was empty. */
+  failedLists?: number;
 }
+
+const sectionFailed = (s: SectionResult) => !!s.error || s.failed > 0 || (s.failedLists ?? 0) > 0;
 
 /** Fill in posters the backup doesn't have (v1 or hand-made files), paced to
  *  the TMDB proxy's rate limit. Returns how many are still missing. */
@@ -63,6 +67,7 @@ function describeResult(r: SectionResult): string {
   if (r.error) return `${r.label}: failed`;
   const parts = [`${r.added} added`, `${r.skipped} skipped`];
   if (r.failed) parts.push(`${r.failed} failed`);
+  if (r.failedLists) parts.push(`${r.failedLists} list${r.failedLists === 1 ? "" : "s"} couldn't be created`);
   return `${r.label}: ${parts.join(", ")}${r.note ? ` (${r.note})` : ""}`;
 }
 
@@ -148,6 +153,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
           created += 1;
         } catch {
           result.failed += list.entries.length;
+          result.failedLists = (result.failedLists ?? 0) + 1;
           continue;
         }
       }
@@ -263,7 +269,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       if (contents.followed.length > 0) reloadFollowed?.();
 
       setResults(sections);
-      const anyFailed = sections.some((s) => s.error || s.failed > 0);
+      const anyFailed = sections.some(sectionFailed);
       if (anyFailed) showError("Import finished with some failures. See the details.");
       else showSuccess("Import complete.");
       // The entries are saved; only what's on screen is stale.
@@ -291,7 +297,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     onClose();
   };
 
-  const anyFailed = results?.some((s) => s.error || s.failed > 0);
+  const anyFailed = results?.some(sectionFailed);
 
   return (
     <Modal

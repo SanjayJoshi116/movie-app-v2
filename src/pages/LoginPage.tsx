@@ -5,8 +5,10 @@ import { AxiosError } from "axios";
 import { useAuth } from "../context/AuthContext";
 import { postLoginPath } from "../utils/postLoginPath";
 import { CONNECTION_ERROR } from "../utils/apiError";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function LoginPage() {
+  usePageTitle("Sign In");
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
