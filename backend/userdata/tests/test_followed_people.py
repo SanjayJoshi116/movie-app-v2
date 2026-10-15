@@ -1,17 +1,26 @@
 import re
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from userdata import social_views
 from userdata.models import FollowedPerson
 from userdata.social_views import credits_cache
+
+# A release date inside "New from"'s window (the last two years or ahead).
+RECENT = (timezone.now().date() - timedelta(days=30)).isoformat()
+
+
+def _day(offset):
+    return (timezone.now().date() + timedelta(days=offset)).isoformat()
 
 
 class FollowedPeopleTests(APITestCase):
@@ -72,7 +81,7 @@ class FollowedPeopleRecommendationsBudgetTests(APITestCase):
             if person_id != 6:
                 release.wait(10)  # far past the budget
             return {"cast": [{"id": 100 + person_id, "media_type": "movie", "title": f"T{person_id}",
-                              "vote_average": 7, "popularity": 10}]}
+                              "vote_average": 7, "popularity": 10, "release_date": RECENT}]}
         mock_get.side_effect = get
 
         started = time.monotonic()
@@ -81,8 +90,8 @@ class FollowedPeopleRecommendationsBudgetTests(APITestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertLess(elapsed, 0.5 + 2)
-        self.assertIsNotNone(credits_cache().get("person_credits:6"))  # arrived in time: cached
-        self.assertIsNone(credits_cache().get("person_credits:5"))
+        self.assertIsNotNone(credits_cache().get(social_views._credits_key(6)))  # arrived in time: cached
+        self.assertIsNone(credits_cache().get(social_views._credits_key(5)))
 
     def test_budget_fits_under_gunicorn_timeout(self):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
@@ -101,9 +110,9 @@ class FollowedRecsSameIdTests(APITestCase):
     @patch("userdata.tmdb_client._get")
     def test_movie_and_show_sharing_an_id_both_stay(self, mock_get):
         mock_get.return_value = {"cast": [
-            {"id": 1399, "media_type": "movie", "title": "A Film", "vote_average": 7.5, "popularity": 10},
-            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "popularity": 10},
-            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "popularity": 10},
+            {"id": 1399, "media_type": "movie", "title": "A Film", "vote_average": 7.5, "release_date": RECENT},
+            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "first_air_date": RECENT},
+            {"id": 1399, "media_type": "tv", "name": "A Show", "vote_average": 8.5, "first_air_date": RECENT},
         ]}
         res = self.client.get("/api/recommendations/followed-people/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
@@ -178,3 +187,51 @@ class FollowedRecsThrottleTests(APITestCase):
     def test_rate_is_configured(self):
         from django.conf import settings
         self.assertEqual(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["followed_recs"], "30/min")
+
+
+class NewFromTests(APITestCase):
+    """follow-crew-credits: "New from {name}" is new and upcoming work."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="newfrom", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.create(user=self.user, person_id=525, name="A Director")
+
+    def _titles(self):
+        res = self.client.get("/api/recommendations/followed-people/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return [i["title"] for s in res.data for i in s["items"]]
+
+    @patch("userdata.tmdb_client._get")
+    def test_newest_first_upcoming_leads_classics_left_out(self, mock_get):
+        mock_get.return_value = {
+            "cast": [
+                {"id": 1, "media_type": "movie", "title": "Classic", "vote_average": 9, "release_date": "1999-01-01"},
+            ],
+            "crew": [
+                {"id": 2, "media_type": "movie", "title": "Last Year", "vote_average": 7, "release_date": _day(-300),
+                 "job": "Director"},
+                {"id": 3, "media_type": "movie", "title": "Next Year", "vote_average": 0, "release_date": _day(200),
+                 "job": "Director"},
+                {"id": 4, "media_type": "tv", "name": "This Month", "vote_average": 2, "first_air_date": _day(-10),
+                 "job": "Creator"},
+            ],
+        }
+        self.assertEqual(self._titles(), ["Next Year", "This Month", "Last Year"])
+
+    @patch("userdata.tmdb_client._get")
+    def test_no_recent_work_means_no_section(self, mock_get):
+        mock_get.return_value = {"cast": [
+            {"id": 1, "media_type": "movie", "title": "Classic", "vote_average": 9, "release_date": "1999-01-01"},
+        ]}
+        res = self.client.get("/api/recommendations/followed-people/")
+        self.assertEqual(res.data, [])
+
+    @patch("userdata.tmdb_client._get")
+    def test_talk_show_appearances_are_left_out(self, mock_get):
+        mock_get.return_value = {"cast": [
+            {"id": 9, "media_type": "tv", "name": "Late Show", "genre_ids": [10767], "first_air_date": _day(-5)},
+            {"id": 5, "media_type": "movie", "title": "Real Work", "release_date": _day(-5)},
+        ]}
+        self.assertEqual(self._titles(), ["Real Work"])

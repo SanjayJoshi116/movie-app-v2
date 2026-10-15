@@ -133,6 +133,34 @@ describe("FollowedPeopleProvider", () => {
     expect(screen.getByTestId("a")).toHaveTextContent("Tom Hanks,Brad Pitt");
   });
 
+  it("an unfollow during a pending follow runs after it, with its own outcome", async () => {
+    let a!: FollowedPeopleContextType;
+    let release!: () => void;
+    mockFollow.mockImplementation(
+      (personId: number, name: string) =>
+        new Promise((resolve) => {
+          release = () => resolve({ data: { id: personId, personId, name, profilePath: null, followedAt: "2026-10-01T10:00:00Z" } });
+        })
+    );
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+
+    let follow!: Promise<void>;
+    let unfollow!: Promise<void>;
+    act(() => {
+      follow = a.follow(31, "Tom Hanks", null);
+      unfollow = a.unfollow(31);
+    });
+    expect(mockUnfollow).not.toHaveBeenCalled(); // queued behind the follow
+    await act(async () => {
+      release();
+      await Promise.all([follow, unfollow]);
+    });
+    expect(mockFollow).toHaveBeenCalledTimes(1);
+    expect(mockUnfollow).toHaveBeenCalledWith(31);
+    expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt");
+  });
+
   it("follows of different people are independent", async () => {
     let a!: FollowedPeopleContextType;
     mockFollow.mockImplementation(() => new Promise(() => {})); // both stay in flight

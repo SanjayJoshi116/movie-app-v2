@@ -225,7 +225,7 @@ class LoginFailureLimitTests(APITestCase):
     def test_distributed_guessing_is_limited(self):
         with self.settings(LOGIN_FAILURE_LIMIT=5):
             self._fail("alice", 5)
-            res = self._login("ALICE", PASSWORD, "10.9.9.9")
+            res = self._login("alice", PASSWORD, "10.9.9.9")
         self.assertEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
         self.assertIn("Retry-After", res)
 

@@ -13,6 +13,10 @@ import type {
   FilterValues,
   SortOption,
 } from "../types";
+import {
+  NEWEST_SORT_MIN_VOTES, OLDEST_SORT_MIN_VOTES, RATING_SORT_MIN_VOTES, TITLE_SORT_MIN_VOTES,
+} from "../constants/discover";
+import { todayLocalISO } from "../utils/browseFilters";
 
 // Same-origin by default (see DJANGO_BASE in userApi.ts).
 const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || "/api/tmdb" });
@@ -224,6 +228,20 @@ export function filtersToTMDBParams(
   const params: Record<string, string | number> = { sort_by: effectiveSortBy };
   if (filters.yearFrom) params[`${dateField}.gte`] = `${filters.yearFrom}-01-01`;
   if (filters.yearTo) params[`${dateField}.lte`] = `${filters.yearTo}-12-31`;
+  // Floors (constants/discover.ts): without them these sorts lead with junk.
+  if (sortBy === "vote_average.desc") {
+    params["vote_count.gte"] = RATING_SORT_MIN_VOTES;
+  } else if (sortBy === "primary_release_date.desc") {
+    params["vote_count.gte"] = NEWEST_SORT_MIN_VOTES;
+    // Nothing dated after the device's today (placeholders years ahead).
+    const today = todayLocalISO();
+    const lte = params[`${dateField}.lte`];
+    if (typeof lte !== "string" || lte > today) params[`${dateField}.lte`] = today;
+  } else if (sortBy === "primary_release_date.asc") {
+    params["vote_count.gte"] = OLDEST_SORT_MIN_VOTES;
+  } else if (sortBy === "original_title.asc") {
+    params["vote_count.gte"] = TITLE_SORT_MIN_VOTES;
+  }
   if (filters.minRating) params["vote_average.gte"] = filters.minRating;
   if (filters.maxRating) params["vote_average.lte"] = filters.maxRating;
   if (filters.language) params["with_original_language"] = filters.language;

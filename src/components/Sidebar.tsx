@@ -33,6 +33,7 @@ import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { avatarColor } from "../utils/colors";
 import { getInitials } from "../utils/initials";
+import { navSection } from "../utils/navSection";
 import { RATING_GOLD, WATCHED_GREEN, AVATAR_INITIALS_TEXT } from "../constants/ui";
 
 interface Props {
@@ -125,7 +126,7 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       {/* Navigation Menu */}
       <Menu
         mode="inline"
-        selectedKeys={[location.pathname]}
+        selectedKeys={[navSection(location.pathname, navDefs.map((d) => d.key)) ?? ""]}
         onSelect={({ key }) => {
           triggerFlash(String(key));
           navigate(String(key));

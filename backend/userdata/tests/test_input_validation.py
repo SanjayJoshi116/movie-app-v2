@@ -353,7 +353,9 @@ class ProfileUsernameTests(AuthedTestCase):
         User.objects.create_user(username="taken", password="Xk9#mQ2vTz8p")
         # Simulate the other rename committing between the pre-check and save().
         with mock.patch.object(UserProfileUpdateSerializer, "validate_username", lambda self, v: v):
-            res = self.client.patch("/api/auth/profile/", {"username": "taken"}, format="json")
+            res = self.client.patch(
+                "/api/auth/profile/", {"username": "taken", "current_password": "Xk9#mQ2vTz8p"}, format="json",
+            )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(res.data["username"], ["This username is already taken."])
         self.user.refresh_from_db()

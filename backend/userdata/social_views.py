@@ -162,6 +162,10 @@ FOLLOWED_RECS_BUDGET_SECONDS = 15
 _CREDIT_FIELDS = (
     "id", "media_type", "title", "name", "poster_path", "release_date", "first_air_date", "vote_average",
 )
+# Talk shows and news: a person appearing as themselves, not their work.
+TALK_AND_NEWS_GENRES = {10767, 10763}
+# "New from {name}" reads a person's titles dated this far back, or later.
+NEW_WORK_DAYS = 730
 
 
 # A person's summary keeps only credits dated this close to "now" (UTC, at
@@ -178,12 +182,18 @@ def credits_cache():
     return caches["person_credits"]
 
 
+# Versioned: entries cached before crew credits counted (cast only, all-time)
+# are never read.
 def _credits_key(person_id):
-    return f"person_credits:{person_id}"
+    return f"person_new:v2:{person_id}"
 
 
 def _recent_key(person_id):
-    return f"person_recent:{person_id}"
+    return f"person_recent:v2:{person_id}"
+
+
+def is_talk_or_news(credit):
+    return bool(TALK_AND_NEWS_GENRES & set(credit.get("genre_ids") or []))
 
 
 def credit_date(credit):
@@ -203,6 +213,13 @@ def _recent_summary(cast, today: date):
     return [c for c in cast if (d := credit_date(c)) is not None and start <= d <= end]
 
 
+def new_work(credits, today: date):
+    """Credits dated within NEW_WORK_DAYS before `today`, or later; undated ones
+    are left out. Also applied on read, so a list cached days ago stays right."""
+    start = today - timedelta(days=NEW_WORK_DAYS)
+    return [c for c in credits if (d := credit_date(c)) is not None and d >= start]
+
+
 def cached_recent_credits(person_ids):
     """{person_id: recent summary} for the people whose summary is cached. Cache
     only, no TMDB call."""
@@ -211,15 +228,27 @@ def cached_recent_credits(person_ids):
 
 
 def _fetch_person_credits(person_id):
-    """TMDB cast credits for one person, trimmed. Raises on failure. No DB or
-    cache access, so it's safe in a worker thread (the production cache is
-    DB-backed; worker threads would each open and leak a connection)."""
+    """One person's work from TMDB: acting and every crew job, one entry per
+    (id, media_type), talk and news appearances left out, trimmed. Raises on
+    failure. No DB or cache access, so it's safe in a worker thread (the
+    production cache is DB-backed; worker threads would each open and leak a
+    connection)."""
     data = tmdb_client._get(f"/person/{person_id}/combined_credits")
-    return [{k: c[k] for k in _CREDIT_FIELDS if k in c} for c in data.get("cast", []) if isinstance(c, dict)]
+    seen = set()
+    out = []
+    for c in [*(data.get("cast") or []), *(data.get("crew") or [])]:
+        if not isinstance(c, dict) or is_talk_or_news(c):
+            continue
+        key = (c.get("id"), c.get("media_type"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({k: c[k] for k in _CREDIT_FIELDS if k in c})
+    return out
 
 
 def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seconds=None, summary_only=False):
-    """Fetch TMDB cast credits for a user's followed people (all of them, or the
+    """Fetch TMDB credits (acting and crew) for a user's followed people (all of them, or the
     `limit` most recently followed). Returns [(FollowedPerson, cast_list)];
     cast_list is [] for a person whose TMDB fetch failed (or wasn't fetched this
     call), so callers never need to special-case a failure separately from
@@ -232,8 +261,9 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     new people), and `budget_seconds` caps how long it waits for them. Fetches
     still running at the deadline are abandoned: they only do HTTP.
 
-    With `summary_only` the lists are each person's recent summary (credits
-    dated around now) instead of the full list: notifications read only those,
+    Without `summary_only` the lists are each person's new and upcoming work
+    (new_work). With it, their recent summary (credits dated around now):
+    notifications read only those,
     so a poll's load doesn't grow with how many credits people have. Both are
     written together on every fetch, so either caller's fetch serves the other."""
     followed = FollowedPerson.objects.filter(user=user).order_by("-followed_at", "-id")
@@ -270,9 +300,10 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
                 pid, cast = future.result()
                 if cast is not None:
                     # On this thread: the production cache is DB-backed.
-                    recent = _recent_summary(cast, timezone.now().date())
-                    store.set_many({_credits_key(pid): cast, _recent_key(pid): recent}, PERSON_CREDITS_TTL)
-                    cached[key(pid)] = recent if summary_only else cast
+                    today = timezone.now().date()
+                    recent, new = _recent_summary(cast, today), new_work(cast, today)
+                    store.set_many({_credits_key(pid): new, _recent_key(pid): recent}, PERSON_CREDITS_TTL)
+                    cached[key(pid)] = recent if summary_only else new
         except TimeoutError:
             logger.warning(
                 "Followed-people credits budget (%ss) ran out with %s of %s fetches unfinished",
@@ -305,30 +336,31 @@ def followed_people_recommendations(request):
         for e in WatchedEntry.objects.filter(user=request.user).only("media_id", "media_type")
     }
 
+    today = timezone.now().date()
     sections = []
     for fp, cast in results:
-        items = []
+        dated = []
         # (id, type): a movie and a TV show can share a TMDB id.
         seen = set()
-        for c in cast:
+        # New and upcoming work only, newest (upcoming) first. No rating floor:
+        # new titles have few votes.
+        for c in new_work(cast, today):
             if c.get("media_type") not in ("movie", "tv"):
                 continue
             mid = c.get("id")
             key = (mid, c["media_type"])
             if key in watched_set or key in seen:
                 continue
-            if (c.get("vote_average") or 0) < 6:
-                continue
             seen.add(key)
-            items.append({
+            dated.append((credit_date(c), {
                 "id": mid,
                 "type": c["media_type"],
                 "title": c.get("title") or c.get("name", ""),
                 "posterPath": c.get("poster_path"),
                 "voteAverage": c.get("vote_average", 0),
-            })
-        items.sort(key=lambda x: -x["voteAverage"])
-        items = items[:12]
+            }))
+        dated.sort(key=lambda x: x[0], reverse=True)
+        items = [item for _, item in dated[:12]]
         if items:
             # Keyed by TMDB id: two followed people can share a name.
             sections.append({"key": f"follow-{fp.person_id}", "label": f"New from {fp.name}", "items": items})

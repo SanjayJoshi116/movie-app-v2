@@ -19,9 +19,18 @@ beforeAll(() => {
 });
 
 it("says no one matches a search with no results", async () => {
-  (useAppContext as jest.Mock).mockReturnValue({ searchTerm: "zzqx", setSearchTerm: jest.fn(), includeAdult: false });
+  // The page's own term comes from its URL, never the app-wide search term.
+  (useAppContext as jest.Mock).mockReturnValue({ searchTerm: "ignored", includeAdult: false });
   (searchPeople as jest.Mock).mockResolvedValue({ data: { results: [], total_pages: 0 } });
-  render(<MemoryRouter><PeoplePage /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={["/people?q=zzqx"]}><PeoplePage /></MemoryRouter>);
   expect(await screen.findByText('No people match "zzqx".')).toBeInTheDocument();
   expect(fetchPopularPeople).not.toHaveBeenCalled();
+});
+
+it("shows popular people when only the app-wide search term is set", async () => {
+  (useAppContext as jest.Mock).mockReturnValue({ searchTerm: "batman", includeAdult: false });
+  (fetchPopularPeople as jest.Mock).mockResolvedValue({ data: { results: [], total_pages: 0 } });
+  render(<MemoryRouter initialEntries={["/people"]}><PeoplePage /></MemoryRouter>);
+  expect(await screen.findByText("Popular People")).toBeInTheDocument();
+  expect(searchPeople).not.toHaveBeenCalledWith("batman", expect.anything(), expect.anything());
 });

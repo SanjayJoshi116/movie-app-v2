@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Space, Button, Alert, Typography } from "antd";
+import { Space, Button, Typography } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
@@ -16,10 +16,8 @@ import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
   discoverMovies,
   fetchMoviesByCategory,
-  searchMovies,
   fetchTVByCategory,
   discoverTV,
-  searchTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
 import { genresFor, hasActiveFilters } from "../utils/browseFilters";
@@ -51,7 +49,7 @@ interface Props {
 }
 
 function HomePage({ tab, externalFilters, externalSortBy }: Props) {
-  const { searchTerm, setSearchTerm, selectedGenres, clearGenres, includeAdult, isWatched, watchedList } = useAppContext();
+  const { selectedGenres, clearGenres, isWatched, watchedList } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const isMovie = tab === "movies";
@@ -69,7 +67,6 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
   useEffect(() => {
     if (!isReturning) {
-      setSearchTerm("");
       clearGenres();
       setActiveCategory(defaultCategory);
     }
@@ -88,11 +85,8 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
 
       let response;
 
-      if (searchTerm) {
-        response = isMovie
-          ? await searchMovies(searchTerm, page, includeAdult)
-          : await searchTV(searchTerm, page, includeAdult);
-      } else if (hasFilters) {
+      // No search mode: the search box always opens the Search page.
+      if (hasFilters) {
         const filterParams = filtersToTMDBParams(externalFilters ?? undefined, externalSortBy, mediaType);
         const params = { ...baseParams, ...filterParams, ...(genreString && { with_genres: genreString }) };
         response = isMovie ? await discoverMovies(params) : await discoverTV(params);
@@ -134,7 +128,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
         totalPages: pageableTotal(response.data.total_pages),
       };
     },
-    [isMovie, mediaType, searchTerm, genreString, hasFilters, activeCategory, externalFilters, externalSortBy, includeAdult]
+    [isMovie, mediaType, genreString, hasFilters, activeCategory, externalFilters, externalSortBy]
   );
 
   const { items: allItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedFetch<TMDBMovieSummary | TMDBTVSummary>({
@@ -156,9 +150,7 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
   };
 
   const categories = isMovie ? MOVIE_CATEGORIES : TV_CATEGORIES;
-  const visibleItems = searchTerm
-    ? allItems
-    : allItems.filter((item) => !isWatched(item.id, mediaType));
+  const visibleItems = allItems.filter((item) => !isWatched(item.id, mediaType));
 
   const recentWatched = watchedList
     .filter((item) => item.type === (tab === "movies" ? "movie" : "tv"))
@@ -204,23 +196,14 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
         </div>
       )}
 
-      {searchTerm && (
-        <Alert
-          message="Filters are disabled during search. Clear the search to use filters."
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
       {/* Category buttons */}
       <Space wrap style={{ marginBottom: 12 }}>
         {categories.map((cat) => (
           <Button
             key={cat.key}
             type={activeCategory === cat.key ? "primary" : "default"}
-            // A search or filter decides the results; a category can't change them then.
-            disabled={Boolean(searchTerm) || hasFilters}
+            // A filter decides the results; a category can't change them then.
+            disabled={hasFilters}
             onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}
@@ -237,14 +220,12 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
         <Movies
           movies={visibleItems as TMDBMovieSummary[]}
           onKnowMore={handleKnowMore}
-          searchTerm={searchTerm}
           hasFilters={hasFilters}
         />
       ) : (
         <TVShows
           tvShows={visibleItems as TMDBTVSummary[]}
           onKnowMore={handleKnowMore}
-          searchTerm={searchTerm}
           hasFilters={hasFilters}
         />
       )}

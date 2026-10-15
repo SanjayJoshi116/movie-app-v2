@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from userdata import genre_families, metadata_backfill, recommendations
 from userdata.metadata_backfill import backfill_entries, entry_needs_metadata
-from userdata.models import RatingEntry, UserRecommendationCache, WatchedEntry
+from userdata.models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
 
 from .test_recommendation_genres import _Base
 
@@ -204,3 +204,25 @@ class NewestComputeWinsTests(TestCase):
                 patch.object(recommendations, "_finish_refresh"):
             recommendations._refresh_cache(self.user)
         self.assertFalse(recommendations.in_failure_backoff(self.user.id))
+
+
+class ActorSectionTalkShowTests(_Base):
+    """follow-crew-credits: a talk-show appearance isn't an actor's work."""
+
+    def test_because_you_like_skips_talk_and_news(self):
+        self.watch(1, "movie", [DRAMA])
+        TMDBMediaCache.objects.filter(media_id=1).update(top_cast=[{"id": 287, "name": "An Actor"}])
+
+        def get(path, params=None, timeout=10):
+            if path == "/person/287/combined_credits":
+                return {"cast": [
+                    {"id": 70, "media_type": "tv", "name": "Late Show", "vote_average": 8, "genre_ids": [10767]},
+                    {"id": 71, "media_type": "tv", "name": "Evening News", "vote_average": 8, "genre_ids": [10763]},
+                    {"id": 72, "media_type": "movie", "title": "A Film", "vote_average": 7, "genre_ids": [DRAMA]},
+                ]}
+            return {"results": [], "cast": []}
+
+        with patch.object(recommendations.tmdb_client, "_get", side_effect=get):
+            sections = recommendations._compute_for_you(self.user)
+        actor = [s for s in sections if s["key"] == "actor-287"]
+        self.assertEqual([i["title"] for i in actor[0]["items"]], ["A Film"])

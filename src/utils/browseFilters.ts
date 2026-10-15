@@ -33,10 +33,11 @@ export function todayLocalISO(now: Date = new Date()): string {
 }
 
 /**
- * Keep only genre ids that exist for this media type. Selected genres are
- * cleared when the browse media type changes, but that happens in an effect,
- * after the newly mounted page's first fetch — this guard means that fetch
- * can never carry another media type's genre id.
+ * Keep only genre ids that exist for this media type. Genre picks live in
+ * UIContext, a parent provider App can't update during its render, so they're
+ * cleared in an effect after a scope change (applied filters reset during
+ * render). Until then this guard keeps the new scope's first fetch from
+ * carrying another media type's genre id.
  */
 export function genresFor(mediaType: "movie" | "tv", ids: number[]): number[] {
   const valid = mediaType === "movie" ? movieGenres : tvGenres;

@@ -31,6 +31,7 @@ import { useFlashTooltip } from "../hooks/useFlashTooltip";
 import { avatarColor } from "../utils/colors";
 import { getInitials } from "../utils/initials";
 import { RATING_GOLD, ON_GOLD_TEXT, AVATAR_INITIALS_TEXT } from "../constants/ui";
+import { navSection } from "../utils/navSection";
 
 interface Props {
   isBrowsePage: boolean;
@@ -76,13 +77,15 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
     navigate(path);
   };
 
-  const isMoreActive = moreItems.some((item) => location.pathname === item.path);
+  // The section the page belongs to (a list page is under My Lists).
+  const activePath = navSection(location.pathname, [...coreItems, ...moreItems].map((item) => item.path));
+  const isMoreActive = moreItems.some((item) => item.path === activePath);
 
   return (
     <>
       <nav className="app-bottom-nav" aria-label="Mobile navigation">
         {coreItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === activePath;
           const btn = (
             <Tooltip key={item.path} title={item.label} placement="top" open={flashKey === item.path || undefined}>
               <Button
@@ -178,7 +181,7 @@ const BottomNav = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", padding: "4px 8px" }}>
           {moreItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = item.path === activePath;
             return (
               <button
                 key={item.path}

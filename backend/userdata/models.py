@@ -191,10 +191,11 @@ class EpisodeProgress(models.Model):
 class NotificationCheckpoint(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_checkpoint")
     last_seen_at = models.DateTimeField()
-    # [id, media_type] of the items dated the mark-seen day (in the device's
-    # zone) that the user had then. A release dated that day that appears
-    # later isn't among them, so it still shows as unread.
-    seen_same_day = models.JSONField(default=list, blank=True)
+    # [id, media_type] of every notification the user had at the last
+    # mark-seen: an item not among them is unread, whatever its date. Null for
+    # a checkpoint from before this rule, which keeps the date rule (unread
+    # when released after the last mark-seen day) until its next mark-seen.
+    seen_items = models.JSONField(null=True, blank=True, default=None)
 
     def __str__(self):
         return f"{self.user.username} — notifications last seen {self.last_seen_at}"

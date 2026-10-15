@@ -6,6 +6,8 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 - a 2026-10-07 second full audit (items 11–15). It had four read-only passes (backend, frontend, infra, tests+docs), and every finding was re-checked against the code. Follow-up "sibling hunts" searched the code for more instances of each bug's pattern. Their findings are tagged N (round 1), R (round 2: leaks, DB, error text, transactions), S (round 3: untrusted data, route params, pagination, a11y) and T (round 4: multi-worker state, account/credential lifecycle, endpoint fuzz).
 - a 2026-10-09 third full audit (items 16–21) against 0.20.0 (`b3a5930`). Five read-only passes (backend API, backend upstream/background, frontend state, frontend pages, infra/CI/tests/docs). Items marked ✔ were re-checked against the code by hand; the rest rest on each pass's code trace or repro.
 - a 2026-10-09 fourth round (items 22–25, plus additions to 17, 20 and 21), same day, cross-cutting instead of per-layer: a sibling hunt for the third audit's patterns, cross-feature data flows, an adversarial security pass, and a spec-vs-code conformance check of all 29 `openspec/specs`. A live Playwright run of the app was the fifth pass.
+- a 2026-10-13 fifth audit (items 27–34) against 0.24.0 (`11b8c84`)
+- a 2026-10-15 sixth audit (items 35–41) against 0.26.0 (`5155a4d`). One read-only pass over the whole tree, backend, infra, frontend and tests/docs, with three findings checked against live TMDB responses (marked "✔ live").
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
 
@@ -55,8 +57,15 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 33 | `fix-frontend-state` | ✅ 2026-10-14 | Frontend state: a failed first page starts an infinite-scroll request loop (Home/Anime); browse UI state carries to the next account; follow during the lazy load is undone |
 | 34a | `harden-ci-3` | ✅ 2026-10-14 | CI/tests/images: unpinned `wait-on`, e2e Python deps and actions; no `permissions:`; vacuous list-name test; no TS DTO vs API check; no Python e2e traces; floating base images; tests in the backend image; docs drift and nits |
 | 34b | `tidy-app-config` | ✅ 2026-10-14 | App config and dev setup: prod reset links default to localhost; `.env.example` gaps; Django admin mounted; bulk upload size limit; `package.json` hardcodes the dev interpreter path |
+| 35 | `fix-browse-results` | ✅ 2026-10-15 | Calendar shows only today's movies; Rating/Release/Title sorts return junk; search term leaks between Search, People and Movies |
+| 36 | `follow-crew-credits` | ✅ 2026-10-15 | Following a director/writer never notifies; "New from X" shows old titles; late-added credits never unread |
+| 37 | `a11y-motion-titles` | ⏳ | No reduced-motion support; every route titled "CINE DB"; unnamed library card buttons; nav items aren't links; light-theme contrast |
+| 38 | `bound-background-load` | ⏳ | Unbounded concurrent metadata backfills; 3 sync gunicorn workers stall on slow TMDB; `OutstandingToken` never flushed |
+| 39 | `harden-account-input-2` | ✅ 2026-10-15 | Username change needs no password; no password-similarity check |
+| 40 | `polish-library-docs` | ⏳ | Watchlist unpaginated; US-only region; misleading For You tooltip; CSV/import small gaps; README endpoint count; dependency bumps |
+| 41 | `live-tmdb-smoke` | ✅ 2026-10-15 | Every test mocks TMDB; opt-in live shape checks for every TMDB-reading feature, fix items add query checks |
 
-Items 0–26 are done (0.24.0). Open work is under "Fifth audit (2026-10-13)" below.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0. Open work (37, 38, 40) is under "Sixth audit (2026-10-15)" below.
 
 ---
 
@@ -793,13 +802,90 @@ Checked clean in this pass: the CSP covers every external origin in `src`; no `a
 
 ### Open, not yet grouped
 
-- **[low] Light-theme secondary and tertiary text are below WCAG AA.** Re-measured: `colorTextSecondary` `#8c8168` is 3.79:1 on `#fffdf8`, 3.48:1 on `#f8f3e8` and 3.82:1 on `#fffefb`. Light mode doesn't set `colorTextTertiary`, so antd derives `rgba(0,0,0,0.45)`, about 3.3:1. `e2e/theme-readability.spec.ts` still asserts `TEXT_MIN = 3`. Same finding as item 21's polish note; still open.
-- **[low] Docs drift:** the `genresFor` doc comment in `src/utils/browseFilters.ts` still says genres reset "in an effect, after the newly mounted page's first fetch". `App.tsx` resets them during render.
+- **[low] (→ item 37)** **Light-theme secondary and tertiary text are below WCAG AA.** Re-measured: `colorTextSecondary` `#8c8168` is 3.79:1 on `#fffdf8`, 3.48:1 on `#f8f3e8` and 3.82:1 on `#fffefb`. Light mode doesn't set `colorTextTertiary`, so antd derives `rgba(0,0,0,0.45)`, about 3.3:1. `e2e/theme-readability.spec.ts` still asserts `TEXT_MIN = 3`. Same finding as item 21's polish note; still open.
+- **[low] (→ item 40)** **Docs drift:** the `genresFor` doc comment in `src/utils/browseFilters.ts` still says genres reset "in an effect, after the newly mounted page's first fetch". `App.tsx` resets them during render.
 - **Open decision:** README shows the owner's GitHub handle in the CI badge, the contributors image and the license line. It's public and the badges need it; remove only if the README must carry no personal identifiers.
 - **Docs cleanup done (2026-10-13, uncommitted):** CLAUDE.md and README no longer contain the interpreter's machine path, loopback or LAN IP literals (now "the IPv4 loopback address" and `<host-lan-ip>`), or "this machine" wording. README's Python e2e counts were stale (`test_detail.py` 19 → 25, `test_profile.py` 11 → 17; total 192). Every file path in both docs exists, and the quoted numbers (throttle rates, page sizes, gunicorn timeout, `CONN_MAX_AGE`, login limit, backfill cap, notification budget, 43 endpoints) match the code. Neither file holds secrets or open-bug details. Same pass over `features.txt` and `CHANGELOG.md`: the IP literals in CHANGELOG (0.22.0 proxy target, 0.15.x LAN example) became "Django on port 8000 over IPv4" and `<host-lan-ip>`. Accepted-weakness details were reworded to point at `docs/ARCHITECTURE.md` and item 14: the signup email reveal and username lockout (0.21.0), and the react-router advisory ids and preconditions (0.20.0). Rate-limit numbers stay, since they're public in `settings.py`. Every number in `features.txt` matches the code, and every file the 0.24.0 entry names exists. Two `features.txt` claims are wrong only because of open bugs (lockout window, item 30; TMDB flood, items 28 and 30); they're noted there.
 - **Open decision:** registration still answers "An account with this email already exists." (`RegisterSerializer.validate_email`), which reveals that an address has an account. Accepted and documented in 22. The password-reset timing leak is fixed (the mail is sent in the background).
 
 Checked clean in this pass: no TODO, FIXME, xfail, `pytest.mark.skip`, `test.fixme` or `it.todo` markers. The `test.skip(isMobile, …)` calls in `accessibility`, `browse-restore`, `load-failures` and `theme-readability` are deliberate viewport scoping. `/api/tmdb/` is still `AllowAny` with 3 sync workers and `120/min` per user or IP (accepted design, see 22).
+
+## Sixth audit (2026-10-15): items 35–41
+
+Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only pass over backend, infra, frontend, imports, nav, e2e coverage and docs. Baseline green: `tsc`, eslint, backend pytest (559 passed, 1 POSIX-only skip), Jest (400 passed). ✔ = re-checked by hand; ✔ live = confirmed against live TMDB responses on 2026-10-15. Suggested order: **41 → 35 → 36 → 39 → 37 → 38 → 40** 41 goes first: its shape checks pass now, and 35 and 36 add their checks to its file. Then visibly broken features, account, a11y, capacity and polish.
+
+### 35. `fix-browse-results` (frontend) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-fix-browse-results`; specs synced into browse-filters, calendar-export, routing, tmdb-live-checks, new release-calendar)
+
+- **[high] ✔ live Release Calendar shows only today's movies.** `CalendarPage.tsx:120-151` asks discover for the 7-day window sorted `primary_release_date.asc` and stops after 3 pages (60 titles). TMDB had 815 movies in the window; page 3 ended on today's date, so days 2–7 never show. TV (99 results) was cut off at day 5 of 7. No region, popularity or vote floor, so what does show is mostly obscure, posterless titles. Fix: filter to titles that matter (e.g. `region` + `with_release_type`, a popularity/vote floor) and/or fetch per day; say when the list is capped. No e2e test covers the Calendar's contents.
+- **[med] ✔ live "Rating (High to Low)" returns junk.** `FilterPanel.tsx:47` → `filtersToTMDBParams` (`tmdb.ts:210-235`) sends `vote_average.desc` with no `vote_count.gte`; the top results are 10.0 titles with 1 vote. Fix: add a vote-count floor whenever sorting by rating (recommendations' `discover` already uses 100/50).
+- **[med] ✔ live "Release Date (Newest)" starts in the future.** `primary_release_date.desc` with no upper bound: first results were "100 Years" (2099), "Avatar 5" (2031), other 2030s placeholders. "Oldest" and "Title A–Z" have the same kind of problem (1870s shorts, punctuation-led titles). Fix: cap `.lte` at today for Newest, and a vote/popularity floor for Oldest and A–Z.
+- **[med] ✔ Search term leaks between Search, People and Movies.** `UIContext.searchTerm` is shared. `PeoplePage.tsx:21-39` reads it without a reset on mount: a sidebar search for "batman" makes People show "People results for batman". A People search writes it back, so the sidebar box shows it. Home/Anime clear it only when not returning (`HomePage.tsx:70-76`), so Movies → detail → sidebar search → Back twice lands Movies in search mode (categories disabled, "Filters are disabled during search") with no search box on that page to clear it. `/search` without `?q=` also shows "Results for" the stale term. Fix: give People its own term (or the URL, like Search), and make Home/Anime ignore a term they didn't set.
+- **[low] Calendar's "Export iCal" exports every loaded title**, ignoring the search filter on screen (`CalendarPage.tsx:230`).
+- **[test] Live query-sanity checks for this item's fixes**, added to item 41's live smoke file: using the frontend's actual params, the Calendar covers every day of its window, the rating sort has a vote floor, and "newest" isn't in the future. They fail today and land with the fixes.
+- **[low] Sidebar highlights nothing on detail and sub-pages.** `Sidebar.tsx:128` `selectedKeys={[location.pathname]}`: `/lists/3` doesn't light "My Lists", `/movie/550` lights nothing.
+
+### 36. `follow-crew-credits` (backend + frontend) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-follow-crew-credits`, specs synced into notifications, recommendation-sections, tmdb-live-checks; migration 0029; decided: all crew jobs, "New from" = last 2 years + upcoming, unread = not seen at last mark-seen)
+
+- **[med] ✔ Following a director, writer or composer never produces anything.** `social_views.py:217-218` (`_fetch_person_credits`) keeps only `combined_credits.cast`. The person page has a Crew tab (item 19) and Follow works for everyone, but notifications and "New from X" read acting credits only, so following e.g. a director gives an empty bell and no section. Fix: merge crew (dedupe by `(id, media_type)`, maybe limit to key jobs), in both the full and recent summaries; the cache rows grow, so recheck the `person_credits` sizing.
+- **[low] "New from {name}" isn't new.** `followed_people_recommendations` (`social_views.py:309-334`) drops anything under 6.0 votes (so every new or upcoming release) and sorts by score: the section is the person's best-rated titles, often decades old. Fix: rename ("Best of {name}") or sort/filter by date.
+- **[low] Unread is decided by release date, not by when a title appeared.** `notifications_views.py:414-416`: a credit TMDB adds late with a past date (common: data entry lags release), or one that enters the cache after mark-seen, is never unread. Same for a newly followed person's recent releases, which may be intended. Decide, then either document or track first-seen per item.
+- **[test]** Add a live check to item 41's smoke file that a crew-only person (e.g. a director) yields recent crew credits through the notifications path.
+- **[nit] Follow and unfollow share an in-flight slot without action names** (`FollowedPeopleContext.tsx:94-117`), against the `run(key, fn, action)` convention: an unfollow issued while a follow is pending would resolve with the follow. Unreachable from today's UI (the button keeps its label until the write settles), so convention only.
+- Also: talk-show and award-show appearances ("Self" credits) feed "Because you like {actor}" (`recommendations.py:478-494`) and followed-people sections; consider skipping Talk/News/Reality genres there.
+
+### 37. `a11y-motion-titles` (frontend) (⏳)
+
+- **[med] ✔ No reduced-motion support anywhere.** No `prefers-reduced-motion`, `useReducedMotion` or `MotionConfig` in `src`: page transitions (`pageVariants`), card hover scale/lift, the sidebar spring, the Stats count-up (`StatsPage.tsx` `useCountUp`) and `MarqueeTitle` scrolling all run regardless. Fix: one `<MotionConfig reducedMotion="user">` at the root plus a CSS media query, and skip the count-up.
+- **[med] ✔ Every route is titled "CINE DB".** Nothing sets `document.title` (`public/index.html:14` only), so tabs, history and bookmarks are indistinguishable, and screen readers get no page-change announcement (WCAG 2.4.2). Fix: a small `usePageTitle` per route (detail pages use the title's name), plus moving focus to the page heading on navigation.
+- **[low] ✔ Library card buttons don't name their title**, against CLAUDE.md's card rule: `WatchlistPage.tsx:249,261,278` ("Mark watched", "Rate", "Remove from watchlist"), `ListDetailPage.tsx:257`, `WatchedPage.tsx:236`. A screen reader hears the same label on every card.
+- **[low] Sidebar and bottom-nav entries aren't links.** `Sidebar.tsx:126-135` navigates in `Menu.onSelect`, `BottomNav` uses buttons + `navigate()`: no Ctrl/middle-click new tab, no link semantics, and clicking the current item does nothing (antd fires no `onSelect` for the selected key).
+- **[low] Profile dialog password fields have no `autoComplete`** (`ProfileModal.tsx` current/new/confirm and the Danger Zone password), unlike the auth pages, so password managers fill or save the wrong field.
+- **[low] Mark-as-watched dialog can be closed mid-save.** `MarkWatchedModal` has no busy state; callers (`RecommendationsPage.tsx:144-152`, etc.) await the write with the dialog still cancellable and close it even on failure, losing the typed runtime/platform. Same rule as `RatingModal`.
+- **[low] Long card titles are readable only by mouse hover.** `MarqueeTitle.tsx` clips without an ellipsis or `title`, and scrolls only on `mouseenter`; touch and keyboard users never see the rest. It also measures once per title, not on resize.
+- Moved here: **light-theme secondary/tertiary text below AA** (see "Open, not yet grouped" under the fifth audit).
+
+### 38. `bound-background-load` (backend + infra) (⏳)
+
+- **[med] ✔ Background metadata backfills have no global concurrency cap.** `metadata_backfill.request_backfill` (`metadata_backfill.py:166-172`) is single-flight per user only. Each `/stats/` visit by a user with unfilled titles starts a thread with a 5-worker TMDB pool and its own DB connection. Many users at once → unbounded threads and connections (Postgres default `max_connections` 100). Recommendation refreshes have `MAX_CONCURRENT_REFRESHES`; this path doesn't. Fix: a process-wide semaphore like `_refresh_slots`.
+- **[med] 3 sync gunicorn workers each wait on TMDB for up to 15–20 s.** `docker-entrypoint.sh:13` (`--workers 3`, sync). The proxy (`PROXY_DEADLINE_SECONDS` 20), notifications and followed-people recommendations (15 s budgets) hold a worker for the whole wait. During a TMDB slowdown 3 concurrent waits make the entire API, login and library loads included, unavailable. Item 22 accepted the public proxy; this outage case wasn't considered. Fix options: `gthread` workers (the TMDB code is thread-safe; DB-cache and connection behaviour need checking), or more workers.
+- **[low] `OutstandingToken` / `BlacklistedToken` grow without bound.** Every login and hourly refresh adds rows; nothing schedules simplejwt's `flushexpiredtokens`. Documented in `docs/ARCHITECTURE.md` and left out of scope in `fix-session-lifecycle`, never tracked here. Fix: run it from the entrypoint (like `createcachetable`) or a periodic job.
+
+### 39. `harden-account-input-2` (backend) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-harden-account-input-2`, spec account-security synced; `alicealice` stays accepted at Django's default 0.7 similarity, `alice2024` is rejected; `is_staff` left as is)
+
+- **[low-med] ✔ A username can be changed without the password.** `UserProfileUpdateSerializer.validate` (`serializers.py:99-112`) requires `current_password` only for email and password changes. Login is by username, so with a stolen access token someone can rename the account and the owner can no longer sign in (their reset email does carry the new name). Fix: require the password for a username change too, and notify by email like an email change.
+- **[low] No password-similarity check.** `AUTH_PASSWORD_VALIDATORS` (`settings.py:121-125`) lacks Django's default `UserAttributeSimilarityValidator`, and `RegisterSerializer.validate_password` (`serializers.py:20-25`) validates without the user, so "alicealice" passes for user "alice". Fix: add the validator and validate against an unsaved `User(username, email)`.
+- **[nit]** The login-failure key folds case (`auth_views.py:64-66`) while usernames are case-sensitive, so failures on "alice" also lock "Alice". `UserSerializer` exposes an unused `is_staff`.
+
+### 40. `polish-library-docs` (frontend + docs + deps) (⏳)
+
+- **[low-med] Watchlist page has no pagination.** `WatchlistPage.tsx` renders every entry as an animated card at once (Watched paginates at 48). Slow with large watchlists.
+- **[low-med] Region is always US.** Where-to-watch (`WatchProviders.tsx:13`), certification (`MovieDetails.tsx:61`) and the mark-watched platform list (`MarkWatchedModal.tsx:65`) are fixed to `US` (labelled honestly). No region setting; non-US users get irrelevant providers. Product decision: a region preference (device default via `Intl`) or keep US.
+- **[low] For You tooltip claims "patterns from similar viewers"** (`RecommendationsPage.tsx:383`). There's no cross-user signal: personalized sections cluster the user's own genres. Reword.
+- **[low] Watched page CSV export drops runtime, platform and poster** (`WatchedPage.tsx:89-99`), and `CSVUploadModal` reads neither back, so the page's own export → import loses them (the backup ZIP keeps them).
+- **[low] CSV imports ignore a file-read failure.** `CSVUploadModal`'s `FileReader` (and the list import's) has no `onerror`, so an unreadable file shows nothing.
+- **[low] Backup restore loses an empty list silently.** `CSVImportAllModal.tsx:143-151`: a failed create adds `list.entries.length` to `failed`, which is 0 for an empty list, so the result reads as success.
+- **[low] List not found isn't the `notFound` LoadError.** `ListDetailPage.tsx` shows a plain `Empty` for a missing list, unlike detail/person pages.
+- **[low] Docs drift:** README says "43 REST API endpoints" (`README.md:31`); its API table and `urls.py` have 44. ~~Also the `genresFor` comment (moved here from the fifth audit's open list).~~ Fixed in `fix-browse-results`.
+- **[nit]** `App.tsx:30` has two `lazy()` statements on one line. Dependencies: `npm audit --omit=dev` shows only low-severity build-time advisories (`@babel/core`); Django 6.1, DRF 3.18, gunicorn 26, Pillow 12.3, requests 2.34, urllib3 2.8 are out (bump deliberately, with the pins and `test_dependency_versions.py`).
+
+### 41. `live-tmdb-smoke` (tests) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-live-tmdb-smoke`, spec `tmdb-live-checks` synced; live run 18 pass in ~45 s; also checks the genre chips against TMDB's genre lists)
+
+- **[med] ✔ Nothing checks the app's TMDB use against real data.** Every Jest, e2e and pytest test mocks TMDB, so code is verified only against fake answers. The three ✔ live bugs in item 35 pass the whole suite. **Decided 2026-10-15:** one live smoke file in the existing backend pytest suite (e.g. `userdata/tests/test_tmdb_live.py`), opt-in: skipped unless an explicit flag (e.g. `RUN_LIVE_TMDB=1`) and a real `TMDB_API_KEY` are set. The flag matters because the local `backend/.env` already has a key, so plain `pytest` and CI on push must never touch the network.
+- **Scope: shape checks only, for every TMDB-reading feature.** Each field or appended part the app reads still exists with the expected type. Passes today, so this lands first, independent of the fix items:
+  - Movies/TV/Anime grids: category and discover params (Anime's filters), `total_pages`.
+  - Search: movie/TV/person results, `include_adult`.
+  - Calendar: discover by date window.
+  - Hero banner: `trending` shape, backdrops.
+  - Movie/TV detail: every `append_to_response` part (`watch/providers`, `release_dates`, `aggregate_credits`, `videos`, `images`, `reviews`, `similar`, `recommendations`, `external_ids`).
+  - Episode guide: `/tv/{id}/season/{n}`, specials (season 0).
+  - Mark as watched: `runtime`, `number_of_episodes`, `episode_run_time`, `last_episode_to_air`.
+  - Person page: `movie_credits`/`tv_credits` cast and crew, `images`.
+  - Backend recommendations: discover by genre-family ids, `/similar`, `/recommendations`, `combined_credits`, `get_details_with_cast`.
+  - Backend notifications/follows: `combined_credits`.
+  - Backend Stats/backfill: `genres`, `original_language`, release dates, `/genre/{type}/list`.
+- **Rule going forward:** each fix item adds its own query-sanity checks to this file (35: Calendar coverage and sorts; 36: crew credits), and any new feature that reads TMDB adds its shape check here. Optional later: a scheduled CI job with a repo secret.
+
+Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
 
 ## Performance (2026-10-10): item 26
 

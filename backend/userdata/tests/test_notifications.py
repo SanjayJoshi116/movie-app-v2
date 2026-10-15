@@ -14,7 +14,7 @@ from rest_framework.test import APITestCase
 
 from userdata import notifications_views
 from userdata.models import FollowedPerson, NotificationCheckpoint, WatchedEntry
-from userdata.social_views import credits_cache
+from userdata.social_views import _credits_key, credits_cache
 
 
 class NewReleaseNotificationsTests(APITestCase):
@@ -151,7 +151,7 @@ class NotificationCoverageAndCacheTests(APITestCase):
         res = self.client.get("/api/notifications/new-releases/")
         self.assertEqual(mock_get.call_count, 3)
         self.assertEqual(len(res.data["items"]), 1)
-        self.assertNotIn("extra", credits_cache().get("person_credits:1")[0])  # trimmed
+        self.assertNotIn("extra", credits_cache().get(_credits_key(1))[0])  # trimmed
 
     @patch("userdata.tmdb_client._get")
     def test_failed_person_is_retried_next_poll(self, mock_get):
@@ -162,7 +162,7 @@ class NotificationCoverageAndCacheTests(APITestCase):
             return {"cast": []}
         mock_get.side_effect = person_2_fails
         self.client.get("/api/notifications/new-releases/")
-        self.assertIsNone(credits_cache().get("person_credits:2"))
+        self.assertIsNone(credits_cache().get(_credits_key(2)))
 
         mock_get.reset_mock(side_effect=True)
         mock_get.return_value = _cast("Now Works", 1)
@@ -184,7 +184,7 @@ class NotificationCoverageAndCacheTests(APITestCase):
         with self.assertNoLogs("userdata.social_views", level="ERROR"):
             res = self.client.get("/api/notifications/new-releases/")
         self.assertEqual([i["title"] for i in res.data["items"]], ["Still Here"])
-        self.assertEqual(credits_cache().get("person_credits:2"), [])
+        self.assertEqual(credits_cache().get(_credits_key(2)), [])
 
         mock_get.reset_mock()
         self.client.get("/api/notifications/new-releases/")
@@ -240,8 +240,8 @@ class NotificationPollBudgetTests(APITestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertLess(elapsed, 0.5 + 2)
-        self.assertEqual(credits_cache().get("person_credits:6"), [])  # arrived in time: cached
-        self.assertIsNone(credits_cache().get("person_credits:5"))
+        self.assertEqual(credits_cache().get(_credits_key(6)), [])  # arrived in time: cached
+        self.assertIsNone(credits_cache().get(_credits_key(5)))
 
         release.set()
         mock_get.reset_mock(side_effect=True)

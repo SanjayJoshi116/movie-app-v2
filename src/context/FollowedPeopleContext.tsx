@@ -90,7 +90,8 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
     [followed]
   );
 
-  // Follow and unfollow for one person share an in-flight slot (double-click guard).
+  // Follow and unfollow for one person share an in-flight slot: a repeat of the
+  // same action settles with the pending one, the other action runs after it.
   const follow = useCallback(
     (personId: number, name: string, profilePath: string | null) =>
       inflight.current.run(`person-${personId}`, async () => {
@@ -100,7 +101,7 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
         // Newest first, like the API (-followed_at), so a reload doesn't move it.
         setFollowed((prev) => [res.data, ...prev.filter((f) => f.personId !== personId)]);
         setChanges((c) => c + 1);
-      }),
+      }, "follow"),
     []
   );
 
@@ -112,7 +113,7 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
         if (!isCurrentSession(gen)) return;
         setFollowed((prev) => prev.filter((f) => f.personId !== personId));
         setChanges((c) => c + 1);
-      }),
+      }, "unfollow"),
     []
   );
 

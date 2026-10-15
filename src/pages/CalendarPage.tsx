@@ -120,13 +120,15 @@ function CalendarPage() {
       const movieParams = {
         "primary_release_date.gte": today,
         "primary_release_date.lte": future,
-        sort_by: "primary_release_date.asc",
+        // The window's most popular, not its earliest: TMDB dates hundreds of
+        // titles per day, so date order filled every page with day one.
+        sort_by: "popularity.desc",
         page: 1,
       } as Record<string, string | number>;
       const tvParams = {
         "first_air_date.gte": today,
         "first_air_date.lte": future,
-        sort_by: "first_air_date.asc",
+        sort_by: "popularity.desc",
         page: 1,
       } as Record<string, string | number>;
 
@@ -225,9 +227,10 @@ function CalendarPage() {
         <Typography.Title level={2} style={{ margin: 0, flex: 1 }}>
           Release Calendar
         </Typography.Title>
-        {groups.length > 0 && (
+        {filteredGroups.length > 0 && (
           <Space size={8}>
-            <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(groups)}>
+            {/* What's on screen: the title filter applies to the export too. */}
+            <Button icon={<DownloadOutlined />} size="small" onClick={() => exportIcal(filteredGroups)}>
               Export iCal
             </Button>
             <InfoTooltip title="Downloads an .ics file to import into Google/Apple/Outlook calendar." />
@@ -235,7 +238,7 @@ function CalendarPage() {
         )}
       </div>
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-        Upcoming releases in the next {RELEASE_WINDOW_DAYS} days
+        The most popular releases in the next {RELEASE_WINDOW_DAYS} days
         <InfoTooltip title="Release dates are as listed on TMDB and may vary by region/platform." />
       </Typography.Text>
 

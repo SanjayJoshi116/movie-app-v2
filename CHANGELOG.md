@@ -3,6 +3,43 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.27.0] - 2026-10-15
+
+Bug-audit release, part 12: the first changes from the sixth audit (backlog items 35–41, logged in `docs/BUG_BACKLOG.md`). Live TMDB checks (`live-tmdb-smoke`, item 41), browse results that make sense on real data (`fix-browse-results`, item 35), crew credits and a seen-based unread rule for follows (`follow-crew-credits`, item 36), and account hardening (`harden-account-input-2`, item 39). All four OpenSpec changes are archived and their specs synced. Items 37, 38 and 40 remain open.
+
+### ⚠️ Notes for deploy
+- **Migration `0029_notification_seen_items`** adds a nullable JSON column and drops `seen_same_day`. Existing checkpoints keep the old date rule until the user next marks notifications seen; a new user's first notifications all show as unread.
+- **Followed people's cached credits use new keys** (`person_new:v2:`, `person_recent:v2:`). Entries cached before the deploy are never read and expire within 6 hours, so the first polls refetch credits from TMDB, 40 people per poll as usual.
+- **Passwords too similar to the username, email or name are refused again** (`UserAttributeSimilarityValidator`, dropped in 0.15.3). Existing passwords keep working; only new ones are checked.
+- **Failed-login counters now key on the exact username.** Counters for usernames with capitals restart once, within the current hour.
+
+### Fixed — browse results (`fix-browse-results`, backlog item 35)
+- **The Release Calendar shows the whole week.** It took the earliest 60 releases, and TMDB dates hundreds of titles per day, so every movie fell on day one. It now lists the window's most popular releases, which cover every day, and says so.
+- **Sorting by rating, release date or title shows real titles.** Rating (High to Low) led with 10.0 titles that had one vote, Release Date (Newest) with placeholders dated up to 2099, and Oldest and Title (A–Z) with 1870s shorts and punctuation-named uploads. Each sort now needs a minimum vote count (`src/constants/discover.ts`), and Newest stops at today.
+- **A search stays on the page it was made on.** A sidebar search no longer turns People into "People results for …", a People search no longer shows up in the sidebar box, and Movies/TV/Anime never come back in a search mode with no box to clear it. The People page's search lives in its own address (`/people?q=…`), so Back and reload keep it.
+- **iCal export holds only what the Calendar shows,** with the title filter applied.
+- **The sidebar and bottom nav highlight a list's page under My Lists.**
+
+### Fixed — follows and notifications (`follow-crew-credits`, backlog item 36)
+- **Following a director, writer or composer now works.** Only acting credits were read, so following Christopher Nolan gave nothing. Every crew job now counts, once per title. Talk-show and news appearances are left out, here and in "Because you like {actor}".
+- **"New from {name}" lists new and upcoming work,** newest first. It used to list the person's best-rated titles of all time, because a 6.0 rating minimum dropped every new release.
+- **Unread now means "not seen when you last opened the bell".** A title TMDB adds late with an earlier date used to stay read forever.
+- Follow and unfollow on the same person no longer share one in-flight result: an unfollow during a pending follow runs after it and reports its own outcome.
+
+### Security — account (`harden-account-input-2`, backlog item 39)
+- **Changing the username needs the current password,** like the email (sign-in is by username, so a stolen access token could rename the account and lock its owner out). A wrong password counts toward the per-username limit, and the address on file is told about the rename.
+- **New passwords can't be too similar to the username, email or names,** at sign-up, on a profile change (checked against the values the account will have) and on a reset. Django's default threshold is kept: `alice2024` is refused for `alice`, `alicealice` still passes.
+- **The per-username failure limit matches usernames exactly,** as sign-in does: failures on `Alice` no longer lock out `alice`.
+
+### Added — live TMDB checks (`live-tmdb-smoke`, backlog item 41)
+- **`backend/userdata/tests/test_tmdb_live.py`** checks every field and appended part the app reads against the real TMDB API, for every feature that reads TMDB, plus query checks for the Calendar, the sort minimums and crew credits. Opt-in only: `RUN_LIVE_TMDB=1 pytest -m live_tmdb` with a real key; plain `pytest` and CI skip it and stay offline. Its no-network drift checks always run: they fail when the frontend's `append_to_response` lists, Anime keyword or sort minimums change without the test's copies, or when TMDB's genre lists stop matching the genre chips.
+
+### Docs
+- `docs/BUG_BACKLOG.md`: the sixth audit (items 35–41) logged; 35, 36, 39 and 41 archived.
+- CLAUDE.md: running the live checks and when; sort minimums, no grid search mode and People's own search; `navSection`; person credits (crew, no talk/news, versioned keys) and the `seen_items` rule; the username password gate, similarity validator and exact-username failure key.
+- `docs/ARCHITECTURE.md`: crew credits, new work and the seen set; the username gate and similarity threshold; the Calendar's popularity sort.
+- README: features, test lists (new live, Calendar, search-scope and account tests).
+
 ## [0.26.0] - 2026-10-14
 
 Bug-audit release, part 11, which closes the fifth audit (backlog items 0–34 all done): cache placement, notifications load and log redaction (`notifications-cache-hygiene`, backlog item 29), bounded recommendation refreshes (`bound-rec-refresh`, item 28a), recommendation quality fixes (`rec-quality-fixes`, item 28b), pinned CI, tests and images (`harden-ci-3`, item 34a), and app config and dev setup (`tidy-app-config`, item 34b). All five OpenSpec changes are archived and their specs synced.

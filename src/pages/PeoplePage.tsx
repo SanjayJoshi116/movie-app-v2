@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Typography, Input, Empty } from "antd";
 import { useAppContext } from "../context/useAppContext";
@@ -18,8 +18,22 @@ import { stashReturnState } from "../utils/browseReturnState";
 function PeoplePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
+  const { includeAdult } = useAppContext();
+  // The page's own search, in its URL: it survives Back and reload, and never
+  // shares the app-wide term the search box and Search page use.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchTerm = searchParams.get("q")?.trim() ?? "";
   const [inputValue, setInputValue] = useState(searchTerm);
+  const setSearchTerm = (term: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (term) next.set("q", term);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
 
   const locationState = location.state as { scrollY?: number; loadedPages?: number; isReturn?: boolean } | null;
   const isReturning = locationState?.isReturn ?? false;
@@ -51,7 +65,7 @@ function PeoplePage() {
     stashReturnState({ scrollY: window.scrollY, loadedPages: currentPage, isReturn: true });
     navigate(`/person/${person.id}`, {
       state: {
-        from: "/people",
+        from: location.pathname + location.search, // keeps ?q=
         isReturn: true,
         scrollY: window.scrollY,
         loadedPages: currentPage,

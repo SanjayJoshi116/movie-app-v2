@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Space, Button, Alert, Radio } from "antd";
+import { Space, Button, Radio } from "antd";
 import { useAppContext } from "../context/useAppContext";
 import Movies from "../components/Movies";
 import TVShows from "../components/TVShows";
@@ -14,8 +14,6 @@ import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import {
   discoverMovies,
   discoverTV,
-  searchMovies,
-  searchTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
 import { genresFor, hasActiveFilters, todayLocalISO } from "../utils/browseFilters";
@@ -64,7 +62,7 @@ interface Props {
 }
 
 function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props) {
-  const { searchTerm, setSearchTerm, selectedGenres, clearGenres, isWatched, includeAdult } = useAppContext();
+  const { selectedGenres, clearGenres, isWatched } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -87,7 +85,6 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   useEffect(() => {
     if (!isReturning) {
-      setSearchTerm("");
       clearGenres();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -112,11 +109,8 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
       let response;
 
-      if (searchTerm) {
-        response = isTV
-          ? await searchTV(searchTerm, page, includeAdult)
-          : await searchMovies(searchTerm, page, includeAdult);
-      } else if (hasFilters) {
+      // No search mode: the search box always opens the Search page.
+      if (hasFilters) {
         const filterParams = filtersToTMDBParams(externalFilters ?? undefined, externalSortBy, scopeMediaType);
         const params = { ...baseParams, ...filterParams, ...(genreString && { with_genres: genreString }) };
         response = isTV ? await discoverTV(params) : await discoverMovies(params);
@@ -130,7 +124,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         totalPages: pageableTotal(response.data.total_pages),
       };
     },
-    [animeTab, scopeMediaType, activeCategory, searchTerm, genreString, hasFilters, externalFilters, externalSortBy, includeAdult]
+    [animeTab, scopeMediaType, activeCategory, genreString, hasFilters, externalFilters, externalSortBy]
   );
 
   const { items: allItems, setItems: setAllItems, currentPage, hasMore, loading, loadingMore, loadMore, error, retry, loadMoreError, retryLoadMore } =
@@ -154,9 +148,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
 
   const categories = animeTab === "tv" ? ANIME_TV_CATEGORIES : ANIME_MOVIE_CATEGORIES;
   const animeMediaType = animeTab === "tv" ? "tv" : "movie";
-  const visibleItems = searchTerm
-    ? allItems
-    : allItems.filter((item) => !isWatched(item.id, animeMediaType));
+  const visibleItems = allItems.filter((item) => !isWatched(item.id, animeMediaType));
 
   return (
     <motion.div
@@ -189,22 +181,13 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         <Radio.Button value="movies">Anime Movies</Radio.Button>
       </Radio.Group>
 
-      {searchTerm && (
-        <Alert
-          message="Search shows all results — anime keyword filter cannot be applied during search. Clear search to browse anime only."
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
       <Space wrap style={{ marginBottom: 12 }}>
         {categories.map((cat) => (
           <Button
             key={cat.key}
             type={activeCategory === cat.key ? "primary" : "default"}
-            // A search or filter decides the results; a category can't change them then.
-            disabled={Boolean(searchTerm) || hasFilters}
+            // A filter decides the results; a category can't change them then.
+            disabled={hasFilters}
             onClick={() => setActiveCategory(cat.key)}
           >
             {cat.label}
@@ -220,14 +203,12 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
         <TVShows
           tvShows={visibleItems as TMDBTVSummary[]}
           onKnowMore={handleKnowMore}
-          searchTerm={searchTerm}
           hasFilters={hasFilters}
         />
       ) : (
         <Movies
           movies={visibleItems as TMDBMovieSummary[]}
           onKnowMore={handleKnowMore}
-          searchTerm={searchTerm}
           hasFilters={hasFilters}
         />
       )}

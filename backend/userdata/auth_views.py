@@ -62,8 +62,9 @@ class LoginThrottle(AnonRateThrottle):
 
 
 def _login_failure_key(username):
-    # Hashed so raw usernames are never stored.
-    return hashlib.sha256(username.strip().lower().encode()).hexdigest()
+    # Hashed so raw usernames are never stored. Exact, as sign-in matches
+    # usernames: folding case let failures on "Alice" lock out "alice".
+    return hashlib.sha256(username.encode()).hexdigest()
 
 
 def _failure_window():
@@ -437,6 +438,7 @@ def profile(request):
 
     user = request.user
     old_email = user.email
+    old_username = user.username
     new_email = data.get("email") or ""
     email_changed = bool(new_email) and new_email.lower() != (old_email or "").lower()
     for field in ("first_name", "last_name", "username", "email"):
@@ -457,6 +459,13 @@ def profile(request):
                 # server must not keep the token revoke/reissue below from running.
                 username, user_pk = user.username, user.pk
                 transaction.on_commit(lambda: _notify_email_changed(user_pk, username, old_email))
+            if old_email and user.username != old_username:
+                # To the address on file before this update, so a rename plus
+                # an email change made with a stolen token still reaches the owner.
+                new_username, user_pk = user.username, user.pk
+                transaction.on_commit(
+                    lambda: _notify_username_changed(user_pk, old_username, new_username, old_email)
+                )
     except IntegrityError:
         return Response(
             {"username": ["This username is already taken."]}, status=status.HTTP_400_BAD_REQUEST
@@ -498,6 +507,34 @@ def _notify_email_changed(user_pk, username, old_email):
             # password_reset_request's send_mail. The email change itself already
             # succeeded and must not be reported as failed because of this.
             logger.exception("Failed to send email-change notice for user %s", user_pk)
+
+    _in_background(send)
+
+
+def _notify_username_changed(user_pk, old_username, new_username, address):
+    """Tell the account's address its username changed (best-effort, on a
+    background thread, so it takes plain values and never touches the ORM)."""
+    from django.core.mail import send_mail
+
+    def send():
+        try:
+            send_mail(
+                subject="Your CINE DB username was changed",
+                message=(
+                    "Hi,\n\n"
+                    f"The username on your CINE DB account was just changed from {old_username} "
+                    f"to {new_username}. Use the new username to sign in.\n\n"
+                    "If you didn't do this, reset your password and contact support right away."
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[address],
+                fail_silently=False,
+            )
+        except Exception:
+            # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
+            # password_reset_request's send_mail. The rename itself already
+            # succeeded and must not be reported as failed because of this.
+            logger.exception("Failed to send username-change notice for user %s", user_pk)
 
     _in_background(send)
 

@@ -20,6 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from . import genre_families, tmdb_budget, tmdb_client
 from .metadata_backfill import backfill_entries
+from .social_views import is_talk_or_news
 from .models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
 
 logger = logging.getLogger(__name__)
@@ -483,6 +484,8 @@ def _compute_for_you(user, health=None) -> list:
                 _tmdb_item(c, c.get("media_type"))
                 for c in data.get("cast", [])
                 if c.get("media_type") in ("movie", "tv") and (c.get("vote_average") or 0) >= 6
+                # Talk shows and news: the actor as themselves, not their work.
+                and not is_talk_or_news(c)
             ]
             items.sort(key=lambda x: -x["voteAverage"])
             return actor_id, info["name"], items

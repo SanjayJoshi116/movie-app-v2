@@ -83,10 +83,10 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 ## Features
 
 ### Discovery
-- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people (the term and tab live in the URL, `/search?q=…&tab=…`, so reload, a shared link or a sign-in round trip shows the same results); the People page also has its own search box
+- **Browse & Search** — Discover, Now Playing, Top Rated, Upcoming, and Popular categories for movies, TV shows, and anime; dedicated Search page with live results across movies, TV, and people (the term and tab live in the URL, `/search?q=…&tab=…`, so reload, a shared link or a sign-in round trip shows the same results); the People page also has its own search box, kept in its own URL (`/people?q=…`) and never shared with the global search; the Movies/TV/Anime grids have no search mode
 - **Hero Banner** — Trending title of the week as a full-width backdrop with title, overview, rating, and direct link
 - **Recent Searches** — Search history dropdown (last 5 queries)
-- **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies. Drawer edits, "Include Adult Content" included, are a draft: closing without Apply discards them, and reopening shows what's applied. Every drawer field is labelled for screen readers, and category buttons are disabled while a search or filter decides the results
+- **Advanced Filters** — Filter by year range, TMDB rating, language, runtime, and sort order; year and release-date sort correctly use `first_air_date` for TV and `primary_release_date` for movies. Drawer edits, "Include Adult Content" included, are a draft: closing without Apply discards them, and reopening shows what's applied. Every drawer field is labelled for screen readers, and category buttons are disabled while a filter decides the results. The Rating, Release Date and Title sorts carry a minimum vote count (`src/constants/discover.ts`), and Newest stops at today, so they never lead with one-vote 10.0 titles or placeholders dated years ahead
 - **Genre Tags** — Pick genres in the filter drawer; they apply with the other filters on Apply, in one request
 - **Infinite Scroll** — Home, TV, and Anime pages load more as you scroll (capped at TMDB's 500-page limit); a failed next page shows "Couldn't load more" with Retry and stops auto-loading until you retry
 - **Recently Watched Strip** — Quick-access thumbnails at the top of Movies and TV pages, filtered by media type
@@ -99,7 +99,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time. A failed load shows Retry instead of "not tracked" (so a save can't overwrite real progress), and a double click on Next or Save sends one write
 - **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything; failed credit requests show an error with Retry (credits only), never "No credits"
-- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section; a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
+- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; their acting and crew work both count (talk-show and news appearances don't). Manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section ("New from {name}": their last two years and upcoming work, newest first); a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account
@@ -111,12 +111,14 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section. Lists that share a name stay separate. Older v1/v2 backups still import. Poster lookups during any import are paced under the TMDB proxy's rate limit, with progress shown, and the result says how many rows ended up without a poster
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them. Genres are matched per media type (a movie genre is never sent to TV discover), a rating change refreshes recommendations, titles you rated 4 or below never seed "Because you watched", and a group still computing after polling shows Retry
-- **Release Calendar** — 7-day lookahead of upcoming releases, grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
+- **Release Calendar** — The most popular releases of the next 7 days (every day of the window, not only the first), grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export of what's shown (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
 
 ### Auth
 - **Login / Register** — JWT-based auth; tokens stored in `localStorage`. Signed-in users opening `/login`, `/register` or `/forgot-password` are sent straight on (no form flash); unknown URLs show a "Page not found" page instead of silently redirecting. An email address belongs to one account, even when two sign-ups or email changes race
 - **Tabs Follow the Signed-In Account** — Signing out in one tab signs out the others; signing in as a different account in another tab reloads this one, and a request is never sent with another account's token in between. Only a rejected token refresh ends the session: a busy (429) or failing (5xx/network) server keeps you signed in. Token refresh and logout have their own rate limit, so many users behind one NAT don't share one bucket
 - **Password Reset** — Email-based: enter your account email, receive a reset link, set a new password via the link
+- **Password Policy** — Minimum length, no common or all-numeric passwords, and nothing too similar to the username, email or name
+- **Username and Email Changes Need the Password** — Both are part of signing in, so changing either asks for the current password, and the address on file is told
 - **Password Change Signs Out Other Devices** — Tokens are bound to the current password. Changing it (or completing a reset) ends every other session at once, including its already-issued access token and any refresh that was in flight. The device that made the change stays signed in
 - **Profile Photo** — Upload/remove a JPEG/PNG/WebP avatar (5MB max) from the Edit Profile modal; replaces the initials avatar in the sidebar/bottom nav everywhere. Each upload gets a new URL, so a new photo shows at once; a replaced, removed or deleted-account photo is no longer served, and a failed replace keeps the current one
 - **TMDB Connection** — Disconnecting TMDB, or deleting your account while connected, also revokes the session on TMDB's side (best-effort; a TMDB outage never blocks either)
@@ -657,7 +659,7 @@ src/api/__tests__/
 src/utils/__tests__/
 ├── apiError.test.ts              # Object bodies only; HTML/string bodies → fallback; network → connection message
 ├── backup.test.ts                # Backup v3 build/parse, v1/v2 compatibility
-├── browseFilters.test.ts         # Genres per media type, active-filter detection, scopes
+├── browseFilters.test.ts         # Genres per media type, active-filter detection, scopes, sort vote floors
 ├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
@@ -665,6 +667,7 @@ src/utils/__tests__/
 ├── csvBom.test.ts                # Exports start with a UTF-8 BOM and still round-trip
 ├── downloadBlob.test.ts          # Anchor attached, object URL revoked only after a tick
 ├── queryParams.test.ts           # Malformed/out-of-range page, pageSize and tab values fall back
+├── navSection.test.ts            # Nav highlight: exact page, a list's sub-page, detail pages under none
 ├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
 ├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
@@ -712,6 +715,8 @@ backend/userdata/tests/
 ├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
 ├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry,
 │                                   #   reset mail off the request thread, per-username login failure limit
+├── test_account_input_2.py         # Rename needs the current password + notice, password similarity on
+│                                   #   register/profile/reset, failure limit per exact username
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
 ├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
 ├── test_logging.py                 # TMDB key, (guest_)session_id and request_token redacted from every logger;
@@ -748,14 +753,15 @@ backend/userdata/tests/
 ├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
 ├── test_notifications.py           # New-release notifications (every followed person, credits cache),
 │                                   #   40-person/15s poll budget pinned under gunicorn's timeout
-├── test_notifications_cache.py     # Person credits in their own cache alias, polls read recent summaries only,
-│                                   #   same-day release after mark-seen is unread
+├── test_notifications_cache.py     # Person credits in their own cache alias (acting + crew, no talk/news),
+│                                   #   polls read recent summaries only, unread = not seen at last mark-seen
 ├── test_metadata_backfill.py       # One backfill per user, 100 titles per run, 404 settled in the DB
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
 ├── test_lists.py                   # Lists + list items CRUD, ownership
 ├── test_followed_people.py         # Follow/unfollow, ownership, followed-people recs budget, 404 = no credits,
-│                                   #   a movie and TV show sharing an id both kept
+│                                   #   a movie and TV show sharing an id both kept, "New from" = new and
+│                                   #   upcoming work, newest first
 ├── test_episode_progress.py        # Episode progress CRUD, ownership
 ├── test_profile.py                 # Profile GET/PATCH, accounts with no email
 ├── test_email_uniqueness.py        # Email re-checked under an advisory lock; two racing changes, one wins
@@ -777,13 +783,24 @@ backend/userdata/tests/
 ├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled
 ├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
 │                                   #   review (5000) and list description (200) caps
-└── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
+├── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
+└── test_tmdb_live.py               # Live TMDB shape checks (opt-in, see below); its frontend-param drift
+                                    #   checks run every time, no network
 ```
 
 ```bash
 pip install -r backend/requirements-test.txt -c backend/constraints.txt
 pytest backend/
 ```
+
+**Live TMDB checks (opt-in).** Every other test mocks TMDB, so they can't see a field TMDB dropped or a query that returns junk on real data. `test_tmdb_live.py` asks TMDB itself: every field and `append_to_response` part the app reads, for each feature that reads TMDB (browse grids, Search, Calendar, hero banner, movie and TV detail, episode guide, Mark as Watched, person page, and the backend's recommendations, follows, Stats genres and metadata backfill). Frontend requests go through the app's own `/api/tmdb/` proxy with the frontend's parameters; backend checks call the backend's own TMDB functions. It needs a real `TMDB_API_KEY` in `backend/.env` and an explicit flag, so plain `pytest` and CI never touch the network:
+
+```bash
+cd backend
+RUN_LIVE_TMDB=1 pytest -m live_tmdb   # about a minute, ~40 TMDB calls
+```
+
+Without the flag (or the key) every live check is skipped with the reason. Its drift checks always run: they fail when the detail pages' `append_to_response` lists or the Anime keyword in the frontend source no longer match the file's copies.
 
 ### E2E tests — Playwright (2 projects)
 
@@ -803,6 +820,9 @@ e2e/
 │                           #   from Following
 ├── accessibility.spec.ts  # Ctrl/Cmd-click opens a new tab; light-theme focus outline
 ├── load-failures.spec.ts  # Following/Calendar/profile TMDB-status failures shown, not empty states
+├── calendar.spec.ts       # Most popular releases in the window; iCal export follows the title filter
+├── search-scope.spec.ts   # Searches stay on their page (People's in ?q=, no grid search mode); list page
+│                           #   highlights My Lists
 ├── double-submit.spec.ts  # Register and list create/edit submit once
 ├── search-url.spec.ts     # Search term and tab survive reload and a sign-in round trip
 ├── route-ids.spec.ts      # Invalid/traversal ids show not-found and request nothing

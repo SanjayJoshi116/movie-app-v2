@@ -119,6 +119,8 @@ DATABASES = {
 }
 
 AUTH_PASSWORD_VALIDATORS = [
+    # Not too close to the account's username, email or names.
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -216,7 +218,7 @@ TMDB_CACHE_PRODUCTION = {
 # `default` they outnumbered the throttle counters, and past MAX_ENTRIES every
 # cull dropped a third of `default`, counters first (they sort first). In `tmdb`
 # a big follow list and the proxy would cull each other. Two small rows per
-# person (full trimmed list + recent summary), so 10k entries ~ 5k people.
+# person (new and upcoming work + recent summary), so 10k entries ~ 5k people.
 PERSON_CREDITS_CACHE_DEV = {
     "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     "LOCATION": "person-credits",

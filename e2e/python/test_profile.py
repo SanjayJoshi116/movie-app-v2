@@ -75,6 +75,28 @@ class TestProfileSave:
         # Unchanged email and no new password: no password field is sent.
         assert "current_password" not in sent[0] and "new_password" not in sent[0]
 
+    def test_rename_sends_the_current_password(self, authed_page: Page):
+        # account-security: a username change needs the current password.
+        mock_tmdb_movies(authed_page)
+        sent = []
+
+        def profile(r):
+            sent.append(r.request.post_data_json)
+            fulfill_json(r, {**MOCK_USER, "username": "renamed"})
+
+        authed_page.route("**/api/auth/profile/**", profile)
+        authed_page.goto("/movies")
+        expect(authed_page.get_by_role("article").first).to_be_visible(timeout=10_000)
+        open_profile_modal(authed_page)
+        modal = authed_page.locator(".ant-modal")
+        expect(modal.get_by_text("Required to change username, email or password")).to_be_visible()
+        modal.get_by_label("Username").fill("renamed")
+        modal.get_by_label("Current Password").fill("Xk9#mQ2vTz8p")
+        save_button(authed_page).click()
+        expect(authed_page.get_by_text("Profile updated successfully.")).to_be_visible(timeout=5_000)
+        assert sent and sent[0]["username"] == "renamed"
+        assert sent[0]["current_password"] == "Xk9#mQ2vTz8p"
+
     def test_profile_save_error_keeps_dialog_open(self, authed_page: Page):
         mock_tmdb_movies(authed_page)
         authed_page.route("**/api/auth/profile/**", lambda r: r.fulfill(

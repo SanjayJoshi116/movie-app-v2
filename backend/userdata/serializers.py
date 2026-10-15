@@ -17,12 +17,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ("username", "email", "password")
 
-    def validate_password(self, value):
+    def validate(self, data):
+        # Object level, so the password is checked against the new account's
+        # username and email too (UserAttributeSimilarityValidator).
+        data = super().validate(data)
+        candidate = User(username=data.get("username", ""), email=data.get("email") or "")
         try:
-            validate_password(value)
+            validate_password(data["password"], user=candidate)
         except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages) from exc
-        return value
+            raise serializers.ValidationError({"password": exc.messages}) from exc
+        return data
 
     def validate_email(self, value):
         # Django's built-in User.email has no unique=True, so nothing stops duplicate
@@ -103,10 +107,19 @@ class UserProfileUpdateSerializer(serializers.Serializer):
         # resubmits the unchanged email on every save, so compare case-insensitively.
         if "email" in data and data["email"].lower() != (user.email or "").lower():
             self._require_current_password(data, "email")
+        # The username is the other half of the login: renaming the account
+        # with only a (possibly stolen) access token would lock the owner out.
+        if "username" in data and data["username"] != user.username:
+            self._require_current_password(data, "username")
         if data.get("new_password"):
             self._require_current_password(data, "password")
+            # Against the details the account will have after this update.
+            candidate = User(**{
+                field: data.get(field, getattr(user, field))
+                for field in ("username", "email", "first_name", "last_name")
+            })
             try:
-                validate_password(data["new_password"], user=user)
+                validate_password(data["new_password"], user=candidate)
             except DjangoValidationError as exc:
                 raise serializers.ValidationError({"new_password": exc.messages}) from exc
         return data

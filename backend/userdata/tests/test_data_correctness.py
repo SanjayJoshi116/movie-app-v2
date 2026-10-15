@@ -43,7 +43,9 @@ class SectionKeyTests(APITestCase):
         FollowedPerson.objects.create(user=self.user, person_id=1, name="Chris Evans")
         FollowedPerson.objects.create(user=self.user, person_id=2, name="Chris Evans")
         mock_get.side_effect = lambda path, *a, **k: {"cast": [
-            {"id": 100 + int(path.split("/")[2]), "media_type": "movie", "title": "t", "vote_average": 8}
+            # Dated recently: "New from" lists new and upcoming work only.
+            {"id": 100 + int(path.split("/")[2]), "media_type": "movie", "title": "t", "vote_average": 8,
+             "release_date": (timezone.now().date() - timedelta(days=30)).isoformat()}
         ]}
 
         res = self.client.get("/api/recommendations/followed-people/")

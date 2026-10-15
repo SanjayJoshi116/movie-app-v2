@@ -149,13 +149,15 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
     confirm_password?: string;
   }) => {
     const { confirm_password, ...payload } = values;
-    // The backend requires the current password to change the email too (it's
-    // where reset links go); the form always resubmits the email, so compare.
+    // The backend requires the current password to change the email (it's
+    // where reset links go) or the username (it's how you sign in); the form
+    // always resubmits both, so compare.
     const emailChanged =
       (payload.email ?? "").trim().toLowerCase() !== (user?.email ?? "").toLowerCase();
+    const usernameChanged = payload.username !== user?.username;
     if (!payload.new_password) {
       delete payload.new_password;
-      if (!emailChanged) delete payload.current_password;
+      if (!emailChanged && !usernameChanged) delete payload.current_password;
     }
     setLoading(true);
     try {
@@ -344,7 +346,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
         <Form.Item
           label="Current Password"
           name="current_password"
-          extra="Required to change email or password"
+          extra="Required to change username, email or password"
           style={{ marginBottom: 12 }}
         >
           <Input.Password placeholder="Leave blank to keep current" />
