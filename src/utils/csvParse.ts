@@ -144,6 +144,8 @@ function parsePositiveInt(raw: string | undefined): number | null {
 /** The bulk endpoint's bounds for runtime and platform (serializers.py). */
 const MAX_RUNTIME = 2_147_483_647;
 const MAX_PLATFORM_LENGTH = 100;
+/** The serializers' `max_length` for a poster path. */
+const MAX_POSTER_PATH_LENGTH = 500;
 
 /** The bulk endpoints reject timestamps before 1900 (serializers.py). */
 const EARLIEST_WATCHED = Date.UTC(1900, 0, 1);
@@ -186,6 +188,7 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
   const runtimeCol = headers.indexOf("runtime_minutes");
   const platformCol = headers.indexOf("platform");
   const posterCol = headers.indexOf("poster_path");
+  const voteCol = headers.indexOf("vote_average");
 
   if (idCol === -1) {
     return {
@@ -221,7 +224,11 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     const platform = platformCol === -1 ? "" : (cols[platformCol] ?? "").trim();
     if (platform && platform.length <= MAX_PLATFORM_LENGTH) row.platform = platform;
     const poster = posterCol === -1 ? "" : (cols[posterCol] ?? "").trim();
-    if (poster.startsWith("/")) row.posterPath = poster;
+    if (poster.startsWith("/") && poster.length <= MAX_POSTER_PATH_LENGTH) row.posterPath = poster;
+    // The export's score: with a poster too, the row needs no TMDB lookup.
+    const voteRaw = voteCol === -1 ? "" : (cols[voteCol] ?? "").trim();
+    const vote = voteRaw === "" ? NaN : Number(voteRaw);
+    if (Number.isFinite(vote) && vote >= 0 && vote <= 10) row.voteAverage = vote;
     rows.push(row);
   }
 

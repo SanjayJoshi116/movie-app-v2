@@ -107,7 +107,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
-- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them; a file that can't be read says so; watched list refreshes immediately after import
+- **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them, and makes no TMDB lookups for rows that already carry a poster and a score; an oversized poster value is dropped for that row only; a file that can't be read says so; watched list refreshes immediately after import
 - **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. Poster lookups during any import are paced under the TMDB proxy's rate limit, with progress shown, and the result says how many rows ended up without a poster
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them. Genres are matched per media type (a movie genre is never sent to TV discover), a rating change refreshes recommendations, titles you rated 4 or below never seed "Because you watched", and a group still computing after polling shows Retry
@@ -126,7 +126,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 ### UI & UX
 - **Skeleton Loaders** — Content placeholders while data loads
 - **Keyboard & Screen-Reader Friendly** — Every poster card that opens a page is a real link: Tab to it, Enter to open, Ctrl/middle-click for a new tab, with a visible focus outline in both themes; sidebar and bottom-nav entries are links too; icon-only buttons are labelled, and card buttons name their title ("Remove from watchlist: Dune"). Each page has its own tab title ("Watchlist · CINE DB", a movie page uses the movie's name), announced to screen readers after navigation. Password fields tell password managers which is current and which is new. Secondary and muted text meets WCAG AA (4.5:1) in both themes
-- **Reduced Motion** — With the OS "reduce motion" setting on, page transitions, card hover effects, the Stats count-up and the title marquee don't animate
+- **Reduced Motion** — With the OS "reduce motion" setting on, page transitions, card hover effects, the Stats count-up, the Stats charts and the title marquee don't animate, and page changes and the Calendar's Jump to Today scroll instantly
 - **Fast Pages** — Each movie/TV detail page loads in one TMDB request (`append_to_response`), identical requests in flight are shared, the Django proxy caches TMDB answers (10 min–24 h by kind), library lists load 500 rows per request, images are sized for display (`w342` grid posters, `w1280` backdrops), and trailers load the YouTube player only when you press play
 - **Honest Load & Error States** — Every page shows loading, an error with in-place Retry, the empty state, or content — a failed request is never shown as "nothing here". Detail pages degrade per section and show "not found" for unknown ids
 - **Back Stays in the App** — A detail or person page's Back button goes back in history only when there's an in-app page to return to; opened in a new tab or from another site, it goes to Movies, TV Shows or People. Browser Back to People restores its loaded pages and scroll
@@ -321,6 +321,7 @@ src/
 │   │                            #   detail/person pages show not-found instead of building a proxy path
 │   ├── useRecentSearches.ts     # Last 5 searches (shared by the Sidebar and BottomNav search boxes)
 │   ├── useActionIconColor.ts    # Idle watched/watchlist icon color: gold (dark) / theme text color (light)
+│   ├── useScrollBehavior.ts     # Programmatic scroll behavior: instant under reduced motion, else smooth
 │   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
 │                                #   used by Sidebar.tsx and BottomNav.tsx
 ├── pages/
@@ -690,10 +691,12 @@ src/utils/__tests__/
 src/components/__tests__/
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
+├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
-├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save
+├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save or a region change
 ├── MarqueeTitle.test.tsx         # Ellipsis + full-title tooltip, no scroll under reduced motion
-├── RouteAnnouncer.test.tsx       # Tab title per page, settled title announced, focus left alone
+├── RouteAnnouncer.test.tsx       # Tab title per page; only the new page's loaded title announced, never the first load
+├── renderCertifications.test.ts  # A malformed country entry empties only the Certification cell
 ├── PersonCardFollow.test.tsx     # Follow disabled while follow state loads
 ├── importSession.test.tsx        # Imports/restores stop after sign-out, can't close mid-run; unreadable file,
 │                                 #   Watched columns sent, a list that couldn't be created fails; personLabel
@@ -708,6 +711,8 @@ src/components/layout/__tests__/
 
 src/pages/__tests__/
 ├── countUp.test.tsx              # Stats numbers final at once under reduced motion
+├── StatsMotion.test.tsx          # Stats chart series don't animate under reduced motion
+├── WatchlistPagination.test.tsx  # A deep-linked page waits for the watched data its filter needs
 ├── ListsPage.test.tsx            # Delete confirm never opens the list; grid kept during a reload
 ├── RecommendationsPage.test.tsx  # Partial group failure → inline Retry; failed watched load → error
 ├── PersonPage.test.tsx           # Failed credits → error with Retry (credits only), partial tabs kept

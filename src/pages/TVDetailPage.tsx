@@ -16,8 +16,9 @@ import { usePageTitle } from "../hooks/usePageTitle";
 function TVDetailPage() {
   const id = useValidId();
   const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
-  usePageTitle(tvShow?.name ?? "TV Show");
   const [loading, setLoading] = useState(true);
+  // A bad id shows NotFoundPage, which names itself: nothing is loading then.
+  usePageTitle(tvShow?.name ?? "TV Show", { loading: loading && id !== null });
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 

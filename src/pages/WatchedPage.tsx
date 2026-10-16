@@ -24,6 +24,7 @@ import { pageVariants, WATCHED_GREEN } from "../constants/ui";
 import type { WatchedEntry } from "../types";
 import { parseIntParam } from "../utils/queryParams";
 import { usePageTitle } from "../hooks/usePageTitle";
+import { useScrollBehavior } from "../hooks/useScrollBehavior";
 
 const PAGE_SIZES = [12, 24, 48, 96] as const;
 
@@ -34,6 +35,7 @@ const SORT_FNS: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
 };
 
 function WatchedPage() {
+  const scrollBehavior = useScrollBehavior();
   usePageTitle("Watched");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -261,7 +263,7 @@ function WatchedPage() {
                 pageSizeOptions={[...PAGE_SIZES]}
                 onChange={(p, ps) => {
                   setPageState(ps !== pageSize ? 1 : p, ps);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
+                  window.scrollTo({ top: 0, behavior: scrollBehavior });
                 }}
                 showTotal={(total) => `${total} titles`}
               />

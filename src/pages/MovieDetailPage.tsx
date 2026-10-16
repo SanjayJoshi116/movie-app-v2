@@ -16,9 +16,10 @@ import { usePageTitle } from "../hooks/usePageTitle";
 function MovieDetailPage() {
   const id = useValidId();
   const [movie, setMovie] = useState<MovieDetailData | null>(null);
-  usePageTitle(movie?.title ?? "Movie");
   // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
+  // A bad id shows NotFoundPage, which names itself: nothing is loading then.
+  usePageTitle(movie?.title ?? "Movie", { loading: loading && id !== null });
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 

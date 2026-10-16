@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MarkWatchedModal } from "../MarkWatchedModal";
 import { fetchMovieDetails } from "../../api/tmdb";
+import type { ContextType } from "react";
+import { UIContext } from "../../context/UIContext";
 
 // mark-watched spec: the dialog holds while saving and survives a failed save.
 jest.mock("../../api/tmdb", () => ({ __esModule: true, fetchMovieDetails: jest.fn(), fetchTVDetails: jest.fn() }));
@@ -61,4 +63,32 @@ it("a failed save keeps the dialog open with what was entered", async () => {
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(screen.getByLabelText("Runtime (minutes)")).toHaveValue("150");
   expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+});
+
+it("a region change keeps the entered runtime and re-picks only the platforms", async () => {
+  (fetchMovieDetails as jest.Mock).mockClear().mockResolvedValue({
+    data: {
+      runtime: 139,
+      "watch/providers": { results: {
+        US: { flatrate: [{ provider_name: "Netflix" }] },
+        IN: { flatrate: [{ provider_name: "Hotstar" }] },
+      } },
+    },
+  });
+  const dialog = (region: string) => (
+    <UIContext.Provider value={{ region } as unknown as ContextType<typeof UIContext>}>
+      <MarkWatchedModal open mediaId={550} mediaType="movie" onCancel={jest.fn()} onConfirm={jest.fn()} />
+    </UIContext.Provider>
+  );
+  const { rerender } = render(dialog("US"));
+  const runtime = await screen.findByLabelText("Runtime (minutes)");
+  await waitFor(() => expect(runtime).toHaveValue("139"));
+  fireEvent.change(runtime, { target: { value: "95" } });
+
+  rerender(dialog("IN"));
+  fireEvent.mouseDown(screen.getByLabelText("Watched on (optional)"));
+  expect(await screen.findByTitle("Hotstar")).toBeInTheDocument();
+  expect(screen.queryByTitle("Netflix")).toBeNull();
+  expect(runtime).toHaveValue("95");
+  expect(fetchMovieDetails).toHaveBeenCalledTimes(1);
 });

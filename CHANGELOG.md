@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.28.1] - 2026-10-16
+
+Follow-up fixes from a code review of 0.28.0 (`fix-a11y-import-followups`, backlog item 42). The OpenSpec change is archived and its specs synced. Frontend only: no backend, API, migration or dependency changes. There are no open backlog items.
+
+### Fixed
+- **A malformed per-country release-dates entry can't crash the movie page.** The certification reads each entry through the shape guards, so a bad one empties only the Certification cell. It used to throw, and the whole page hit the error boundary.
+- **Screen readers hear the new page's real title.** The route announcer waits for the new page to report its title, and on detail, person and list pages until the name has loaded or the load has failed. It no longer reads out the previous page's title or a generic "Movie · CINE DB", and never announces the first page load (StrictMode's dev-only replay included).
+- **A deep-linked Watchlist page survives the Watched/Unwatched filter.** The step that moves to the last non-empty page also waits for the watched list, so `/watchlist?page=3` isn't reset to page 1 before that data arrives.
+- **Changing the region while Mark as Watched is open keeps the runtime you typed.** Only the platform list is recomputed, and the details aren't fetched again.
+- **An oversized `poster_path` in a Watched CSV is dropped for that row only,** like runtime and platform, instead of failing the whole chunk.
+- **Reduced motion now covers JS-driven motion too.** Stats' charts don't animate, and Watchlist/Watched page changes and the Calendar's Jump to Today scroll instantly.
+- **Re-importing the app's own Watched export makes no TMDB lookups** for rows that already carry a poster and a score, which the export always has. A 900-row re-import used to take about 10 minutes of paced lookups. The file's values still beat the lookup's.
+
+### Changed
+- `useScrollBehavior()` (`src/hooks/useScrollBehavior.ts`) is the one place programmatic scrolls get their `behavior` (`"auto"` under reduced motion), replacing three copies of the same check.
+
+### Tests
+- Jest: certification with a malformed entry (`renderCertifications.test.ts`), the announcer's settled title and first-load skip, Watchlist's deep-linked page clamp (`WatchlistPagination.test.tsx`), Mark as Watched across a region change, Stats charts under reduced motion (`StatsMotion.test.tsx`), import lookups skipped for covered rows (`CSVUploadModalLookups.test.tsx`), oversized `poster_path` and the `vote_average` column in `csvParse.test.ts`.
+- e2e: `import.spec.ts` mocks the TMDB poster lookups, so the import result is a plain success.
+
+### Docs
+- `docs/BUG_BACKLOG.md`: item 42 archived.
+- CLAUDE.md: page titles with `{ loading }` on list pages too, `useScrollBehavior()` for programmatic scrolls, import lookups only for rows the file doesn't fully cover.
+- README and features.txt: reduced motion over charts and scrolls, re-import without lookups, the new hook and test files.
+
 ## [0.28.0] - 2026-10-15
 
 Bug-audit release, part 13, which closes the sixth audit (backlog items 35–41 all done): accessibility, motion and page titles (`a11y-motion-titles`, item 37), bounded background load and threaded workers (`bound-background-load`, item 38), and library, region and docs polish (`polish-library-docs`, item 40). All three OpenSpec changes are archived and their specs synced.

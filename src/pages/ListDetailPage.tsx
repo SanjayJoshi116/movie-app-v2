@@ -37,7 +37,7 @@ function ListDetailPage() {
   const { showSuccess, showError } = useToast();
   const { lists, isLoading, error: loadError, reloadLists, deleteList, updateList, removeFromList, clearList } = useListsContext();
   const list = lists.find((l) => l.id === listId) ?? null;
-  usePageTitle(list?.name ?? "List");
+  usePageTitle(list?.name ?? "List", { loading: isLoading && !list });
 
   const [editOpen, setEditOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);

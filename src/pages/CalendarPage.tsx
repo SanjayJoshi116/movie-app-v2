@@ -17,6 +17,7 @@ import { ratingColor } from "../utils/colors";
 import { localISODate } from "../utils/formatDate";
 import { downloadBlob } from "../utils/export";
 import { usePageTitle } from "../hooks/usePageTitle";
+import { useScrollBehavior } from "../hooks/useScrollBehavior";
 
 const SS_SEARCH = "calendar_search";
 const RELEASE_WINDOW_DAYS = 7;
@@ -70,6 +71,7 @@ function exportIcal(groups: DateGroup[]) {
 }
 
 function CalendarPage() {
+  const scrollBehavior = useScrollBehavior();
   usePageTitle("Release Calendar");
   const navigate = useNavigate();
   const location = useLocation();
@@ -105,9 +107,9 @@ function CalendarPage() {
     const today = localISODate(new Date());
     const target = filteredGroups.find((g) => g.date >= today) ?? filteredGroups[0];
     if (target) {
-      document.getElementById(`date-${target.date}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(`date-${target.date}`)?.scrollIntoView({ behavior: scrollBehavior, block: "start" });
     }
-  }, [filteredGroups]);
+  }, [filteredGroups, scrollBehavior]);
 
   const fetchCalendar = useCallback(async (filter: MediaFilter) => {
     const requestId = ++requestIdRef.current;

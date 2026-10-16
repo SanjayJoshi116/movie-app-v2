@@ -205,9 +205,15 @@ test("re-selecting the same broken CSV reads it again", async ({ page, isMobile 
   );
 });
 
+/** Every poster lookup finds one, so the import's result is a plain success. */
+async function mockPosters(page: Page) {
+  await page.route(/\/api\/tmdb\/(movie|tv)\/\d+/, (r) => r.fulfill({ json: { poster_path: "/p.jpg", vote_average: 7 } }));
+}
+
 test("a mixed-type CSV: the preview shows each row's type and tv rows import as TV", async ({ page, isMobile }) => {
   const server = mockImportServer(page);
   await server.ready;
+  await mockPosters(page);
   await page.goto("/watchlist");
   await openProfile(page, isMobile);
   await page.getByRole("button", { name: "Import Watched from CSV" }).click();
@@ -246,6 +252,7 @@ test("a failed refresh after an import says so, and the loaded items stay", asyn
 test("a CSV import whose refresh fails reports success plus the refresh notice, not a failed import", async ({ page, isMobile }) => {
   const server = mockImportServer(page, { failWatchedReloadAfterImport: true });
   await server.ready;
+  await mockPosters(page);
   await page.goto("/watchlist");
   await openProfile(page, isMobile);
   await page.getByRole("button", { name: "Import Watched from CSV" }).click();

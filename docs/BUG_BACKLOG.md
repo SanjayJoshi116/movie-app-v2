@@ -64,8 +64,9 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 39 | `harden-account-input-2` | ✅ 2026-10-15 | Username change needs no password; no password-similarity check |
 | 40 | `polish-library-docs` | ✅ 2026-10-15 | Watchlist unpaginated; US-only region; misleading For You tooltip; CSV/import small gaps; README endpoint count; dependency bumps |
 | 41 | `live-tmdb-smoke` | ✅ 2026-10-15 | Every test mocks TMDB; opt-in live shape checks for every TMDB-reading feature, fix items add query checks |
+| 42 | `fix-a11y-import-followups` | ✅ 2026-10-15 | 0.28.0 follow-ups: certification crash on a malformed country entry; route announcer stale/generic titles and StrictMode first-load announce; Watchlist page clamp before watched data; region change resets typed runtime; unbounded CSV `poster_path`; Recharts and page-change scroll ignore reduced motion; own-export re-import still looks up every row |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. No open items; details under "Sixth audit (2026-10-15)" below.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1. No open items.
 
 ---
 
@@ -886,6 +887,23 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **Rule going forward:** each fix item adds its own query-sanity checks to this file (35: Calendar coverage and sorts; 36: crew credits), and any new feature that reads TMDB adds its shape check here. Optional later: a scheduled CI job with a repo secret.
 
 Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
+
+## Seventh review (2026-10-15): item 42
+
+A `/code-review` pass over the 0.28.0 commit (`acc1492`). Read-only: no finding was reproduced or run yet, so re-check each before fixing.
+
+### 42. 0.28.0 follow-ups (frontend) (✅ archived 2026-10-15, `openspec/changes/archive/2026-10-15-fix-a11y-import-followups`, specs synced into accessibility, data-backup, library-filters, load-states, mark-watched; 20/20, Jest 469 pass; all findings confirmed against the code, plus Calendar's jump-to-date smooth scroll)
+
+- **[med] Certification can crash the movie detail page.** `MovieDetails.tsx:65` `renderCertifications` now calls `c.release_dates.find(...)` on every country entry (not only US), and `resultsOf` checks only that `results` is an array. One entry with a missing/null `release_dates` throws during render → ErrorBoundary for the whole page, against the appended-part rule ("a malformed part empties only its section"). Fix: `arrayOr(c?.release_dates, [])`.
+- **[low-med] Route announcer can speak a stale or generic title.** `RouteAnnouncer.tsx:41` announces a fixed 1 s after the pathname change, then clears `pending`. A lazy route on a slow connection can announce the previous page's title (the old page's unmount sets `document.title` without notifying); a detail fetch over 1 s announces "Movie · CINE DB" and the real name never. Fix: keep waiting until the new route's page sets its title (or restart the settle timer on each title change).
+- **[low] Route announcer announces the first load under StrictMode.** `RouteAnnouncer.tsx:40`: the `first` ref is consumed by the first effect run, so StrictMode's replay sets `pending` and the initial title is announced in dev (spec: "the initial load isn't a navigation"). Production is fine, which hides it from dev-time Playwright checks.
+- **[low-med] Watchlist page clamp runs before watched data loads.** `WatchlistPage.tsx:121` waits only for the watchlist, but the watched-status `extraFilter` reads `WatchedContext`. Reloading `/watchlist?page=3` with the "Watched" filter restored: `filtered` is empty until watched data arrives, so the clamp replaces the URL with page 1 for good. Fix: also wait on the watched list's loading state.
+- **[low] Region change while Mark as Watched is open resets the runtime.** `MarkWatchedModal.tsx:86`: `userRegion` is a dep of the fetch effect, which also calls `form.setFieldsValue({ runtimeMinutes: prefillRuntime(...) })`. A region change (e.g. another tab writing `cinedb_region`) overwrites the user's edited runtime. Fix: recompute only the platform options on a region change.
+- **[low] Oversized CSV `poster_path` fails the whole chunk.** `csvParse.ts:224` accepts any value starting with `/`; the serializer has `max_length=500`, so one long value 400s the batch, unlike runtime/platform which drop per row. Fix: drop values over 500 for that row.
+- **[low] Recharts ignores reduced motion.** `StatsPage.tsx:533`: Pie/Bar/Area animate in JS, so neither `MotionConfig` nor the CSS rule reaches them. Fix: `isAnimationActive={!reduceMotion}` on each series.
+- **[low] Page change smooth-scrolls under reduced motion.** `WatchlistPage.tsx:344`, `WatchedPage.tsx:264`: `window.scrollTo({ behavior: "smooth" })`; the CSS `scroll-behavior: auto` doesn't override an explicit JS behavior. Fix: `behavior: reduceMotion ? "auto" : "smooth"`.
+- **[low] Re-importing the app's own Watched export looks up every row.** `CSVUploadModal.tsx:80` runs the paced poster/score lookup for all rows though the export now carries `poster_path` (and already `vote_average`): ~10 min for 900 rows. Fix: read `vote_average` in `parseCSVForImport` and look up only rows missing both.
+- **[nit]** Watchlist and Watched pagination are near copies (`PAGE_SIZES`, param reads, clamp, `buildFromUrl`, `Pagination`) and already differ slightly. CLAUDE.md defers a shared hook to a third caller; fine to leave.
 
 ## Performance (2026-10-10): item 26
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Form, InputNumber, Select, Input, Spin } from "antd";
 import { fetchMovieDetails, fetchTVDetails } from "../api/tmdb";
 import type {
@@ -40,7 +40,10 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
   const [loading, setLoading] = useState(false);
   // A save in flight: the dialog can't close and a second confirm is ignored.
   const [saving, setSaving] = useState(false);
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
+  // TMDB's providers by region for this title. The platform choices are
+  // derived from it, so a region change while the dialog is open only
+  // re-picks them: no refetch, and the entered runtime stays.
+  const [providersByRegion, setProvidersByRegion] = useState<Record<string, unknown>>({});
   // Language/year ride along from the details request we already make for the
   // runtime, so Stats doesn't have to backfill them from TMDB later.
   const metaRef = useRef<Pick<WatchDetails, "originalLanguage" | "releaseYear">>({});
@@ -50,7 +53,7 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
     let cancelled = false;
     setLoading(true);
     setPlatform(undefined);
-    setOptions([]);
+    setProvidersByRegion({});
     form.resetFields();
     metaRef.current = {};
 
@@ -69,21 +72,24 @@ export function MarkWatchedModal({ open, mediaId, mediaType, onCancel, onConfirm
         form.setFieldsValue({ runtimeMinutes: prefillRuntime(mediaType, data) });
 
         const providers = objectOr<TMDBWatchProviderResponse>(data["watch/providers"], { results: {} });
-        // The user's region, else the US.
-        const byRegion = objectOr<Record<string, unknown>>(providers.results, {});
-        const region = objectOr<Partial<TMDBProviderRegion>>(pickRegion(byRegion, userRegion).data, {});
-        const names = Array.from(new Set(
-          [...arrayOr<TMDBProvider>(region.flatrate), ...arrayOr<TMDBProvider>(region.rent), ...arrayOr<TMDBProvider>(region.buy)]
-            .map((p) => p?.provider_name)
-            .filter((name): name is string => typeof name === "string" && name.length > 0),
-        ));
-        setOptions(names.map((name) => ({ label: name, value: name })));
+        setProvidersByRegion(objectOr<Record<string, unknown>>(providers.results, {}));
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [open, mediaId, mediaType, form, userRegion]);
+  }, [open, mediaId, mediaType, form]);
+
+  const options = useMemo(() => {
+    // The user's region, else the US.
+    const region = objectOr<Partial<TMDBProviderRegion>>(pickRegion(providersByRegion, userRegion).data, {});
+    const names = Array.from(new Set(
+      [...arrayOr<TMDBProvider>(region.flatrate), ...arrayOr<TMDBProvider>(region.rent), ...arrayOr<TMDBProvider>(region.buy)]
+        .map((p) => p?.provider_name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0),
+    ));
+    return names.map((name) => ({ label: name, value: name }));
+  }, [providersByRegion, userRegion]);
 
   const handleOk = async () => {
     if (saving) return;

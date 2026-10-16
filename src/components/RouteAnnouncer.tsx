@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { subscribePageTitle } from "../hooks/usePageTitle";
+import { subscribePageTitle, type PageTitleEvent } from "../hooks/usePageTitle";
 
-/** How long after a navigation the title may still change (a detail page's
- *  name arrives after its fetch) before it's announced. */
+/** How long a page's final title must stay put before it's announced: a
+ *  same-route param change (/movie/1 → /movie/2) first renders with the old
+ *  name and only then switches to loading. */
 export const ANNOUNCE_SETTLE_MS = 1000;
 
 const visuallyHidden: React.CSSProperties = {
@@ -19,28 +20,39 @@ const visuallyHidden: React.CSSProperties = {
 export default function RouteAnnouncer() {
   const { pathname } = useLocation();
   const [message, setMessage] = useState("");
-  const latest = useRef(document.title);
+  // What the page on screen last reported: null after a page unmounted (the
+  // next one's code may still be loading), `loading` while its name isn't in.
+  const latest = useRef<PageTitleEvent>(null);
   const pending = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const first = useRef(true);
+  // The initial load isn't a navigation. A path, not a "first run" flag, so
+  // StrictMode's dev-only effect replay (same path) doesn't count as one.
+  const lastPath = useRef(pathname);
 
-  useEffect(() => subscribePageTitle((title) => {
-    latest.current = title;
-    if (!pending.current) return;
+  // Announce only a final title of the page the navigation opened: never the
+  // previous page's (it clears on unmount) or a generic one still loading.
+  function schedule() {
     clearTimeout(timer.current);
-    timer.current = setTimeout(announce, ANNOUNCE_SETTLE_MS);
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (pending.current && latest.current && !latest.current.loading) {
+      timer.current = setTimeout(announce, ANNOUNCE_SETTLE_MS);
+    }
+  }
 
   function announce() {
     pending.current = false;
-    setMessage(latest.current);
+    if (latest.current) setMessage(latest.current.title);
   }
 
+  useEffect(() => subscribePageTitle((event) => {
+    latest.current = event;
+    schedule();
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    if (first.current) { first.current = false; return; } // the initial load isn't a navigation
+    if (pathname === lastPath.current) return;
+    lastPath.current = pathname;
     pending.current = true;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(announce, ANNOUNCE_SETTLE_MS);
+    schedule();
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => clearTimeout(timer.current), []);

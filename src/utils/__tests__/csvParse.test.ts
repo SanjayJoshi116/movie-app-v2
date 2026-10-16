@@ -79,8 +79,8 @@ describe("parseCSVForImport watched times (data-backup)", () => {
     const { rows, error } = parseCSVForImport(csv);
     expect(error).toBeNull();
     expect(rows).toEqual([
-      { mediaId: 550, title: "Fight Club", type: "movie", watchedAt: "2024-03-01T20:00:00Z", watchedTz: "Asia/Kolkata" },
-      { mediaId: 1396, title: "Breaking Bad", type: "tv", watchedAt: "2024-03-01T20:00:00Z" },
+      { mediaId: 550, title: "Fight Club", type: "movie", voteAverage: 8.4, watchedAt: "2024-03-01T20:00:00Z", watchedTz: "Asia/Kolkata" },
+      { mediaId: 1396, title: "Breaking Bad", type: "tv", voteAverage: 8.4, watchedAt: "2024-03-01T20:00:00Z" },
     ]);
   });
 
@@ -140,5 +140,26 @@ describe("parseCSVForImport: the Watched export's extra columns", () => {
       expect(r.platform).toBeUndefined();
       expect(r.posterPath).toBeUndefined();
     }
+  });
+
+  it("drops an over-long poster path for that row only", () => {
+    const csv = buildCSVString([
+      { title: "A", type: "movie", tmdb_id: 1, runtime_minutes: 120, platform: "Netflix", poster_path: `/${"a".repeat(600)}.jpg` },
+      { title: "B", type: "movie", tmdb_id: 2, runtime_minutes: "", platform: "", poster_path: `/${"b".repeat(495)}.jpg` },
+    ]);
+    const { rows } = parseCSVForImport(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.posterPath).toBeUndefined();
+    expect(rows[0]!).toMatchObject({ mediaId: 1, runtimeMinutes: 120, platform: "Netflix" });
+    expect(rows[1]!.posterPath).toHaveLength(500);
+  });
+
+  it("reads the score, dropping a non-numeric or out-of-range one", () => {
+    const csv = buildCSVString(
+      ["8.4", "0", "10", "", "abc", "11", "-1", "NaN", "Infinity"].map((v, i) => ({ title: "T", tmdb_id: i + 1, vote_average: v })),
+    );
+    expect(parseCSVForImport(csv).rows.map((r) => r.voteAverage)).toEqual(
+      [8.4, 0, 10, undefined, undefined, undefined, undefined, undefined, undefined],
+    );
   });
 });

@@ -31,6 +31,7 @@ import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
 import { goBack } from "../utils/goBack";
 import { pickRegion, regionName } from "../utils/region";
 import { useRegion } from "../hooks/useRegion";
+import { arrayOr } from "../utils/appended";
 
 // USD amounts: grouped the US way whatever the browser locale (no "1.000.000 $").
 const USD_AMOUNT = new Intl.NumberFormat("en-US");
@@ -58,12 +59,17 @@ interface Props {
   movie: MovieDetailData;
 }
 
-function renderCertifications(certs: ReleaseDateEntry[] | string, region: string): string {
+export function renderCertifications(certs: ReleaseDateEntry[] | string, region: string): string {
   if (!certs || typeof certs === "string") return certs || "N/A";
+  // Each country entry is guarded too: one malformed entry must empty only
+  // this cell, never throw and take the page down (load-states).
   const byRegion = Object.fromEntries(
     certs
-      .map((c) => [c.iso_3166_1, c.release_dates.find((r) => r.certification)?.certification] as const)
-      .filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+      .map((c) => [
+        c?.iso_3166_1,
+        arrayOr<ReleaseDateEntry["release_dates"][number]>(c?.release_dates).find((r) => r?.certification)?.certification,
+      ] as const)
+      .filter((entry): entry is readonly [string, string] => typeof entry[0] === "string" && Boolean(entry[1])),
   );
   const picked = pickRegion(byRegion, region);
   if (!picked.data) return "Not Rated";

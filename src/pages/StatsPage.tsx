@@ -350,6 +350,9 @@ function PosterCard({ title, posterPath, badge, mediaType }: {
 }
 
 function StatsPage() {
+  // Recharts animates in JS: neither MotionConfig nor the CSS reduced-motion
+  // rule reaches it, so each series is told directly.
+  const chartsAnimate = !useReducedMotion();
   usePageTitle("Stats");
   const [data, setData] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -499,6 +502,7 @@ function StatsPage() {
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie
+                    isAnimationActive={chartsAnimate}
                     data={mediaTypeData}
                     dataKey="value"
                     nameKey="name"
@@ -530,7 +534,7 @@ function StatsPage() {
                   <XAxis dataKey="rating" tickFormatter={(v) => `${v}★`} />
                   <YAxis allowDecimals={false} width={28} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="count" radius={[4, 4, 0, 0]}>
                     {data.ratingDistribution.map((entry, i) => (
                       <Cell key={i} fill={ratingColor(Number(entry.rating))} />
                     ))}
@@ -565,7 +569,7 @@ function StatsPage() {
                   <XAxis dataKey="month" />
                   <YAxis allowDecimals={false} width={28} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="count" stroke={BLUE} strokeWidth={2}
+                  <Area isAnimationActive={chartsAnimate} type="monotone" dataKey="count" stroke={BLUE} strokeWidth={2}
                     fill="url(#activityGradient)" dot={{ fill: BLUE, r: 3 }} activeDot={{ r: 5 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -587,7 +591,7 @@ function StatsPage() {
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="genre" width={110} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="count" radius={[0, 4, 4, 0]}>
                     {data.topGenres.map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}
@@ -613,7 +617,7 @@ function StatsPage() {
                   <XAxis type="number" domain={[0, 10]} allowDecimals={false} />
                   <YAxis type="category" dataKey="genre" width={110} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="avgRating" name="Avg rating" radius={[0, 4, 4, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="avgRating" name="Avg rating" radius={[0, 4, 4, 0]}>
                     {(data.ratingByGenre ?? []).map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}
@@ -634,7 +638,7 @@ function StatsPage() {
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={80} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="count" radius={[0, 4, 4, 0]}>
                     {languageData.map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}
@@ -655,7 +659,7 @@ function StatsPage() {
                   <XAxis dataKey="decade" />
                   <YAxis allowDecimals={false} width={28} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="count" radius={[4, 4, 0, 0]}>
                     {(data.decadeBreakdown ?? []).map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}
@@ -679,7 +683,7 @@ function StatsPage() {
                   <XAxis dataKey="platform" />
                   <YAxis allowDecimals={false} width={28} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  <Bar isAnimationActive={chartsAnimate} dataKey="count" radius={[4, 4, 0, 0]}>
                     {(data.platformBreakdown ?? []).map((_, i) => (
                       <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                     ))}

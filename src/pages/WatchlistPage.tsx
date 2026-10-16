@@ -5,6 +5,7 @@ import { Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Select, 
 import { StarFilled, DeleteOutlined, EditOutlined, BookOutlined, DownloadOutlined, EyeOutlined, EyeFilled } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useWatchlistContext } from "../context/WatchlistContext";
+import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { stashReturnState } from "../utils/browseReturnState";
 import { RatingModal } from "../components/watchlist/RatingModal";
@@ -23,6 +24,7 @@ import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
 import type { MediaType, WatchlistEntry } from "../types";
 import { usePageTitle } from "../hooks/usePageTitle";
+import { useScrollBehavior } from "../hooks/useScrollBehavior";
 import { parseIntParam } from "../utils/queryParams";
 
 const SS_WATCHED_FILTER = "watchlist_watched_filter";
@@ -54,6 +56,7 @@ interface PendingWatch {
 }
 
 function WatchlistPage() {
+  const scrollBehavior = useScrollBehavior();
   usePageTitle("Watchlist");
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -62,6 +65,7 @@ function WatchlistPage() {
   } = useAppContext();
   const idleIconColor = useActionIconColor();
   const { isLoading, error: loadError, reload } = useWatchlistContext();
+  const { isLoading: watchedLoading, error: watchedError } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
@@ -115,11 +119,14 @@ function WatchlistPage() {
 
   // Removing (or filtering away) the last items on the last page would leave
   // a blank grid; move back to the last page that still has items. Only once
-  // loaded, so a ?page=3 deep link isn't clamped against the initial empty list.
+  // loaded, so a ?page=3 deep link isn't clamped against the initial empty list,
+  // and, with the watched filter on, once the watched history it reads has
+  // loaded too (it can arrive after the watchlist).
   const lastPage = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const filterReady = watchedFilter === "all" || (!watchedLoading && !watchedError);
   useEffect(() => {
-    if (!isLoading && !loadError && page > lastPage) setPageState(lastPage, pageSize);
-  }, [isLoading, loadError, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isLoading && !loadError && filterReady && page > lastPage) setPageState(lastPage, pageSize);
+  }, [isLoading, loadError, filterReady, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFromUrl = () => {
     const p = new URLSearchParams();
@@ -341,7 +348,7 @@ function WatchlistPage() {
                 pageSizeOptions={[...PAGE_SIZES]}
                 onChange={(p, ps) => {
                   setPageState(ps !== pageSize ? 1 : p, ps);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
+                  window.scrollTo({ top: 0, behavior: scrollBehavior });
                 }}
                 showTotal={(total) => `${total} titles`}
               />
