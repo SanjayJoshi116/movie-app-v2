@@ -19,6 +19,35 @@ export function pageTitle(name?: string | null): string {
   return name ? `${name} · ${APP_NAME}` : APP_NAME;
 }
 
+/** NotFoundPage's title, also used by a detail page whose id isn't valid. */
+export const NOT_FOUND_PAGE_TITLE = "Page Not Found";
+
+/** The headings a detail or person page shows when it can't show its subject. */
+export interface DetailHeadings {
+  /** Shown while loading (with `loading` true). */
+  generic: string;
+  notFound: string;
+  failed: string;
+}
+
+/**
+ * usePageTitle's arguments for a detail or person page, named after what the
+ * page shows in each state. The page owns the title even while it renders
+ * NotFoundPage: React runs the parent's effect after the child's, so a
+ * different parent title would win.
+ */
+export function detailPageTitle(
+  state: { validId: boolean; loading: boolean; error: "not-found" | "failed" | null; name?: string | null },
+  headings: DetailHeadings,
+): [string, { loading: boolean }] {
+  if (!state.validId) return [NOT_FOUND_PAGE_TITLE, { loading: false }];
+  if (state.loading) return [headings.generic, { loading: true }];
+  if (state.error === "not-found") return [headings.notFound, { loading: false }];
+  if (state.error) return [headings.failed, { loading: false }];
+  // A record TMDB gave no name still loaded: keep the generic title.
+  return [state.name || headings.generic, { loading: false }];
+}
+
 /**
  * Sets the tab title to "<name> · CINE DB" while the page is mounted
  * (accessibility spec: each page has its own title). Pages with a loaded

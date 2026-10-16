@@ -9,17 +9,23 @@ import { LoadError } from "../components/LoadError";
 import NotFoundPage from "./NotFoundPage";
 import { useValidId } from "../hooks/useValidId";
 import { isNotFound } from "../utils/settled";
-import { arrayOr, objectOr, resultsOf } from "../utils/appended";
+import { arrayOr, isRecord, objectOr, resultsOf } from "../utils/appended";
 import type { TMDBAggregateCreditsFull, TMDBImages, TMDBReview, TMDBTVDetailResponse } from "../types";
-import { usePageTitle } from "../hooks/usePageTitle";
+import { usePageTitle, detailPageTitle } from "../hooks/usePageTitle";
+import type { DetailHeadings } from "../hooks/usePageTitle";
+
+const HEADINGS: DetailHeadings = {
+  generic: "TV Show",
+  notFound: "TV show not found",
+  failed: "Failed to load TV show details",
+};
 
 function TVDetailPage() {
   const id = useValidId();
   const [tvShow, setTVShow] = useState<TVShowDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  // A bad id shows NotFoundPage, which names itself: nothing is loading then.
-  usePageTitle(tvShow?.name ?? "TV Show", { loading: loading && id !== null });
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
+  usePageTitle(...detailPageTitle({ validId: id !== null, loading, error, name: tvShow?.name }, HEADINGS));
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -47,6 +53,14 @@ function TVDetailPage() {
       }
       if (cancelled) return;
 
+      // A success without a record (an empty body) is a failed load, so the
+      // page shows and titles its error state instead of a nameless record.
+      if (!isRecord(show)) {
+        setError("failed");
+        setLoading(false);
+        return;
+      }
+
       const images = objectOr<Partial<TMDBImages>>(show.images, {});
       const aggregate = objectOr<Partial<TMDBAggregateCreditsFull>>(show.aggregate_credits, {});
       setTVShow({
@@ -70,9 +84,9 @@ function TVDetailPage() {
 
   if (id === null) return <NotFoundPage />;
   if (loading) return <DetailPageSkeleton />;
-  if (error === "not-found") return <LoadError notFound title="TV show not found" />;
+  if (error === "not-found") return <LoadError notFound title={HEADINGS.notFound} />;
   if (error)
-    return <LoadError title="Failed to load TV show details" onRetry={() => setReloadKey((k) => k + 1)} />;
+    return <LoadError title={HEADINGS.failed} onRetry={() => setReloadKey((k) => k + 1)} />;
   if (!tvShow) return null;
 
   return (

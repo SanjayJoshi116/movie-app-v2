@@ -2,11 +2,11 @@ import { Button } from "antd";
 import { useNavigate } from "react-router-dom";
 import { LoadError } from "../components/LoadError";
 import { isPlainClick } from "../components/CardLink";
-import { usePageTitle } from "../hooks/usePageTitle";
+import { usePageTitle, NOT_FOUND_PAGE_TITLE } from "../hooks/usePageTitle";
 
 /** Unknown paths: say so (keeping the typed address) instead of silently redirecting. */
 export default function NotFoundPage() {
-  usePageTitle("Page Not Found");
+  usePageTitle(NOT_FOUND_PAGE_TITLE);
   const navigate = useNavigate();
   return (
     <div style={{ textAlign: "center" }}>

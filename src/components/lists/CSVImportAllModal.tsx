@@ -40,17 +40,24 @@ interface SectionResult extends BulkImportResult {
 const sectionFailed = (s: SectionResult) => !!s.error || s.failed > 0 || (s.failedLists ?? 0) > 0;
 
 /** Fill in posters the backup doesn't have (v1 or hand-made files), paced to
- *  the TMDB proxy's rate limit. Returns how many are still missing. */
+ *  the TMDB proxy's rate limit. Returns how many titles are still missing one. */
 async function enrichPosterPaths(
   rows: BackupRow[],
   onProgress: (done: number, total: number) => void,
   guard: SessionGuard,
 ): Promise<number> {
-  const without = rows.filter((r) => !r.posterPath);
-  const { found, missing } = await lookupImportPosters(without, onProgress, () => !guard.isCurrent());
-  without.forEach((r, i) => {
-    const info = found[i];
-    if (info) r.posterPath = info.posterPath;
+  // parseBackupCSV reads a blank or bad score as 0, and a row with a poster
+  // is never looked up for its score (item 44). A row looked up for its
+  // poster anyway keeps TMDB's score when the backup's is 0 (item 45): the
+  // call is already paid for.
+  const { found, missing } = await lookupImportPosters(
+    rows.map((r) => ({ ...r, voteAverage: !r.posterPath && r.voteAverage === 0 ? undefined : r.voteAverage })),
+    onProgress,
+    () => !guard.isCurrent(),
+  );
+  rows.forEach((r, i) => {
+    r.posterPath = found[i]!.posterPath;
+    r.voteAverage = found[i]!.voteAverage ?? 0;
   });
   return missing;
 }

@@ -7,6 +7,9 @@ import CSVImportAllModal from "../lists/CSVImportAllModal";
 import { lookupImportPosters } from "../../utils/importPosters";
 import type { BackupContents } from "../../utils/backup";
 import { personLabel } from "../../utils/personLabel";
+import { parseBackupCSV } from "../../utils/csvParse";
+import { fetchMoviePoster } from "../../api/tmdb";
+import { resetPacer } from "../../utils/pacedLookup";
 
 // data-backup: an import ends with the session that started it, and its
 // dialog can't be closed while it runs.
@@ -34,6 +37,11 @@ jest.mock("../../utils/importPosters", () => ({
   lookupImportPosters: jest.fn(),
 }));
 const lookup = lookupImportPosters as jest.MockedFunction<typeof lookupImportPosters>;
+const realLookup = (jest.requireActual("../../utils/importPosters") as typeof import("../../utils/importPosters"))
+  .lookupImportPosters;
+
+jest.mock("../../api/tmdb", () => ({ __esModule: true, fetchMoviePoster: jest.fn(), fetchTVPoster: jest.fn() }));
+const moviePoster = fetchMoviePoster as jest.Mock;
 
 const mockBackup: BackupContents = {
   version: 3,
@@ -118,6 +126,25 @@ describe.each([
     expect(mockToast.showInfo).not.toHaveBeenCalled();
   });
 
+  it("changes no dialog state when the lookups end after a sign-out", async () => {
+    let finish: () => void = () => undefined;
+    lookup.mockImplementation((rows, onProgress) => new Promise((resolve) => {
+      onProgress?.(1, rows.length);
+      finish = () => resolve({ found: rows.map(() => ({ posterPath: "/p.jpg", voteAverage: 7 })), missing: 0 });
+    }));
+    render(renderModal());
+    await pickFile("rows.csv", CSV);
+    await screen.findAllByText(previewText, {}, SLOW);
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    expect(await screen.findByText("Looking up posters: 1 / 2", {}, SLOW)).toBeInTheDocument();
+    act(() => bindSessionUser(2));
+    await act(async () => finish());
+
+    // The progress line was never cleared: nothing ran after the lookups.
+    expect(screen.getByText("Looking up posters: 1 / 2")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("stops its lookups once the session has ended", async () => {
     await startImport();
     const shouldStop = lookup.mock.calls[0]![2]!;
@@ -154,7 +181,8 @@ describe.each([
 
 describe("watched CSV import keeps the export's extra columns", () => {
   it("sends runtime and platform, and prefers the row's poster", async () => {
-    lookup.mockResolvedValue({ found: [{ posterPath: "/lookup.jpg", voteAverage: 8 }, { posterPath: "/lookup2.jpg", voteAverage: 6 }], missing: 0 });
+    // The final values per row (lookupImportPosters keeps the file's poster).
+    lookup.mockResolvedValue({ found: [{ posterPath: "/own.jpg", voteAverage: 8 }, { posterPath: "/lookup2.jpg", voteAverage: 6 }], missing: 0 });
     render(<CSVUploadModal open onClose={jest.fn()} />);
     await pickFile("watched.csv",
       "title,type,tmdb_id,watched_at,runtime_minutes,platform,poster_path\n" +
@@ -164,6 +192,7 @@ describe("watched CSV import keeps the export's extra columns", () => {
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1), SLOW);
     const { entries } = post.mock.calls[0]![1] as { entries: Array<Record<string, unknown>> };
+    expect(lookup.mock.calls[0]![0][0]).toMatchObject({ mediaId: 550, posterPath: "/own.jpg" });
     expect(entries[0]).toMatchObject({ mediaId: 550, runtimeMinutes: 139, platform: "Netflix", posterPath: "/own.jpg" });
     expect(entries[1]).toMatchObject({ mediaId: 13, posterPath: "/lookup2.jpg" });
     expect(entries[1]).not.toHaveProperty("runtimeMinutes");
@@ -210,7 +239,7 @@ describe("backup restore", () => {
     mockBackup.lists = [{ name: "Empty one", entries: [] }] as unknown as BackupContents["lists"];
     const get = jest.spyOn(userApi, "get").mockResolvedValue({ data: { results: [], next: null } } as never);
     mockLists.createList.mockRejectedValue(new Error("nope"));
-    lookup.mockImplementation(async (rows) => ({ found: rows.map(() => undefined), missing: rows.length }));
+    lookup.mockImplementation(async (rows) => ({ found: rows.map(() => ({ posterPath: null })), missing: rows.length }));
     try {
       render(<CSVImportAllModal open onClose={jest.fn()} />);
       await pickFile("backup.zip", "zip");
@@ -224,9 +253,79 @@ describe("backup restore", () => {
     }
   });
 
+  it("restores the valid ratings when one is out of range, without reporting a failure", async () => {
+    const saved = mockBackup.ratings;
+    // data-backup: a bad rating is dropped by the parser, not sent to fail the chunk.
+    mockBackup.ratings = parseBackupCSV(
+      "tmdb_id,title,type,user_rating,review\n550,Fight Club,movie,9,great\n13,Forrest Gump,movie,11,\n603,The Matrix,movie,7.5,\n",
+    );
+    lookup.mockImplementation(async (rows) => ({ found: rows.map(() => ({ posterPath: "/p.jpg" })), missing: 0 }));
+    try {
+      render(<CSVImportAllModal open onClose={jest.fn()} />);
+      await pickFile("backup.zip", "zip");
+      fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
+      expect(await screen.findByText(/Ratings: 2 added/, {}, SLOW)).toBeInTheDocument();
+      const ratingsCall = post.mock.calls.find(([url]) => url === "/ratings/bulk/");
+      expect((ratingsCall![1] as { entries: { mediaId: number }[] }).entries.map((e) => e.mediaId)).toEqual([550, 603]);
+      // (Other sections may fail here: the list mock creates nothing.)
+      expect(screen.getByText(/Ratings: 2 added/).textContent).not.toMatch(/failed/);
+    } finally {
+      mockBackup.ratings = saved;
+    }
+  });
+
   it("can't be closed while running", async () => {
     await startRestore();
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
+  });
+
+  /** Restore `sections` through the real lookup over a mocked TMDB. */
+  async function restoreWithRealLookup(sections: Partial<BackupContents>) {
+    const saved = { ...mockBackup };
+    Object.assign(mockBackup, { watchlist: [], watched: [], ratings: [], lists: [], followed: [], episodeProgress: [] }, sections);
+    resetPacer();
+    lookup.mockImplementation(realLookup);
+    const get = jest.spyOn(userApi, "get").mockResolvedValue({ data: { results: [], next: null } } as never);
+    mockLists.createList.mockImplementation(async (name: string) => ({ id: 70, name, items: [] }));
+    try {
+      render(<CSVImportAllModal open onClose={jest.fn()} />);
+      await pickFile("backup.zip", "zip");
+      fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
+      await screen.findByText(/Watchlist: /, {}, SLOW);
+    } finally {
+      Object.assign(mockBackup, saved);
+      get.mockRestore();
+    }
+  }
+
+  // data-backup: a row looked up for its poster keeps TMDB's score when the backup's is 0.
+  it("keeps the looked-up score for a poster-less row whose backup score is 0", async () => {
+    moviePoster.mockResolvedValue({ data: { poster_path: "/t.jpg", vote_average: 7.8 } });
+    await restoreWithRealLookup({
+      watchlist: parseBackupCSV(
+        "tmdb_id,title,type,vote_average,poster_path\n1,A,movie,,\n2,B,movie,6.5,\n3,C,movie,,/own.jpg\n",
+      ),
+    });
+    expect(moviePoster.mock.calls.map((c) => c[0])).toEqual([1, 2]);
+    const call = post.mock.calls.find(([url]) => url === "/watchlist/bulk/");
+    expect((call![1] as { entries: unknown[] }).entries).toEqual([
+      expect.objectContaining({ mediaId: 1, posterPath: "/t.jpg", voteAverage: 7.8 }),
+      expect.objectContaining({ mediaId: 2, posterPath: "/t.jpg", voteAverage: 6.5 }),
+      expect.objectContaining({ mediaId: 3, posterPath: "/own.jpg", voteAverage: 0 }),
+    ]);
+  });
+
+  // data-backup: one lookup per title, and the note counts titles.
+  it("looks a title in several sections up once and counts it once", async () => {
+    moviePoster.mockResolvedValue({ data: { poster_path: null, vote_average: 5 } });
+    const row = () => ({ mediaId: 9, type: "movie", title: "Nine", posterPath: null, voteAverage: 0 });
+    await restoreWithRealLookup({
+      watchlist: [row()],
+      watched: [row()],
+      lists: [{ name: "One", entries: [row()] }, { name: "Two", entries: [row()] }],
+    } as unknown as Partial<BackupContents>);
+    expect(moviePoster).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/^1 saved without a poster/, {}, SLOW)).toBeInTheDocument();
   });
 });
 

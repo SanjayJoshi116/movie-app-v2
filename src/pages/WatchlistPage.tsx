@@ -65,7 +65,9 @@ function WatchlistPage() {
   } = useAppContext();
   const idleIconColor = useActionIconColor();
   const { isLoading, error: loadError, reload } = useWatchlistContext();
-  const { isLoading: watchedLoading, error: watchedError } = useWatchedContext();
+  const {
+    hasLoaded: watchedLoaded, isLoading: watchedLoading, error: watchedError, reload: reloadWatched,
+  } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
@@ -121,12 +123,15 @@ function WatchlistPage() {
   // a blank grid; move back to the last page that still has items. Only once
   // loaded, so a ?page=3 deep link isn't clamped against the initial empty list,
   // and, with the watched filter on, once the watched history it reads has
-  // loaded too (it can arrive after the watchlist).
+  // loaded too (it can arrive after the watchlist; a failed reload after that
+  // keeps the loaded history, so the clamp still runs), and not while it
+  // reloads (an import may be adding the titles this page is waiting for).
   const lastPage = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const filterReady = watchedFilter === "all" || (!watchedLoading && !watchedError);
+  const filterReady = watchedFilter === "all" || watchedLoaded;
+  const filterSettled = watchedFilter === "all" || (watchedLoaded && !watchedLoading);
   useEffect(() => {
-    if (!isLoading && !loadError && filterReady && page > lastPage) setPageState(lastPage, pageSize);
-  }, [isLoading, loadError, filterReady, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isLoading && !loadError && filterSettled && page > lastPage) setPageState(lastPage, pageSize);
+  }, [isLoading, loadError, filterSettled, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFromUrl = () => {
     const p = new URLSearchParams();
@@ -238,6 +243,14 @@ function WatchlistPage() {
         >
           <Button type="primary" onClick={() => navigate("/movies")}>Browse Movies</Button>
         </Empty>
+      ) : !filterReady && watchedError && !watchedLoading ? (
+        // The Watched/Unwatched filter reads the watched history: without it,
+        // a filtered grid (or "no items match") would be made up. Once it has
+        // loaded, a failed reload keeps that history and the grid. A retry in
+        // progress shows the skeleton below, so Retry can't be clicked again.
+        <LoadError title="Couldn't load your watched history" onRetry={() => { reloadWatched().catch(() => {}); }} />
+      ) : !filterReady ? (
+        <SkeletonCard count={12} />
       ) : filtered.length === 0 ? (
         <Empty
           description={search.trim() ? `No results for "${search}"` : "No items match your filters."}

@@ -12,7 +12,12 @@ export function resultsOf<T>(part: unknown): T[] {
   return arrayOr<T>((part as { results?: unknown } | null | undefined)?.results);
 }
 
+/** Whether `value` is a plain object (not null, not an array). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /** `value` if it's a plain object, otherwise `fallback`. */
 export function objectOr<T extends object>(value: unknown, fallback: T): T {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as T) : fallback;
+  return isRecord(value) ? (value as T) : fallback;
 }

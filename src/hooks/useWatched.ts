@@ -17,6 +17,11 @@ export function useWatched() {
   const [loadedGen, setLoadedGen] = useState<number | null>(null);
   const [reloading, setReloading] = useState(false);
   const isLoading = isAuthenticated && (reloading || loadedGen !== currentSessionGeneration());
+  // The session generation of the last successful load. A failed reload after
+  // one keeps the list (and this), so a page can tell "never loaded" apart
+  // from "the last reload failed".
+  const [loadedOkGen, setLoadedOkGen] = useState<number | null>(null);
+  const hasLoaded = isAuthenticated && loadedOkGen === currentSessionGeneration();
   const [error, setError] = useState<unknown>(null);
   // Bumped as each write settles: a reload that started earlier is rerun.
   const writeSeq = useRef(0);
@@ -59,6 +64,7 @@ export function useWatched() {
           dbIdMap.current = map;
           setWatchedList(entries);
           setError(null);
+          setLoadedOkGen(gen);
         },
       );
     } catch (err) {
@@ -154,5 +160,5 @@ export function useWatched() {
     setWatchedList([]);
   }), [isAuthenticated, setWatchedList]);
 
-  return { watchedList, isLoading, error, add, remove, isWatched, toggle, clearAll, reload };
+  return { watchedList, isLoading, hasLoaded, error, add, remove, isWatched, toggle, clearAll, reload };
 }

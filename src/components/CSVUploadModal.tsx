@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { bulkImport, sessionGuard, SessionEndedError } from "../api/userApi";
-import { lookupImportPosters, missingPostersNote, type PosterInfo } from "../utils/importPosters";
+import { lookupImportPosters, missingPostersNote } from "../utils/importPosters";
 import { ImportProgress } from "./ImportProgress";
 import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
@@ -76,36 +76,28 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
     const guard = sessionGuard();
     setLoading(true);
     try {
-      // Posters and scores, paced to the TMDB proxy's rate limit, only for
-      // rows the file doesn't give both (the Watched export has both).
-      const toLookUp = parsed
-        .map((row, i) => ({ row, i }))
-        .filter(({ row }) => !row.posterPath || row.voteAverage === undefined);
-      const found: (PosterInfo | undefined)[] = [];
-      if (toLookUp.length > 0) {
-        const lookup = await lookupImportPosters(
-          toLookUp.map(({ row }) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
-          (done, total) => setProgress({ done, total }),
-          () => !guard.isCurrent(),
-        );
-        toLookUp.forEach(({ i }, j) => { found[i] = lookup.found[j]; });
-        setProgress(null);
-      }
+      // Posters and scores the file doesn't give (the Watched export gives
+      // both), paced to the TMDB proxy's rate limit.
+      const { found, missing } = await lookupImportPosters(
+        parsed.map((row) => ({ ...row, type: row.type ?? mediaType })),
+        (done, total) => setProgress({ done, total }),
+        () => !guard.isCurrent(),
+      );
+      guard.check(); // signed out during the lookups: no state change, no write
+      setProgress(null);
 
-      // The file's own poster and score beat the lookup's.
       const entries = parsed.map((row, i) => ({
         mediaId: row.mediaId,
         mediaType: row.type ?? mediaType,
         title: row.title,
-        posterPath: row.posterPath ?? found[i]?.posterPath ?? null,
-        voteAverage: row.voteAverage ?? found[i]?.voteAverage,
+        posterPath: found[i]!.posterPath,
+        voteAverage: found[i]!.voteAverage,
         // The Watched page's own export carries these; keep them on re-import.
         ...(row.watchedAt ? { watchedAt: row.watchedAt } : {}),
         ...(row.watchedTz ? { watchedTz: row.watchedTz } : {}),
         ...(row.runtimeMinutes !== undefined ? { runtimeMinutes: row.runtimeMinutes } : {}),
         ...(row.platform ? { platform: row.platform } : {}),
       }));
-      const missing = entries.filter((e) => !e.posterPath).length;
       const result = await bulkImport("watched", entries, { guard });
       guard.check();
       // The entries are saved even if this fails; only what's on screen is stale.

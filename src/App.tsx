@@ -132,6 +132,9 @@ function AppInner() {
 
           <Suspense fallback={<div />}>
           <AnimatePresence mode="wait">
+            {/* Keyed on the path: besides the page transition, this mounts a
+                fresh detail/person page for each id, so the previous subject
+                never shows (or titles the tab) under the new address. */}
             <Routes location={location} key={location.pathname}>
               <Route path="/" element={<Navigate to="/movies" replace />} />
               <Route

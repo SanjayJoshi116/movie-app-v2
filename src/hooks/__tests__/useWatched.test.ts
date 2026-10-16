@@ -181,3 +181,37 @@ describe("useWatched", () => {
     expect(result.current.watchedList.map((i) => i.id)).toEqual([8, 7]);
   });
 });
+
+// load-states: a page can tell "never loaded" apart from "the last reload failed".
+describe("useWatched hasLoaded", () => {
+  it("is false until the first load succeeds, and false after a failed first load", async () => {
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    expect(result.current.hasLoaded).toBe(false);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasLoaded).toBe(false);
+  });
+
+  it("stays true, with the list kept, when a later reload fails", async () => {
+    mockGet.mockResolvedValueOnce({ data: [{ id: 5, mediaId: 1, mediaType: "movie", title: "Kept", posterPath: null, voteAverage: 7, watchedAt: "2024-01-01T00:00:00Z", watchedTz: "", runtimeMinutes: null, platform: null }] });
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    await act(async () => { await result.current.reload().catch(() => {}); });
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.hasLoaded).toBe(true);
+    expect(result.current.watchedList.map((w) => w.title)).toEqual(["Kept"]);
+  });
+
+  it("is false once signed out", async () => {
+    let authed = true;
+    const authWrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(AuthContext.Provider, { value: { ...mockAuthValue, isAuthenticated: authed } }, children);
+    const { result, rerender } = renderHook(() => useWatched(), { wrapper: authWrapper });
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    authed = false;
+    rerender();
+    expect(result.current.hasLoaded).toBe(false);
+  });
+});

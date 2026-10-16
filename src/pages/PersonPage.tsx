@@ -19,6 +19,7 @@ import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { formatDateDMY } from "../utils/formatDate";
 import { getApiError } from "../utils/apiError";
 import { settledData, isNotFound } from "../utils/settled";
+import { isRecord } from "../utils/appended";
 import NotFoundPage from "./NotFoundPage";
 import { useValidId } from "../hooks/useValidId";
 import { safeHttpUrl } from "../utils/safeUrl";
@@ -32,7 +33,14 @@ import { mergeCredits, mergeCrew, sortCreditsNewestFirst } from "../utils/person
 import { pageVariants, IMG_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
 import { goBack } from "../utils/goBack";
-import { usePageTitle } from "../hooks/usePageTitle";
+import { usePageTitle, detailPageTitle } from "../hooks/usePageTitle";
+import type { DetailHeadings } from "../hooks/usePageTitle";
+
+const HEADINGS: DetailHeadings = {
+  generic: "Person",
+  notFound: "Person not found",
+  failed: "Failed to load this person",
+};
 
 // A malformed credits body (no array) counts as no credits, not a crash.
 function toCredits(c: TMDBPersonCredits): TMDBPersonCredits {
@@ -62,9 +70,8 @@ function PersonPage() {
   const [tvCredits, setTvCredits] = useState<TMDBPersonCredits | null>(null);
   const [images, setImages] = useState<TMDBPersonImages | null>(null);
   const [loading, setLoading] = useState(true);
-  // A bad id shows NotFoundPage, which names itself: nothing is loading then.
-  usePageTitle(person?.name ?? "Person", { loading: loading && id !== null });
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
+  usePageTitle(...detailPageTitle({ validId: id !== null, loading, error, name: person?.name }, HEADINGS));
   const [reloadKey, setReloadKey] = useState(0);
   const [creditsError, setCreditsError] = useState(false);
   const [creditsRetrying, setCreditsRetrying] = useState(false);
@@ -100,6 +107,10 @@ function PersonPage() {
       if (personRes.status === "rejected") {
         console.error("Error fetching person details:", personRes.reason);
         setError(isNotFound(personRes.reason) ? "not-found" : "failed");
+      } else if (!isRecord(personRes.value.data)) {
+        // A success without a record (an empty body) is a failed load, titled
+        // as the error heading the page shows.
+        setError("failed");
       } else {
         const movies = settledData(movieRes);
         const tv = settledData(tvRes);
@@ -138,9 +149,9 @@ function PersonPage() {
         <Spin size="large" />
       </div>
     );
-  if (error === "not-found") return <LoadError notFound title="Person not found" />;
+  if (error === "not-found") return <LoadError notFound title={HEADINGS.notFound} />;
   if (error || !person)
-    return <LoadError title="Failed to load this person" onRetry={() => setReloadKey((k) => k + 1)} />;
+    return <LoadError title={HEADINGS.failed} onRetry={() => setReloadKey((k) => k + 1)} />;
 
   // TMDB homepages are community-edited: only an http(s) URL becomes a link.
   const homepageUrl = safeHttpUrl(person.homepage);

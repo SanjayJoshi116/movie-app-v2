@@ -163,3 +163,109 @@ describe("parseCSVForImport: the Watched export's extra columns", () => {
     );
   });
 });
+
+// data-backup: a bad value in a backup row is dropped for that row only.
+describe("parseBackupCSV: values the server would reject", () => {
+  it("drops an oversized or non-path poster_path for that row only", () => {
+    const rows = parseBackupCSV(buildCSVString([
+      { tmdb_id: 1, title: "A", type: "movie", vote_average: 7, poster_path: `/${"a".repeat(600)}.jpg` },
+      { tmdb_id: 2, title: "B", type: "movie", vote_average: 7, poster_path: "http://example.test/p.jpg" },
+      { tmdb_id: 3, title: "C", type: "movie", vote_average: 7, poster_path: `/${"c".repeat(495)}.jpg` },
+    ]));
+    expect(rows.map((r) => r.posterPath?.length ?? null)).toEqual([null, null, 500]);
+    expect(rows.map((r) => r.mediaId)).toEqual([1, 2, 3]);
+  });
+
+  it("turns an out-of-range or unreadable score into 0", () => {
+    const rows = parseBackupCSV("tmdb_id,title,type,vote_average\n1,A,movie,11\n2,B,movie,abc\n3,C,movie,-1\n4,D,movie,7.5\n5,E,movie,\n");
+    expect(rows.map((r) => r.voteAverage)).toEqual([0, 0, 0, 7.5, 0]);
+  });
+});
+
+// data-backup: every value the server would reject is dropped for that row only.
+describe("parseBackupCSV: other columns the server bounds", () => {
+  const next = `${new Date().getUTCFullYear() + 1}-01-01T00:00:00Z`;
+
+  it("drops a bad runtime, platform, zone or time and keeps the rest of the row", () => {
+    const rows = parseBackupCSV(buildCSVString([
+      { tmdb_id: 1, title: "A", type: "movie", runtime_minutes: -5, platform: "x".repeat(120), watched_tz: "z".repeat(70), watched_at: next },
+      { tmdb_id: 2, title: "B", type: "movie", runtime_minutes: 1.5, platform: "Netflix", watched_tz: "Asia/Kolkata", watched_at: "1850-01-01T00:00:00Z" },
+      { tmdb_id: 3, title: "C", type: "movie", runtime_minutes: 120, platform: "Netflix", watched_tz: "Asia/Kolkata", watched_at: "2024-03-01T20:00:00Z" },
+    ]));
+    expect(rows[0]).toMatchObject({ mediaId: 1, title: "A" });
+    for (const k of ["runtimeMinutes", "platform", "watchedTz", "watchedAt"]) expect(rows[0]).not.toHaveProperty(k);
+    expect(rows[1]).toMatchObject({ platform: "Netflix", watchedTz: "Asia/Kolkata" });
+    expect(rows[1]).not.toHaveProperty("runtimeMinutes");
+    expect(rows[1]).not.toHaveProperty("watchedAt");
+    expect(rows[2]).toMatchObject({ runtimeMinutes: 120, platform: "Netflix", watchedTz: "Asia/Kolkata", watchedAt: "2024-03-01T20:00:00Z" });
+  });
+
+  it("keeps only valid half-step ratings, drops an oversized review and bad added/rated times", () => {
+    const rows = parseBackupCSV(buildCSVString([
+      { tmdb_id: 1, title: "A", type: "movie", user_rating: 11, review: "ok", rated_at: next, added_at: "nope" },
+      { tmdb_id: 2, title: "B", type: "movie", user_rating: 0.3, review: "ok", rated_at: "2024-01-01T00:00:00Z", added_at: "2024-01-01" },
+      { tmdb_id: 3, title: "C", type: "movie", user_rating: 7.3, review: "ok", rated_at: "", added_at: "" },
+      { tmdb_id: 4, title: "D", type: "movie", user_rating: 7.5, review: "r".repeat(6000), rated_at: "", added_at: "" },
+    ]));
+    expect(rows.map((r) => r.userRating)).toEqual([undefined, undefined, undefined, 7.5]);
+    expect(rows[3]).not.toHaveProperty("review");
+    expect(rows[0]).toMatchObject({ review: "ok" });
+    expect(rows[0]).not.toHaveProperty("ratedAt");
+    expect(rows[0]).not.toHaveProperty("addedAt");
+    expect(rows[1]).toMatchObject({ ratedAt: "2024-01-01T00:00:00Z", addedAt: "2024-01-01T12:00:00Z" });
+  });
+
+  it("shortens a title over 500 characters in both readers", () => {
+    const long = "t".repeat(700);
+    expect(parseBackupCSV(buildCSVString([{ tmdb_id: 1, title: long, type: "movie" }]))[0]!.title).toHaveLength(500);
+    expect(parseCSVForImport(buildCSVString([{ tmdb_id: 1, title: long }])).rows[0]!.title).toHaveLength(500);
+  });
+});
+
+// data-backup: limits count characters (code points) as the server does.
+describe("import limits count characters, not UTF-16 units", () => {
+  const emoji = "\u{1F3AC}"; // two UTF-16 units, one character
+
+  it("cuts a title at 500 characters without splitting an emoji", () => {
+    const long = `${"t".repeat(499)}${emoji}${"u".repeat(20)}`;
+    for (const title of [
+      parseBackupCSV(buildCSVString([{ tmdb_id: 1, title: long, type: "movie" }]))[0]!.title,
+      parseCSVForImport(buildCSVString([{ tmdb_id: 1, title: long }])).rows[0]!.title,
+    ]) {
+      expect(Array.from(title)).toHaveLength(500);
+      expect(title.endsWith(emoji)).toBe(true);
+    }
+  });
+
+  it("keeps a review and platform within the limit even with many emoji", () => {
+    const review = `${emoji.repeat(1100)}${"r".repeat(2900)}`; // 4,000 characters, 5,100 units
+    const platform = emoji.repeat(60); // 60 characters, 120 units
+    const backup = parseBackupCSV(buildCSVString([
+      { tmdb_id: 1, title: "A", type: "movie", user_rating: 8, review, platform },
+    ]))[0]!;
+    expect(backup.review).toBe(review);
+    expect(backup.platform).toBe(platform);
+    const imported = parseCSVForImport(buildCSVString([{ tmdb_id: 1, title: "A", platform }])).rows[0]!;
+    expect(imported.platform).toBe(platform);
+  });
+
+  it("still drops a value over the limit in characters", () => {
+    const row = parseBackupCSV(buildCSVString([
+      { tmdb_id: 1, title: "A", type: "movie", user_rating: 8, review: emoji.repeat(5001), platform: emoji.repeat(101) },
+    ]))[0]!;
+    expect(row).not.toHaveProperty("review");
+    expect(row).not.toHaveProperty("platform");
+  });
+});
+
+// data-backup: the server allows 5 minutes of clock skew, and so does the import.
+describe("normalizeWatchedAt future leeway", () => {
+  it("keeps a time up to 5 minutes ahead and drops one a day ahead", () => {
+    const soon = new Date(Date.now() + 2 * 60_000).toISOString();
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
+    expect(normalizeWatchedAt(soon)).toBe(soon);
+    expect(normalizeWatchedAt(tomorrow)).toBeUndefined();
+    const row = parseBackupCSV(buildCSVString([{ tmdb_id: 1, title: "A", type: "movie", added_at: soon }]))[0]!;
+    expect(row.addedAt).toBe(soon);
+  });
+});

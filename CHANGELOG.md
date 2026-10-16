@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.28.2] - 2026-10-16
+
+Follow-up fixes from three code reviews of 0.28.1 and its own follow-ups (`fix-titles-import-rules`, `fix-library-backup-edges` and `fix-restore-text-edges`, backlog items 43–45). All three OpenSpec changes are archived and their specs synced. Frontend only: no backend, API, migration or dependency changes. There are no open backlog items.
+
+### Fixed
+- **Detail and person pages title what they show.** The tab title (and the screen-reader announcement) is "Page Not Found" for an invalid id, the page's not-found heading for a 404, and its error heading for a failed load, instead of the generic "Movie · CINE DB". A request that succeeds with an empty body now shows the error state with Retry, titled to match, instead of a blank or nameless page. A record TMDB gives no name keeps the generic title.
+- **The Watchlist's Watched/Unwatched filter never shows a grid built on missing data.** It shows the skeleton while the watched history loads (and while a Retry runs), the error with Retry only when that history never loaded, and keeps the filtered grid when a later background reload fails. The move to the last non-empty page waits for the watched history, including a reload in progress, so a deep-linked `?page=3` isn't reset.
+- **One bad cell in a backup no longer fails a whole 500-row batch.** A poster, runtime, platform, time zone, personal rating, time or oversized review the server would reject is dropped for that row only; a title over 500 characters is shortened.
+- **Length limits count characters the way the server does.** A cut title never ends in half an emoji (which the database refused, failing the whole batch), and reviews, platforms and time zones full of emoji are no longer dropped as too long.
+- **Backup times from a clock slightly ahead are kept.** Times up to 5 minutes past the device's clock are restored as given, the same leeway the server allows.
+- **Every import follows the same lookup rule.** The Watched CSV, list CSV and backup imports look up only rows the file doesn't give both a poster and a score, the file's values win, and each title is looked up once however many rows or backup sections carry it. Importing the Watched export into a list makes no lookups, and "N saved without a poster" counts titles, not rows.
+- **A backup restore keeps the score it already looked up.** A row without a poster is looked up for it anyway; when its backup score is 0, it now keeps TMDB's score. Rows with a poster are still never looked up for their score.
+- **Imports stop changing their dialog once you sign out,** including right after the poster lookups finish.
+
+### Changed
+- `useWatched()` exposes `hasLoaded` (a successful load this session), which the Watchlist filter uses alongside `isLoading`.
+- `lookupImportPosters` owns the skip, merge and per-title rules for all three importers; `csvParse.ts` has one parser per column (`parseTitle`, `parsePosterPath`, `parseScore`, `parseRuntime`, `parseBoundedText`, `parseUserRating`) shared by both CSV readers, over code-point helpers (`charLength`, `cutChars`).
+- `isRecord()` in `src/utils/appended.ts`.
+
+### Tests
+- Jest (517): page titles for every detail state (`detailTitles.test.tsx`), the Watchlist filter and clamp across load, retry and reload (`WatchlistPagination.test.tsx`), per-title lookups and the merge rule (`importPosters.test.ts`), backup bounds, code-point lengths and the time leeway (`csvParse.test.ts`), restore scores and per-title lookups across sections, and no dialog change after a sign-out (`importSession.test.tsx`).
+- e2e: `import.spec.ts`'s restore waits up to 15 s, covering the client's retry-once pause plus the paced lookups.
+
+### Docs
+- `docs/BUG_BACKLOG.md`: items 43–45 logged and archived; two stale "still open" notes corrected.
+- CLAUDE.md: detail-page titles, the Watchlist's watched-history states, the import lookup and per-column parsing rules.
+- README and features.txt: import and restore behavior, honest load states, new test files.
+
 ## [0.28.1] - 2026-10-16
 
 Follow-up fixes from a code review of 0.28.0 (`fix-a11y-import-followups`, backlog item 42). The OpenSpec change is archived and its specs synced. Frontend only: no backend, API, migration or dependency changes. There are no open backlog items.

@@ -141,14 +141,71 @@ function parsePositiveInt(raw: string | undefined): number | null {
   return Number.isNaN(n) || n <= 0 ? null : n;
 }
 
-/** The bulk endpoint's bounds for runtime and platform (serializers.py). */
+// The bulk endpoints' bounds (backend/userdata/serializers.py, Bulk*EntrySerializer).
+// A value outside them would fail the whole batch, so each parser below drops
+// it (or, for a title, shortens it) for that row only.
 const MAX_RUNTIME = 2_147_483_647;
 const MAX_PLATFORM_LENGTH = 100;
-/** The serializers' `max_length` for a poster path. */
 const MAX_POSTER_PATH_LENGTH = 500;
+const MAX_TITLE_LENGTH = 500;
+const MAX_TZ_LENGTH = 64;
+const MAX_REVIEW_LENGTH = 5000;
+
+// The server's max_length counts code points, so an emoji is one character;
+// JS `.length` counts UTF-16 units (an emoji is two). Every bound below goes
+// through these, and a cut never leaves half an emoji, which the database
+// refuses (failing the whole chunk).
+function charLength(s: string): number {
+  return Array.from(s).length;
+}
+
+function cutChars(s: string, max: number): string {
+  const chars = Array.from(s);
+  return chars.length <= max ? s : chars.slice(0, max).join("");
+}
+
+/** A title the server accepts: trimmed, cut to its first 500 characters. */
+function parseTitle(raw: string | undefined): string {
+  return cutChars((raw ?? "").trim(), MAX_TITLE_LENGTH);
+}
+
+/** A runtime in minutes: a whole number from 0 up, else undefined. */
+function parseRuntime(raw: string | undefined): number | undefined {
+  const s = (raw ?? "").trim();
+  return /^\d+$/.test(s) && Number(s) <= MAX_RUNTIME ? Number(s) : undefined;
+}
+
+/** Trimmed text, undefined when blank or longer than `max`. */
+function parseBoundedText(raw: string | undefined, max: number): string | undefined {
+  const s = (raw ?? "").trim();
+  return s && charLength(s) <= max ? s : undefined;
+}
+
+/** A personal rating: 0.5–10 on a half step, else undefined. */
+function parseUserRating(raw: string | undefined): number | undefined {
+  const s = (raw ?? "").trim();
+  const n = s === "" ? NaN : Number(s);
+  return Number.isFinite(n) && n >= 0.5 && n <= 10 && Number.isInteger(n * 2) ? n : undefined;
+}
+
+/** A TMDB poster path the server accepts, else undefined (that row only). */
+function parsePosterPath(raw: string | undefined): string | undefined {
+  const poster = (raw ?? "").trim();
+  return poster.startsWith("/") && charLength(poster) <= MAX_POSTER_PATH_LENGTH ? poster : undefined;
+}
+
+/** A TMDB score (0–10), else undefined; `Number("")` would read 0. */
+function parseScore(raw: string | undefined): number | undefined {
+  const s = (raw ?? "").trim();
+  const n = s === "" ? NaN : Number(s);
+  return Number.isFinite(n) && n >= 0 && n <= 10 ? n : undefined;
+}
 
 /** The bulk endpoints reject timestamps before 1900 (serializers.py). */
 const EARLIEST_WATCHED = Date.UTC(1900, 0, 1);
+/** How far past this device's clock a time may be: the server's own leeway
+ *  (BULK_TIMESTAMP_SKEW), so a backup from a clock slightly ahead keeps its times. */
+const FUTURE_LEEWAY_MS = 5 * 60_000;
 
 // What the bulk endpoints accept (DRF: ISO 8601 only). Date.parse reads far
 // more ("05/01/2024", "May 1, 2024"), and one such row failed its whole chunk.
@@ -166,7 +223,7 @@ export function normalizeWatchedAt(raw: string): string | undefined {
   const iso = ISO_DATE_TIME.test(value) ? value : ISO_DATE.test(value) ? `${value}T12:00:00Z` : undefined;
   if (!iso) return undefined;
   const when = Date.parse(iso);
-  return when >= EARLIEST_WATCHED && when <= Date.now() ? iso : undefined;
+  return when >= EARLIEST_WATCHED && when <= Date.now() + FUTURE_LEEWAY_MS ? iso : undefined;
 }
 
 export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: string | null } {
@@ -207,7 +264,7 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
   for (const cols of lines) {
     const mediaId = parsePositiveInt(cols[idCol]);
     if (mediaId === null) continue;
-    const row: ParsedEntry = { mediaId, title: (cols[titleCol] ?? "").trim() };
+    const row: ParsedEntry = { mediaId, title: parseTitle(cols[titleCol]) };
     const type = typeCol === -1 ? undefined : parseMediaType(cols[typeCol]);
     if (type) row.type = type;
     // A bad, non-ISO, future or pre-1900 time is dropped for this row only
@@ -215,20 +272,19 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
     // import time.
     const watchedAt = watchedAtCol === -1 ? undefined : normalizeWatchedAt(cols[watchedAtCol] ?? "");
     if (watchedAt) row.watchedAt = watchedAt;
-    const watchedTz = watchedTzCol === -1 ? "" : (cols[watchedTzCol] ?? "").trim();
-    if (watchedTz) row.watchedTz = watchedTz;
     // Like the time, a bad value is dropped for this row only, never sent:
     // one out-of-range value would fail the whole batch.
-    const runtimeRaw = runtimeCol === -1 ? "" : (cols[runtimeCol] ?? "").trim();
-    if (/^\d+$/.test(runtimeRaw) && Number(runtimeRaw) <= MAX_RUNTIME) row.runtimeMinutes = Number(runtimeRaw);
-    const platform = platformCol === -1 ? "" : (cols[platformCol] ?? "").trim();
-    if (platform && platform.length <= MAX_PLATFORM_LENGTH) row.platform = platform;
-    const poster = posterCol === -1 ? "" : (cols[posterCol] ?? "").trim();
-    if (poster.startsWith("/") && poster.length <= MAX_POSTER_PATH_LENGTH) row.posterPath = poster;
+    const watchedTz = watchedTzCol === -1 ? undefined : parseBoundedText(cols[watchedTzCol], MAX_TZ_LENGTH);
+    if (watchedTz) row.watchedTz = watchedTz;
+    const runtime = runtimeCol === -1 ? undefined : parseRuntime(cols[runtimeCol]);
+    if (runtime !== undefined) row.runtimeMinutes = runtime;
+    const platform = platformCol === -1 ? undefined : parseBoundedText(cols[platformCol], MAX_PLATFORM_LENGTH);
+    if (platform) row.platform = platform;
+    const poster = posterCol === -1 ? undefined : parsePosterPath(cols[posterCol]);
+    if (poster) row.posterPath = poster;
     // The export's score: with a poster too, the row needs no TMDB lookup.
-    const voteRaw = voteCol === -1 ? "" : (cols[voteCol] ?? "").trim();
-    const vote = voteRaw === "" ? NaN : Number(voteRaw);
-    if (Number.isFinite(vote) && vote >= 0 && vote <= 10) row.voteAverage = vote;
+    const vote = voteCol === -1 ? undefined : parseScore(cols[voteCol]);
+    if (vote !== undefined) row.voteAverage = vote;
     rows.push(row);
   }
 
@@ -265,33 +321,34 @@ export function parseBackupCSV(text: string): BackupRow[] {
     if (mediaId === null) continue;
     const row: BackupRow = {
       mediaId,
-      title: (cols[titleCol] ?? "").trim(),
+      title: parseTitle(cols[titleCol]),
       type: parseMediaType(optional(cols, "type")) ?? "movie",
-      voteAverage: parseFloat(optional(cols, "vote_average") ?? "0") || 0,
-      posterPath: optional(cols, "poster_path") ?? null,
+      // A value the server would reject is dropped for this row only (it
+      // would fail the whole chunk); a dropped poster is looked up. The
+      // score is taken as given: blank or bad is 0, never looked up.
+      voteAverage: parseScore(optional(cols, "vote_average")) ?? 0,
+      posterPath: parsePosterPath(optional(cols, "poster_path")) ?? null,
     };
-    const addedAt = optional(cols, "added_at");
+    // A dropped time leaves the row to get the restore time.
+    const addedAt = normalizeWatchedAt(optional(cols, "added_at") ?? "");
     if (addedAt) row.addedAt = addedAt;
-    const watchedAt = optional(cols, "watched_at");
+    const watchedAt = normalizeWatchedAt(optional(cols, "watched_at") ?? "");
     if (watchedAt) row.watchedAt = watchedAt;
-    const watchedTz = optional(cols, "watched_tz");
+    const watchedTz = parseBoundedText(optional(cols, "watched_tz"), MAX_TZ_LENGTH);
     if (watchedTz) row.watchedTz = watchedTz;
-    const runtime = optional(cols, "runtime_minutes");
-    if (runtime !== undefined) {
-      const n = parseInt(runtime, 10);
-      row.runtimeMinutes = Number.isNaN(n) ? null : n;
-    }
-    const platform = optional(cols, "platform");
-    if (platform !== undefined) row.platform = platform;
-    const rating = optional(cols, "user_rating");
-    if (rating !== undefined) {
-      const n = parseFloat(rating);
-      if (!Number.isNaN(n)) row.userRating = n;
-    }
-    // Reviews keep their whitespace and line breaks; only the column lookup is trimmed.
+    const runtime = parseRuntime(optional(cols, "runtime_minutes"));
+    if (runtime !== undefined) row.runtimeMinutes = runtime;
+    const platform = parseBoundedText(optional(cols, "platform"), MAX_PLATFORM_LENGTH);
+    if (platform) row.platform = platform;
+    // A rating row without a valid rating isn't restored (the import skips it).
+    const rating = parseUserRating(optional(cols, "user_rating"));
+    if (rating !== undefined) row.userRating = rating;
+    // Reviews keep their whitespace and line breaks; only the column lookup is
+    // trimmed. One too long for the server is dropped, not cut mid-sentence.
     const reviewCol = col("review");
-    if (reviewCol !== -1) row.review = cols[reviewCol] ?? "";
-    const ratedAt = optional(cols, "rated_at");
+    const review = reviewCol === -1 ? undefined : cols[reviewCol] ?? "";
+    if (review !== undefined && charLength(review) <= MAX_REVIEW_LENGTH) row.review = review;
+    const ratedAt = normalizeWatchedAt(optional(cols, "rated_at") ?? "");
     if (ratedAt) row.ratedAt = ratedAt;
     rows.push(row);
   }

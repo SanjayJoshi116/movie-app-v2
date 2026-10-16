@@ -6,11 +6,11 @@ type WatchedContextType = ReturnType<typeof useWatched>;
 export const WatchedContext = createContext<WatchedContextType | null>(null);
 
 export function WatchedProvider({ children }: { children: ReactNode }) {
-  const { watchedList, isLoading, error, add, remove, isWatched, toggle, clearAll, reload } = useWatched();
+  const { watchedList, isLoading, hasLoaded, error, add, remove, isWatched, toggle, clearAll, reload } = useWatched();
 
   const value = useMemo<WatchedContextType>(() => ({
-    watchedList, isLoading, error, add, remove, isWatched, toggle, clearAll, reload,
-  }), [watchedList, isLoading, error, add, remove, isWatched, toggle, clearAll, reload]);
+    watchedList, isLoading, hasLoaded, error, add, remove, isWatched, toggle, clearAll, reload,
+  }), [watchedList, isLoading, hasLoaded, error, add, remove, isWatched, toggle, clearAll, reload]);
 
   return <WatchedContext.Provider value={value}>{children}</WatchedContext.Provider>;
 }

@@ -73,12 +73,14 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
     const guard = sessionGuard();
     setLoading(true);
     try {
-      // Posters and scores, paced to the TMDB proxy's rate limit.
+      // Posters and scores the file doesn't give, paced to the TMDB proxy's
+      // rate limit; the file's own values are kept.
       const { found, missing } = await lookupImportPosters(
-        parsed.map((row) => ({ mediaId: row.mediaId, type: row.type ?? mediaType })),
+        parsed.map((row) => ({ ...row, type: row.type ?? mediaType })),
         (done, total) => setProgress({ done, total }),
         () => !guard.isCurrent(),
       );
+      guard.check(); // signed out during the lookups: no state change, no write
       setProgress(null);
 
       // One request per 500 rows (not one per row). No dates here, so the
@@ -90,8 +92,8 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
             mediaId: row.mediaId,
             mediaType: row.type ?? mediaType,
             title: row.title,
-            posterPath: found[i]?.posterPath ?? null,
-            voteAverage: found[i]?.voteAverage ?? 0,
+            posterPath: found[i]!.posterPath,
+            voteAverage: found[i]!.voteAverage ?? 0,
           })),
           () => undefined,
         ),

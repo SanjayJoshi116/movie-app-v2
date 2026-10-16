@@ -152,7 +152,7 @@ When the device asks for reduced motion, the app SHALL NOT animate page transiti
 - **THEN** the numbers count up and the charts animate in as before
 
 ### Requirement: Each page has its own title, and navigation is announced
-Every page SHALL set the document title to its name followed by "CINE DB" (for example "Watchlist · CINE DB"). Movie, TV and person pages SHALL use the title's or person's name once loaded. After an in-app navigation, assistive technology SHALL be told the new page's title through a polite live announcement, without moving focus or changing the scroll position. The announcement SHALL be the title the new page settles on: never the previous page's title, and on a page that loads a name, the loaded name (or the generic title once loading has failed), not the generic title shown while it loads. The first page load of the app SHALL NOT be announced.
+Every page SHALL set the document title to its name followed by "CINE DB" (for example "Watchlist · CINE DB"). Movie, TV and person pages SHALL use the title's or person's name once loaded, and SHALL keep the generic title ("Movie", "TV Show", "Person") when the loaded record has no name. When such a page can't show its subject, its title SHALL name what the page shows instead: "Page Not Found" for an address whose id isn't valid, the page's not-found heading (for example "Movie not found") when the subject doesn't exist, and the page's error heading (for example "Failed to load movie details") when loading failed. A request that succeeds without giving a record SHALL count as a failed load: the page SHALL show its error state with Retry and SHALL be titled with its error heading. When the address changes to another id of the same kind of page, the page SHALL NOT report the previous subject's name or show the previous subject's content for the new address. After an in-app navigation, assistive technology SHALL be told the new page's title through a polite live announcement, without moving focus or changing the scroll position. The announcement SHALL be the title the new page settles on: never the previous page's title, and on a page that loads a name, the loaded name (or the not-found or error title once loading has settled without it), not the generic title shown while it loads. The first page load of the app SHALL NOT be announced.
 
 #### Scenario: Two tabs
 - **WHEN** a user has Watched open in one tab and a movie page in another
@@ -172,7 +172,27 @@ Every page SHALL set the document title to its name followed by "CINE DB" (for e
 
 #### Scenario: Detail page fails to load
 - **WHEN** a screen reader user opens a movie whose details fail to load
-- **THEN** "Movie · CINE DB" is announced
+- **THEN** the tab reads "Failed to load movie details · CINE DB", that title is announced, and "Movie · CINE DB" is not announced
+
+#### Scenario: Request succeeds without a record
+- **WHEN** a user opens a person page and the person request answers `200` with an empty body
+- **THEN** the page shows "Failed to load this person" with Retry, and the tab reads "Failed to load this person · CINE DB", not "Person · CINE DB"
+
+#### Scenario: Subject doesn't exist
+- **WHEN** a screen reader user opens a TV show id that TMDB answers with 404
+- **THEN** the tab reads "TV show not found · CINE DB" and that title is announced
+
+#### Scenario: Invalid id in the address
+- **WHEN** a user opens `/person/abc`
+- **THEN** the tab reads "Page Not Found · CINE DB", not "Person · CINE DB", and after an in-app navigation that title is announced
+
+#### Scenario: Loaded record without a name
+- **WHEN** a movie loads and TMDB gives it an empty title
+- **THEN** the page shows the movie and the tab reads "Movie · CINE DB", not the error heading
+
+#### Scenario: From one person to another
+- **WHEN** a user on Brad Pitt's page follows a link to another person's page
+- **THEN** "Brad Pitt · CINE DB" is never reported for the new address, and Brad Pitt's details aren't shown there while the new person loads
 
 #### Scenario: First load
 - **WHEN** a user opens the app at any address, in development or production

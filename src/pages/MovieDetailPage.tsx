@@ -9,18 +9,24 @@ import { LoadError } from "../components/LoadError";
 import NotFoundPage from "./NotFoundPage";
 import { useValidId } from "../hooks/useValidId";
 import { isNotFound } from "../utils/settled";
-import { arrayOr, objectOr, resultsOf } from "../utils/appended";
+import { arrayOr, isRecord, objectOr, resultsOf } from "../utils/appended";
 import type { TMDBCredits, TMDBImages, TMDBMovieDetailResponse } from "../types";
-import { usePageTitle } from "../hooks/usePageTitle";
+import { usePageTitle, detailPageTitle } from "../hooks/usePageTitle";
+import type { DetailHeadings } from "../hooks/usePageTitle";
+
+const HEADINGS: DetailHeadings = {
+  generic: "Movie",
+  notFound: "Movie not found",
+  failed: "Failed to load movie details",
+};
 
 function MovieDetailPage() {
   const id = useValidId();
   const [movie, setMovie] = useState<MovieDetailData | null>(null);
   // activeCategory is passed through so Back nav restores the correct tab
   const [loading, setLoading] = useState(true);
-  // A bad id shows NotFoundPage, which names itself: nothing is loading then.
-  usePageTitle(movie?.title ?? "Movie", { loading: loading && id !== null });
   const [error, setError] = useState<"not-found" | "failed" | null>(null);
+  usePageTitle(...detailPageTitle({ validId: id !== null, loading, error, name: movie?.title }, HEADINGS));
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -48,6 +54,14 @@ function MovieDetailPage() {
       }
       if (cancelled) return;
 
+      // A success without a record (an empty body) is a failed load, so the
+      // page shows and titles its error state instead of a nameless record.
+      if (!isRecord(movieData)) {
+        setError("failed");
+        setLoading(false);
+        return;
+      }
+
       const credits = objectOr<Partial<TMDBCredits>>(movieData.credits, {});
       const images = objectOr<Partial<TMDBImages>>(movieData.images, {});
       setMovie({
@@ -72,9 +86,9 @@ function MovieDetailPage() {
 
   if (id === null) return <NotFoundPage />;
   if (loading) return <DetailPageSkeleton />;
-  if (error === "not-found") return <LoadError notFound title="Movie not found" />;
+  if (error === "not-found") return <LoadError notFound title={HEADINGS.notFound} />;
   if (error)
-    return <LoadError title="Failed to load movie details" onRetry={() => setReloadKey((k) => k + 1)} />;
+    return <LoadError title={HEADINGS.failed} onRetry={() => setReloadKey((k) => k + 1)} />;
   if (!movie) return null;
 
   return (

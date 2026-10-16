@@ -112,7 +112,9 @@ async function importBackup(page: Page, isMobile: boolean, file: Awaited<ReturnT
   const d = dialog(page, BACKUP);
   await d.locator('input[type="file"]').setInputFiles(file);
   await d.getByRole("button", { name: "Import All" }).click();
-  await expect(d.locator(".ant-alert")).toContainText(/Import (complete|finished)/);
+  // A restore paces its poster lookups, and a failed reload waits out the
+  // client's 2 s retry-once-on-500: together they can pass the 5 s default.
+  await expect(d.locator(".ant-alert")).toContainText(/Import (complete|finished)/, { timeout: 15_000 });
   return d;
 }
 
