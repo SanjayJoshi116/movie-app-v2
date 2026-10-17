@@ -25,6 +25,8 @@ export const BACKDROP_ORIGINAL_URL = "https://image.tmdb.org/t/p/original";
 export const YT_THUMB_URL = (key: string) => `https://i.ytimg.com/vi/${key}/hqdefault.jpg`;
 
 export const RATING_GOLD = "#f5c518";
+/** Light theme's links and wordmark: gold on cream measures 1.5:1, brass 5.4:1. */
+export const LINK_BRASS = "#7d5f00";
 export const WATCHED_GREEN = "#52c41a";
 export const RATING_WARN = "#faad14";
 export const RATING_BAD = "#ff4d4f";

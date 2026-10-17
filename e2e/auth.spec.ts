@@ -19,6 +19,46 @@ test.describe("Login page", () => {
     await expect(page.getByRole("link", { name: "Register" })).toBeVisible();
   });
 
+  for (const theme of ["dark", "light"] as const) {
+    test(`shows the CINE DB wordmark and tagline above the form in ${theme} mode (login-page)`, async ({ page }) => {
+      await page.addInitScript((t) => localStorage.setItem("cinedb_theme", JSON.stringify(t)), theme);
+      await page.goto("/login");
+      const wordmark = page.getByRole("heading", { level: 1, name: "CINE DB" });
+      const tagline = page.getByText("Track what you've watched and find what to watch next.");
+      await expect(wordmark).toBeVisible();
+      await expect(tagline).toBeVisible();
+      const formTop = (await page.getByLabel("Username").boundingBox())!.y;
+      expect((await wordmark.boundingBox())!.y).toBeLessThan(formTop);
+      expect((await tagline.boundingBox())!.y).toBeLessThan(formTop);
+    });
+  }
+
+  test("the stage's beam does not animate under reduced motion (login-page)", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/login");
+    const beam = page.locator(".auth-stage-beam");
+    await expect(beam).toBeAttached();
+    const style = await beam.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { name: s.animationName, opacity: s.opacity, running: el.getAnimations().length };
+    });
+    expect(style).toEqual({ name: "none", opacity: "1", running: 0 });
+  });
+
+  for (const path of ["/register", "/forgot-password", "/reset-password/abc123/token456"]) {
+    test(`${path}: the stage's beam does not animate under reduced motion (auth-pages)`, async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto(path);
+      const beam = page.locator(".auth-stage-beam");
+      await expect(beam).toBeAttached();
+      const style = await beam.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { name: s.animationName, opacity: s.opacity, running: el.getAnimations().length };
+      });
+      expect(style).toEqual({ name: "none", opacity: "1", running: 0 });
+    });
+  }
+
   test("the browser tab is titled CINE DB, like the manifest", async ({ page }) => {
     await page.goto("/login");
     await expect(page).toHaveTitle("CINE DB");

@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { Form, Input, Button, Typography, Card, App } from "antd";
+import { Form, Input, Button, Typography, App } from "antd";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getApiError } from "../utils/apiError";
 import { usePageTitle } from "../hooks/usePageTitle";
+import { AuthStage } from "../components/AuthStage";
 
 export default function RegisterPage() {
   usePageTitle("Create Account");
@@ -31,52 +32,47 @@ export default function RegisterPage() {
   };
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "0 16px" }}>
-      <Card style={{ width: "100%", maxWidth: 360 }}>
-        <Typography.Title level={3} style={{ textAlign: "center", marginBottom: 24 }}>
-          Create Account
-        </Typography.Title>
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="username" label="Username" rules={[{ required: true, message: "Enter a username" }]}>
-            <Input size="large" autoComplete="username" />
-          </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ type: "email", message: "Enter a valid email" }]}>
-            <Input size="large" autoComplete="email" />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label="Password"
-            rules={[{ required: true, min: 8, message: "At least 8 characters" }]}
-          >
-            <Input.Password size="large" autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item
-            name="confirmPassword"
-            label="Confirm Password"
-            dependencies={["password"]}
-            rules={[
-              { required: true, message: "Please confirm your password" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) return Promise.resolve();
-                  return Promise.reject(new Error("Passwords do not match"));
-                },
-              }),
-            ]}
-          >
-            <Input.Password size="large" autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={loading} disabled={loading}>
-              Register
-            </Button>
-          </Form.Item>
-        </Form>
-        <Typography.Text type="secondary" style={{ display: "block", textAlign: "center" }}>
-          Already have an account?{" "}
-          <Link to="/login">Sign In</Link>
-        </Typography.Text>
-      </Card>
-    </div>
+    <AuthStage title="Create Account">
+      <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form.Item name="username" label="Username" rules={[{ required: true, message: "Enter a username" }]}>
+          <Input size="large" autoComplete="username" />
+        </Form.Item>
+        <Form.Item name="email" label="Email" rules={[{ type: "email", message: "Enter a valid email" }]}>
+          <Input size="large" autoComplete="email" />
+        </Form.Item>
+        <Form.Item
+          name="password"
+          label="Password"
+          rules={[{ required: true, min: 8, message: "At least 8 characters" }]}
+        >
+          <Input.Password size="large" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item
+          name="confirmPassword"
+          label="Confirm Password"
+          dependencies={["password"]}
+          rules={[
+            { required: true, message: "Please confirm your password" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("password") === value) return Promise.resolve();
+                return Promise.reject(new Error("Passwords do not match"));
+              },
+            }),
+          ]}
+        >
+          <Input.Password size="large" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item>
+          <Button type="primary" htmlType="submit" block size="large" loading={loading} disabled={loading}>
+            Register
+          </Button>
+        </Form.Item>
+      </Form>
+      <Typography.Text type="secondary" style={{ display: "block", textAlign: "center" }}>
+        Already have an account?{" "}
+        <Link to="/login">Sign In</Link>
+      </Typography.Text>
+    </AuthStage>
   );
 }

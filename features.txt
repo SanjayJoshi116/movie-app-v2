@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.28.2)
+CINE DB — Feature List (v0.29.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -47,6 +47,8 @@ LIBRARY
 - Release Calendar: the most popular releases of the next 7 days (every day of the week, not just the first), grouped by date, title search, sticky date headers, "Jump to Today", standards-compliant iCal export of exactly what's shown (the title filter applies); a failed load shows an error with Retry
 
 AUTH
+- Sign in, Create account, Forgot password and Reset password share one look: a gold projector beam falling onto the form, the CINE DB wordmark and a one-line tagline, in both themes; every text on them meets WCAG AA; the beam fades up once and stays still with reduced motion
+- The account pages fit the screen: on phones sign-in never scrolls, spacing and the wordmark scale with the screen height, and on Android the keyboard shrinks the page so the form stays above it (iPhone Safari still scrolls the field into view; Create account's longer form scrolls on short screens)
 - JWT login/register; stay signed in for the full 7-day session (silent token refresh, works with several tabs open)
 - Sign Out revokes the session on the server too, and clears everything account-related from the tab (cached recommendations, search results, filters, recent searches) so the next person to sign in sees none of it; browse settings (search term, include adult, genres, filters, sort) reset too; theme and sidebar preferences are kept
 - Tabs stay in step: signing out in one tab signs out the others, and signing in as someone else in another tab reloads this one (no request ever goes out under the wrong account)
@@ -71,7 +73,7 @@ AUTH
 UI/UX
 - Skeleton loaders (staggered fade-in), toast notifications (success only after the server confirms; double-clicks send one request, one toast)
 - Every page shows loading, an error with in-place Retry, empty, or content — a failed load never looks like an empty library; detail pages degrade per section and show "not found" for bad ids
-- Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent; icons (detail pages included), empty states, poster placeholders and the detail backdrop's fade follow the theme — Poppins font throughout, unified size scale: caption/body/emphasis/display
+- Dark/light theme, both custom-designed (dark: cinema-dark navy; light: warm paper/cream) with a shared gold accent; primary buttons have dark text on gold, links are gold (dark) or brass (light) instead of blue, and the sidebar's CINE DB wordmark is brass in light mode so it reads on cream; icons (detail pages included), empty states, poster placeholders and the detail backdrop's fade follow the theme — Poppins font throughout, unified size scale: caption/body/emphasis/display
 - Dates render as dd-mm-yyyy everywhere, independent of browser locale; one implausibly old imported date can never break Stats (imports reject dates before 1900)
 - Fast pages: same-origin API in dev (no CORS preflights), identical TMDB requests shared, TMDB answers cached on the server (10 min for lists, 6 h for details, 24 h for genres), library loads 500 rows per request, images sized for display (w342 grid posters, w1280 backdrops)
 - Keyboard accessible: every poster card that opens a page (including the Movies/TV/Anime grids, the hero's View Details and notification items) is a real link (Tab, Enter, middle/Ctrl-click opens a new tab) with a visible focus outline in both themes; icon-only buttons have screen-reader labels, including the phone drawer's "Edit profile" and "Sign out", and card buttons name their title ("Add to watchlist: Fight Club"); sidebar and bottom-nav entries are real links; each page has its own tab title ("Watchlist · CINE DB", a movie page uses its name), announced to screen readers after navigation; password fields tell password managers which is current and which is new; secondary and muted text meets WCAG AA (4.5:1) in both themes; no duplicate element ids

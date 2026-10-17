@@ -205,3 +205,121 @@ test.describe("light mode icons, empty states and placeholders", () => {
     }
   });
 });
+
+for (const theme of ["dark", "light"] as const) {
+  test.describe(`Sign-in page in ${theme} mode`, () => {
+    test("wordmark, tagline, form text, links and the button text are readable (login-page)", async ({ page }) => {
+      await forceTheme(page, theme);
+      await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+      await page.goto("/login");
+      const targets: [string, Locator][] = [
+        ["wordmark", page.getByRole("heading", { level: 1, name: "CINE DB" })],
+        ["tagline", page.getByText("Track what you've watched and find what to watch next.")],
+        ["heading", page.getByRole("heading", { level: 2, name: "Sign In" })],
+        ["username label", page.locator("label[for='username']")],
+        ["password label", page.locator("label[for='password']")],
+        ["button text", page.getByRole("button", { name: "Sign In" }).locator("span").last()],
+        ["forgot link", page.getByRole("link", { name: "Forgot password?" })],
+        ["register prompt", page.getByText("No account?")],
+        ["register link", page.getByRole("link", { name: "Register" })],
+      ];
+      for (const [name, target] of targets) {
+        await expect(target, name).toBeVisible();
+        expect(await contrast(target), name).toBeGreaterThanOrEqual(TEXT_MIN);
+      }
+    });
+  });
+}
+
+// auth-pages: the account pages share the sign-in page's stage.
+const ACCOUNT_PAGES: { name: string; path: string; heading: string; texts: string[]; sent?: boolean }[] = [
+  { name: "Create account", path: "/register", heading: "Create Account", texts: ["Already have an account?"] },
+  { name: "Forgot password", path: "/forgot-password", heading: "Forgot Password",
+    texts: ["Enter your account email to receive a password reset link."] },
+  { name: "Forgot password, sent", path: "/forgot-password", heading: "Check Your Inbox", sent: true,
+    texts: ["If that email is registered, a reset link has been sent. Check your inbox and follow the link."] },
+  { name: "Reset password", path: "/reset-password/abc123/token456", heading: "Reset Password", texts: [] },
+];
+
+for (const theme of ["dark", "light"] as const) {
+  for (const p of ACCOUNT_PAGES) {
+    test(`${p.name} in ${theme} mode: wordmark, tagline and card text are readable (auth-pages)`, async ({ page }) => {
+      await forceTheme(page, theme);
+      await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+      await page.route("**/api/auth/password-reset/", (route) =>
+        route.fulfill({ json: { detail: "If that email is registered, a reset link has been sent." } }));
+      await page.goto(p.path);
+      if (p.sent) {
+        await page.getByLabel("Email").fill("user@example.com");
+        await page.getByRole("button", { name: "Send Reset Link" }).click();
+      }
+      const card = page.locator(".auth-screen");
+      const targets: [string, Locator][] = [
+        ["wordmark", page.getByRole("heading", { level: 1, name: "CINE DB" })],
+        ["tagline", page.getByText("Track what you've watched and find what to watch next.")],
+        ["heading", page.getByRole("heading", { level: 2, name: p.heading })],
+        ...p.texts.map((t): [string, Locator] => [t, page.getByText(t)]),
+      ];
+      await expect(targets[2]![1]).toBeVisible();
+      const labels = card.locator("label");
+      for (let i = 0; i < (await labels.count()); i++) targets.push([`label ${i}`, labels.nth(i)]);
+      const links = card.getByRole("link");
+      for (let i = 0; i < (await links.count()); i++) targets.push([`link ${i}`, links.nth(i)]);
+      const button = card.locator(".ant-btn-primary");
+      if (await button.count()) targets.push(["button text", button.locator("span").last()]);
+      for (const [name, target] of targets) {
+        await expect(target, name).toBeVisible();
+        expect(await contrast(target), name).toBeGreaterThanOrEqual(TEXT_MIN);
+      }
+    });
+  }
+
+  test(`sidebar wordmark in ${theme} mode is readable, full and in the rail (theme-readability)`, async ({ page }) => {
+    await forceTheme(page, theme);
+    await mockAuthedBase(page);
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto("/watchlist");
+    const full = page.locator(".app-sidebar").getByRole("heading", { name: "CINE DB" });
+    await expect(full).toBeVisible();
+    expect(await contrast(full), "full wordmark").toBeGreaterThanOrEqual(TEXT_MIN);
+    // One line: no taller than a single line box.
+    const lineHeight = await full.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    expect((await full.boundingBox())!.height).toBeLessThan(lineHeight * 1.5);
+
+    await page.setViewportSize({ width: 800, height: 1024 });
+    const compact = page.locator(".app-sidebar .sidebar-logo-compact");
+    await expect(compact).toBeVisible();
+    expect(await contrast(compact), "rail mark").toBeGreaterThanOrEqual(TEXT_MIN);
+  });
+
+  test(`primary button text and links in ${theme} mode are brand-colored and readable (theme-readability)`, async ({ page }) => {
+    await forceTheme(page, theme);
+    await mockAuthedBase(page);
+    await page.setViewportSize({ width: 1366, height: 768 }); // sidebar shown
+    await page.goto("/watchlist");
+    const button = page.getByRole("button", { name: "Browse Movies" });
+    await expect(button).toBeVisible();
+    const label = button.locator("span").last();
+    expect(await contrast(label), "button text").toBeGreaterThanOrEqual(TEXT_MIN);
+    expect(await label.evaluate((el) => getComputedStyle(el).color), "button text is dark").toBe("rgb(0, 0, 0)");
+    // Menu entries are links too, and keep the menu's own text color.
+    const menuItem = page.locator(".app-sidebar .ant-menu-item:not(.ant-menu-item-selected)").first();
+    await expect(menuItem).toBeVisible();
+    expect(await menuItem.locator("a").first().evaluate((el) => getComputedStyle(el).color), "menu link")
+      .toBe(await menuItem.evaluate((el) => getComputedStyle(el).color));
+
+    await page.route("**/api/tmdb/person/7**", (route) => route.fulfill({ json: {
+      id: 7, name: "Greta Gerwig", profile_path: null, known_for_department: "Directing", biography: "",
+      birthday: null, deathday: null, place_of_birth: null, popularity: 10, imdb_id: "nm1950086", homepage: null,
+    } }));
+    await page.route("**/api/tmdb/person/7/movie_credits**", (route) => route.fulfill({ json: { cast: [], crew: [] } }));
+    await page.route("**/api/tmdb/person/7/tv_credits**", (route) => route.fulfill({ json: { cast: [], crew: [] } }));
+    await page.route("**/api/tmdb/person/7/images**", (route) => route.fulfill({ json: { profiles: [] } }));
+    await page.goto("/person/7");
+    const link = page.getByRole("link", { name: "View on IMDb" });
+    await expect(link).toBeVisible();
+    // Dark: the dark algorithm's gold (#d3aa17), the same as its primary buttons. Light: brass.
+    await expect(link, "link is brand-colored").toHaveCSS("color", theme === "dark" ? "rgb(211, 170, 23)" : "rgb(125, 95, 0)");
+    expect(await contrast(link), "link").toBeGreaterThanOrEqual(TEXT_MIN);
+  });
+}

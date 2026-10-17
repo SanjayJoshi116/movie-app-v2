@@ -27,6 +27,7 @@ import { useAuth } from "../context/AuthContext";
 import SearchBox from "./SearchBox";
 import ProfileModal from "./ProfileModal";
 import NotificationBell from "./NotificationBell";
+import { Wordmark } from "./Wordmark";
 import { FONT_SIZE } from "../constants/typography";
 import { resolveAvatarUrl } from "../constants/media";
 import { useFlashTooltip } from "../hooks/useFlashTooltip";
@@ -104,17 +105,11 @@ const Sidebar = ({ isBrowsePage, showFilterPanel, onToggleFilterPanel }: Props) 
       {/* Logo */}
       <div style={{ padding: "0 20px 12px" }}>
         <Link to="/movies" style={{ textDecoration: "none" }}>
-          <Typography.Title
-            level={3}
-            className="sidebar-logo-full"
-            style={{ margin: 0, color: RATING_GOLD, letterSpacing: 3, fontWeight: 700 }}
-          >
-            CINE DB
-          </Typography.Title>
+          <Wordmark level={3} className="sidebar-logo-full sidebar-wordmark" />
           <Typography.Title
             level={3}
             className="sidebar-logo-compact"
-            style={{ margin: 0, color: RATING_GOLD, fontWeight: 700, textAlign: "center" }}
+            style={{ margin: 0, fontWeight: 700, textAlign: "center" }}
           >
             C
           </Typography.Title>

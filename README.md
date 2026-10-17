@@ -114,7 +114,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Release Calendar** — The most popular releases of the next 7 days (every day of the window, not only the first), grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export of what's shown (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
 
 ### Auth
-- **Login / Register** — JWT-based auth; tokens stored in `localStorage`. Signed-in users opening `/login`, `/register` or `/forgot-password` are sent straight on (no form flash); unknown URLs show a "Page not found" page instead of silently redirecting. An email address belongs to one account, even when two sign-ups or email changes race
+- **Login / Register** — JWT-based auth; tokens stored in `localStorage`. Sign in, Create account, Forgot and Reset password share one stage: a gold projector beam onto the form card, the CINE DB wordmark and a tagline, readable in both themes; it adapts to the screen height, and on Android the keyboard shrinks the page so sign-in stays above it. Signed-in users opening `/login`, `/register` or `/forgot-password` are sent straight on (no form flash); unknown URLs show a "Page not found" page instead of silently redirecting. An email address belongs to one account, even when two sign-ups or email changes race
 - **Tabs Follow the Signed-In Account** — Signing out in one tab signs out the others; signing in as a different account in another tab reloads this one, and a request is never sent with another account's token in between. Only a rejected token refresh ends the session: a busy (429) or failing (5xx/network) server keeps you signed in. Token refresh and logout have their own rate limit, so many users behind one NAT don't share one bucket
 - **Password Reset** — Email-based: enter your account email, receive a reset link, set a new password via the link
 - **Password Policy** — Minimum length, no common or all-numeric passwords, and nothing too similar to the username, email or name
@@ -132,7 +132,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Back Stays in the App** — A detail or person page's Back button goes back in history only when there's an in-app page to return to; opened in a new tab or from another site, it goes to Movies, TV Shows or People. Browser Back to People restores its loaded pages and scroll
 - **Confirm Buttons Stay Tappable** — On library cards, an icon's tooltip hides while its confirmation is open, so the confirm button is never covered (on touch screens too)
 - **Toast Notifications** — Feedback on watchlist, watched, list, follow, and rating actions, shown only after the server confirms; a double-click sends one request and shows one toast
-- **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account
+- **Dark / Light Mode** — Cinema-dark (`#0d0f1a`) and light themes; preference saved per account. Primary buttons carry dark text on gold and links are gold (dark) or brass (light), both set as theme tokens
 - **Info Tooltips** — `(i)` tooltips next to non-obvious labels/stats (Stats, Calendar, Lists, Watched, Recommendations, Movie/TV Detail)
 - **Password Strength Meter** — Live strength bar under the New Password field when changing your password
 - **Unified Typography Scale** — Poppins font throughout; a small `FONT_SIZE` scale (caption/body/emphasis/display) replaces ad-hoc inline sizes
@@ -243,6 +243,9 @@ src/
 │                                #   followed-people helpers, requestPasswordReset,
 │                                #   confirmPasswordReset, bulkMarkWatched
 ├── components/
+│   ├── AuthStage.tsx            # Account pages' stage: beam, Wordmark (h1), tagline, card; adapts to height and
+│   │                            #   sets interactive-widget=resizes-content while mounted (Android keyboard)
+│   ├── Wordmark.tsx             # "CINE DB" wordmark (sidebar and account pages); theme-scoped color in App.css
 │   ├── layout/
 │   │   └── FilterPanel.tsx      # Advanced filter UI (Ant Design Drawer, right-side)
 │   ├── ui/
@@ -691,6 +694,8 @@ src/utils/__tests__/
 └── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
 
 src/components/__tests__/
+├── AuthStage.test.tsx            # Wordmark as h1, tagline, card heading and content
+├── Wordmark.test.tsx             # Heading level, optional size, extra class
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win
@@ -707,7 +712,8 @@ src/components/__tests__/
 └── WatchProviders.test.tsx       # TMDB's provider link used only if http(s); user's region, labelled US fallback
 
 src/theme/__tests__/
-└── themeContrast.test.ts         # Secondary/tertiary text tokens >= 4.5:1 on every background, both themes
+└── themeContrast.test.ts         # Secondary/tertiary text and link tokens >= 4.5:1 on every background,
+                                  #   primary-button text >= 4.5:1 on gold at rest/hover/active, both themes
 
 src/components/layout/__tests__/
 └── FilterPanel.test.tsx          # Genres of the current type only; adult switch is a draft; labelled fields

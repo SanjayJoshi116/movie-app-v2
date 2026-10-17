@@ -5,9 +5,12 @@
 }
 
 /* ── App Layout Shell ───────────────────────────────────── */
+/* svh: the viewport with the mobile browser's address bar shown. 100vh is
+   the larger one, so a page sized to it always scrolled by the bar's height. */
 .app-shell {
   display: flex;
   min-height: 100vh;
+  min-height: 100svh;
 }
 
 .app-sidebar {
@@ -28,6 +31,7 @@
   min-width: 0;
   padding: 24px;
   min-height: 100vh;
+  min-height: 100svh;
 }
 
 /* Mobile: hide sidebar, show bottom nav */
@@ -604,6 +608,211 @@ body:not(.dark-theme) ::-webkit-scrollbar-thumb {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #f5c518;
+}
+
+/* ── Sign-in stage (pilot-login-redesign) ─────────────────
+   A projector beam falls from above the viewport onto the card, which
+   reads as the screen it lands on. The beam fades up once on load; the
+   reduced-motion rule below finishes it at once. */
+.auth-stage {
+  position: relative;
+  isolation: isolate;
+  margin: -24px;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 48px 16px;
+  padding-block: clamp(12px, 6svh, 48px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  gap: clamp(8px, 3.5svh, 28px);
+}
+
+@media (max-width: 767px) {
+  .auth-stage {
+    margin: -16px -16px -72px;
+  }
+}
+
+/* The stage adapts to the height it has: spacing (above) and the wordmark
+   (below) scale with svh, and on short screens the tagline goes and the card
+   tightens. While an account page is open the phone keyboard shrinks the
+   page (AuthStage sets interactive-widget=resizes-content), so the same rules
+   fit the form into the space above the keyboard. */
+@media (max-height: 560px) {
+  .auth-stage .auth-screen .ant-card-body {
+    padding: 16px 20px;
+  }
+
+  .auth-stage .auth-screen .ant-form-item {
+    margin-bottom: 14px;
+  }
+}
+
+@media (max-height: 520px) {
+  .auth-stage .auth-tagline {
+    display: none;
+  }
+}
+
+/* Very short (a small phone with the keyboard up): the form only. The header
+   is hidden visually, not removed, so the page keeps its h1 for screen readers. */
+@media (max-height: 420px) {
+  .auth-stage .auth-stage-head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .auth-stage {
+    padding-block: 8px;
+  }
+
+  .auth-stage .auth-screen .ant-card-body {
+    padding: 12px 16px;
+  }
+
+  .auth-stage .auth-screen .ant-form-item {
+    margin-bottom: 10px;
+  }
+
+  .auth-stage .auth-screen .ant-form-item-label {
+    padding-bottom: 2px;
+  }
+
+  .auth-stage .auth-screen .ant-input-lg,
+  .auth-stage .auth-screen .ant-input-affix-wrapper-lg {
+    padding-block: 4px;
+  }
+
+  .auth-stage .auth-screen .ant-btn-lg {
+    height: 34px;
+  }
+}
+
+.auth-stage-beam {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 96%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 96%);
+  animation: auth-beam-up 1.4s ease-out 0.15s both;
+}
+
+/* The global rule below shortens the fade but keeps its delay, which would
+   leave the stage unlit for a moment: no fade at all here instead. */
+@media (prefers-reduced-motion: reduce) {
+  .auth-stage-beam {
+    animation: none;
+  }
+}
+
+@keyframes auth-beam-up {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.auth-stage-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.wordmark.ant-typography {
+  letter-spacing: 0.32em;
+  margin-right: -0.32em !important;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Sidebar: left-aligned, so no optical offset; tighter tracking keeps the
+   seven caps on one line inside the 220px sidebar. */
+/* FONT_SIZE.display (28) on a tall screen, down to FONT_SIZE.emphasis (16). */
+.auth-stage .wordmark.ant-typography {
+  font-size: 28px;
+  font-size: clamp(16px, 4.2svh, 28px);
+}
+
+.sidebar-wordmark.wordmark.ant-typography {
+  letter-spacing: 0.2em;
+  margin-right: 0 !important;
+  white-space: nowrap;
+}
+
+.auth-tagline {
+  max-width: 48ch;
+  text-wrap: balance;
+}
+
+body.dark-theme .auth-stage-beam {
+  background:
+    conic-gradient(
+      from 154deg at 50% -14%,
+      transparent 0deg,
+      rgba(245, 197, 24, 0.06) 12deg,
+      rgba(255, 236, 179, 0.12) 26deg,
+      rgba(245, 197, 24, 0.06) 40deg,
+      transparent 52deg,
+      transparent 360deg
+    ),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.35) 100%);
+}
+
+body:not(.dark-theme) .auth-stage-beam {
+  background:
+    conic-gradient(
+      from 154deg at 50% -14%,
+      transparent 0deg,
+      rgba(245, 197, 24, 0.12) 12deg,
+      rgba(250, 220, 120, 0.22) 26deg,
+      rgba(245, 197, 24, 0.12) 40deg,
+      transparent 52deg,
+      transparent 360deg
+    ),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgba(125, 95, 0, 0.07) 100%);
+}
+
+body.dark-theme .wordmark.ant-typography,
+body.dark-theme .sidebar-logo-compact.ant-typography {
+  color: #f5c518;
+}
+
+body:not(.dark-theme) .wordmark.ant-typography,
+body:not(.dark-theme) .sidebar-logo-compact.ant-typography {
+  color: #7d5f00;
+}
+
+/* A lit marquee on the account pages only, not a glowing logo on every page. */
+body.dark-theme .auth-stage .wordmark.ant-typography {
+  text-shadow: 0 0 24px rgba(245, 197, 24, 0.35);
+}
+
+body.dark-theme .auth-screen.ant-card {
+  border-color: rgba(245, 197, 24, 0.28);
+  box-shadow: 0 32px 80px -24px rgba(245, 197, 24, 0.2);
+}
+
+body:not(.dark-theme) .auth-screen.ant-card {
+  border-color: rgba(125, 95, 0, 0.22);
+  box-shadow: 0 28px 64px -28px rgba(125, 95, 0, 0.3);
+}
+
+/* Link and primary-button colors come from the theme tokens (antdTheme.ts). */
+.auth-screen a:hover {
+  text-decoration: underline;
 }
 
 /* Ten-star rating: one line down to 320px wide (22px stars and 8px gaps

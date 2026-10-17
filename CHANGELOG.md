@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.29.0] - 2026-10-17
+
+The account pages get the CINE DB look (`pilot-login-redesign`, then `auth-pages-identity`; both archived, specs synced into `login-page`, new `auth-pages` and `theme-readability`). Frontend only: no backend, API, migration or dependency changes.
+
+### Changed
+- **Sign in, Create account, Forgot password and Reset password share one stage:** a gold projector beam falling onto the form's card, the "CINE DB" wordmark as the page's heading and a one-line tagline. Forms, buttons, links, messages and tab titles are unchanged. The beam fades up once and doesn't animate under reduced motion.
+- **Primary buttons have dark text on gold** (white measured about 1.6:1), and **links are gold in dark mode and brass in light mode** instead of antd's blue, everywhere in the app.
+- **The sidebar's "CINE DB" is the same wordmark,** brass in light mode, where the gold measured 1.5:1 on cream. It takes slightly less height than before.
+
+### Fixed
+- The light-theme "No Image" placeholder text reaches 4.5:1 (it measured 4.26:1).
+- **The sign-in page no longer scrolls on phones.** Pages were sized to `100vh`, which on mobile browsers is taller than the screen with the address bar shown; the shell and the account-page stage now use `100svh` (with `100vh` as the fallback), and the stage's spacing tightens on short screens so sign-in fits at 320×568.
+- **The account pages adapt to the screen's height.** Spacing and the wordmark scale with it; on short screens the tagline goes, and on very short ones the header is hidden (kept for screen readers) and the card tightens. While an account page is open, an Android keyboard shrinks the page instead of covering it (`interactive-widget=resizes-content`, set by `AuthStage` only, so the bottom nav elsewhere is unaffected), so sign-in fits above the keyboard down to about 330px of space. Safari ignores this and still scrolls the focused field into view. Create account's longer form still scrolls on short screens.
+- After a failed sign-in, focus returns to the password field reliably (it could fire before the field was re-enabled).
+
+### Docs
+- `CLAUDE.md`: Wordmark, AuthStage, link/button tokens and the scoped keyboard viewport setting; `LINK_BRASS` in the shared constants. README and features.txt updated.
+
+### Tests
+- `themeContrast.test.ts` pins link colors (rest, hover, active) and the primary button's text on gold, hover and active. `AuthStage` and `Wordmark` unit tests.
+- e2e: contrast of every text on each account page in both themes, the sidebar wordmark (full and rail), the primary-button text and a link on signed-in pages; 320px fit, reduced motion, the signed-in reset page above the bottom nav, sign-in with no vertical scroll from 844 down to 330 px tall (keyboard-sized), the keyboard viewport setting only on account pages, and no sidebar scrollbar at 1366×768 on browse pages.
+- Totals: Jest 528 pass; touched Playwright specs (theme-readability, auth, responsive) 158 pass; Python `test_auth.py` + `test_a11y_routing.py` 38 pass.
+
 ## [0.28.2] - 2026-10-16
 
 Follow-up fixes from three code reviews of 0.28.1 and its own follow-ups (`fix-titles-import-rules`, `fix-library-backup-edges` and `fix-restore-text-edges`, backlog items 43–45). All three OpenSpec changes are archived and their specs synced. Frontend only: no backend, API, migration or dependency changes. There are no open backlog items.

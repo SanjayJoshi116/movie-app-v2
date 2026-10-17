@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Form, Input, Button, Typography, Card, App } from "antd";
+import { Form, Input, Button, App } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { confirmPasswordReset } from "../api/userApi";
 import { getApiError } from "../utils/apiError";
 import { usePageTitle } from "../hooks/usePageTitle";
+import { AuthStage } from "../components/AuthStage";
 
 export default function ResetPasswordPage() {
   usePageTitle("Reset Password");
@@ -32,47 +33,42 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "80vh", padding: "0 16px" }}>
-      <Card style={{ width: "100%", maxWidth: 360 }}>
-        <Typography.Title level={3} style={{ textAlign: "center", marginBottom: 24 }}>
-          Reset Password
-        </Typography.Title>
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item
-            name="new_password"
-            label="New Password"
-            rules={[
-              { required: true, message: "Enter a new password" },
-              { min: 8, message: "Password must be at least 8 characters" },
-            ]}
-          >
-            <Input.Password size="large" autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item
-            name="confirm_password"
-            label="Confirm Password"
-            dependencies={["new_password"]}
-            rules={[
-              { required: true, message: "Confirm your password" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("new_password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(new Error("Passwords do not match."));
-                },
-              }),
-            ]}
-          >
-            <Input.Password size="large" autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large" loading={loading}>
-              Reset Password
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
-    </div>
+    <AuthStage title="Reset Password">
+      <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form.Item
+          name="new_password"
+          label="New Password"
+          rules={[
+            { required: true, message: "Enter a new password" },
+            { min: 8, message: "Password must be at least 8 characters" },
+          ]}
+        >
+          <Input.Password size="large" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item
+          name="confirm_password"
+          label="Confirm Password"
+          dependencies={["new_password"]}
+          rules={[
+            { required: true, message: "Confirm your password" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("new_password") === value) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(new Error("Passwords do not match."));
+              },
+            }),
+          ]}
+        >
+          <Input.Password size="large" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button type="primary" htmlType="submit" block size="large" loading={loading}>
+            Reset Password
+          </Button>
+        </Form.Item>
+      </Form>
+    </AuthStage>
   );
 }

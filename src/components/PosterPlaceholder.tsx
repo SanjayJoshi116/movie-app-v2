@@ -19,7 +19,7 @@ export function PosterPlaceholder({ className, style, onClick }: Props) {
         alignItems: "center",
         justifyContent: "center",
         background: token.colorFillSecondary,
-        color: token.colorTextTertiary,
+        color: token.colorTextSecondary,
         fontSize: FONT_SIZE.caption,
         ...style,
       }}

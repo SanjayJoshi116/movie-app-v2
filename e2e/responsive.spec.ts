@@ -59,6 +59,79 @@ test.describe("Responsive layout", () => {
     expect(hasOverflow).toBe(false);
   });
 
+  // The short sizes stand in for a phone with the keyboard up: on account pages
+  // the keyboard shrinks the page to the space above it (resizes-content).
+  for (const [width, height] of [[320, 568], [375, 667], [390, 844], [412, 480], [390, 440], [375, 330]] as const) {
+    test(`phone ${width}x${height}: the sign-in page doesn't scroll vertically (login-page)`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+      await page.goto("/login");
+      await expect(page.locator(".auth-screen")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
+      // The page heading stays for screen readers even when the header is hidden visually.
+      await expect(page.getByRole("heading", { level: 1, name: "CINE DB" })).toBeAttached();
+    });
+  }
+
+  test("the keyboard shrinks the page only on account pages (login-page)", async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await mockAuthedBase(page);
+    const viewportMeta = () => page.evaluate(() => document.querySelector('meta[name="viewport"]')!.getAttribute("content"));
+    await page.goto("/reset-password/abc123/token456");
+    await expect(page.locator(".auth-screen")).toBeVisible();
+    expect(await viewportMeta()).toContain("interactive-widget=resizes-content");
+    await page.locator(".app-sidebar").getByRole("link", { name: "Watchlist" }).first().click();
+    await expect(page).toHaveURL(/\/watchlist/);
+    expect(await viewportMeta()).toBe("width=device-width, initial-scale=1");
+  });
+
+  for (const path of ["/movies", "/tv", "/anime"]) {
+    test(`1366x768: the sidebar has no scrollbar of its own on ${path}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await mockAuthedBase(page);
+      await page.goto(path);
+      const sidebar = page.locator(".app-sidebar");
+      await expect(sidebar.getByRole("heading", { name: "CINE DB" })).toBeVisible();
+      const { scroll, client } = await sidebar.evaluate((el) => ({ scroll: el.scrollHeight, client: el.clientHeight }));
+      expect(scroll).toBeLessThanOrEqual(client);
+    });
+  }
+
+  for (const c of [
+    { name: "signed out", path: "/register", authed: false },
+    { name: "signed out", path: "/forgot-password", authed: false },
+    { name: "signed out", path: "/reset-password/abc123/token456", authed: false },
+  ]) {
+    test(`narrow phone, ${c.name}: ${c.path} card fits and clears the bottom nav (auth-pages)`, async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 640 });
+      if (c.authed) {
+        await mockAuthedBase(page);
+      } else {
+        await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: { detail: "Unauthorized" } }));
+      }
+      await page.goto(c.path);
+      const card = page.locator(".auth-screen");
+      await expect(card).toBeVisible();
+      const box = (await card.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(320);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+    });
+  }
+
+  test("narrow phone, signed in: the reset card's button clears the bottom nav (auth-pages)", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await mockAuthedBase(page);
+    await page.goto("/reset-password/abc123/token456");
+    const button = page.locator(".auth-screen").getByRole("button", { name: "Reset Password" });
+    await expect(button).toBeVisible();
+    // Scrolled to the bottom, the card's last control sits above the bottom nav.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const nav = (await page.locator(".app-bottom-nav").boundingBox())!;
+    const last = (await button.boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(nav.y);
+  });
+
   const popupCases = [
     { name: "desktop sidebar", width: 1366, height: 768, collapsed: false, path: "/movies" },
     { name: "desktop collapsed rail", width: 1366, height: 768, collapsed: true, path: "/movies" },

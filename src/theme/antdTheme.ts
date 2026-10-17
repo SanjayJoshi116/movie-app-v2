@@ -1,6 +1,6 @@
 import { theme as antdTheme } from "antd";
 import type { ThemeConfig } from "antd";
-import { RATING_GOLD } from "../constants/ui";
+import { RATING_GOLD, LINK_BRASS, ON_GOLD_TEXT } from "../constants/ui";
 
 const commonTokens = {
   colorPrimary: RATING_GOLD,
@@ -27,8 +27,18 @@ export const darkThemeConfig: ThemeConfig = {
     colorTextTertiary: "#9090a8",
     colorBorder: "#2d3060",
     colorBorderSecondary: "#232645",
+    // Brand links instead of antd's blue; hover/active set too, so neither
+    // derives into a shade under 4.5:1 (themeContrast.test.ts pins all three).
+    colorLink: RATING_GOLD, // derived to #d3aa17, the same as colorPrimary here
+    colorLinkHover: "#ffd84d",
+    colorLinkActive: "#d4a90f",
   },
   components: {
+    // Dark text on the gold button (white measured ~1.6:1). Not
+    // colorTextLightSolid: tooltips, badges and danger buttons need white.
+    Button: {
+      primaryColor: ON_GOLD_TEXT,
+    },
     Layout: {
       headerBg: "#14172a",
       bodyBg: "#0d0f1a",
@@ -65,8 +75,15 @@ export const lightThemeConfig: ThemeConfig = {
     colorTextTertiary: "#776e58",
     colorBorder: "#e8dfc9",
     colorBorderSecondary: "#ece2c8",
+    // Hover/active go darker, not lighter: a lighter brass drops under 4.5:1.
+    colorLink: LINK_BRASS,
+    colorLinkHover: "#6b5200",
+    colorLinkActive: "#5a4500",
   },
   components: {
+    Button: {
+      primaryColor: ON_GOLD_TEXT,
+    },
     Card: {
       colorBgContainer: "rgba(255, 253, 248, 0.75)",
     },

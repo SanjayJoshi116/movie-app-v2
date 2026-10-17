@@ -66,6 +66,8 @@ start.ps1
 /verify_*.js
 /verify_*.py
 /verify_*.zip
+# temporary Playwright specs for screenshots/measurements (deleted after use)
+/e2e/verify_*.ts
 /typo_*.png
 /*.png
 
