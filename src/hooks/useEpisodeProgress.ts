@@ -12,11 +12,16 @@ import { useAuth } from "../context/AuthContext";
 export function useEpisodeProgress(showId: number) {
   const { isAuthenticated } = useAuth();
   const [progress, setProgress] = useState<EpisodeProgressData | null>(null);
-  const [loading, setLoading] = useState(false);
   // A failed load is not "no progress": offering to start tracking then would
   // let a save overwrite the stored position with S1E1.
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  // The show (and retry) whose load last settled. Loading is derived from it,
+  // so it's true from the first render for a show, before the effect runs:
+  // otherwise that render reads as "no progress", and the Episode Guide (whose
+  // effects run first) would show spoilers (spoiler-shield).
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const loading = isAuthenticated && !!showId && settledKey !== `${showId}:${retryToken}`;
   const [busy, setBusy] = useState(false);
   // The latest write for each show: what it does, and when it settles.
   const pending = useRef(new Map<number, { op: string; promise: Promise<void> }>());
@@ -27,13 +32,12 @@ export function useEpisodeProgress(showId: number) {
     // Never show the previous show's progress (or a logged-out user's).
     setProgress(null);
     setError(false);
-    if (!isAuthenticated || !showId) { setLoading(false); return; }
+    if (!isAuthenticated || !showId) { setSettledKey(null); return; }
     let cancelled = false;
-    setLoading(true);
     getEpisodeProgress(showId)
       .then((res) => { if (!cancelled) setProgress(res.data); })
       .catch(() => { if (!cancelled) setError(true); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) setSettledKey(`${showId}:${retryToken}`); });
     return () => { cancelled = true; };
   }, [showId, isAuthenticated, retryToken]);
 

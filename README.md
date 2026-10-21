@@ -96,7 +96,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Reviews** — TMDB reviews on both Movie and TV detail pages, rendered as a 2-column card grid
 - **Add to List** — Shared modal (`AddToListModal.tsx`) with search-existing-lists and inline create-new-list, opened from the detail page or any browse/search/recommendation card — never a dead end even with zero lists yet
 - **Mark as Watched** — Opens a confirm modal (`MarkWatchedModal.tsx`) instead of an instant toggle; it stays put while saving and keeps what you entered if the save fails; auto-fetches the title's runtime and streaming platforms from TMDB so you just pick (or type "Other") rather than typing anything — feeds the Stats page's Hours Watched and Platform Breakdown. Un-marking stays a one-click toggle.
-- **Episode Guide** — Season/episode breakdown on TV detail pages; collapsed by default, with the episode list for the selected season behind its own toggle
+- **Episode Guide** — Season/episode breakdown on TV detail pages, with the episode list for the selected season behind its own toggle. For a show you track (and haven't marked watched) it opens on your current season and hides the title, still and overview of every episode after your progress; air date, runtime and score stay visible, "Show details for episode N" reveals one episode, and a "Hide spoilers" switch turns the shield off on this device
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time. A failed load shows Retry instead of "not tracked" (so a save can't overwrite real progress), and a double click on Next or Save sends one write
 - **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything; failed credit requests show an error with Retry (credits only), never "No credits"
 - **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; their acting and crew work both count (talk-show and news appearances don't). Manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section ("New from {name}": their last two years and upcoming work, newest first); a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
@@ -266,7 +266,8 @@ src/
 │   ├── CardLink.tsx             # Real router <Link> for any card that opens a page (Tab/Enter, new tab,
 │   │                            #   focus outline); optional onNavigate for click-time router state
 │   ├── PosterPlaceholder.tsx    # Real DOM "No Image" fallback (not an SVG image) so the text
-│   │                            #   inherits Poppins; used at every no-poster call site
+│   │                            #   inherits Poppins; used at every no-poster call site; optional
+│   │                            #   children replace the text (Episode Guide's hidden still)
 │   ├── SectionHeader.tsx        # Divider + Title section heading, shared by Movie/TV detail pages
 │   ├── WatchProviders.tsx       # Streaming/rent provider logos with deep links, shared by Movie/TV detail pages
 │   ├── MediaCardGrid.tsx        # Poster-card grid (Recommendations/Similar/credits), shared by Movie/TV detail
@@ -285,7 +286,8 @@ src/
 │   │                            #   platforms from TMDB given just mediaId/mediaType; used by every
 │   │                            #   watched-toggle icon app-wide (detail pages, browse/search/rec cards)
 │   ├── EpisodeGuide.tsx         # Season/episode list for TV detail pages; episode list for the selected
-│   │                            #   season sits behind its own collapse toggle
+│   │                            #   season sits behind its own collapse toggle; spoiler shield hides
+│   │                            #   episodes past your progress (per-episode reveal, device switch)
 │   ├── CSVUploadModal.tsx       # CSV import modal with preview + TMDB poster enrichment
 │   ├── ProfileModal.tsx         # Edit profile, tabbed (Account / Data & TMDB / Danger Zone): avatar upload,
 │   │                            #   change password w/ strength meter, delete account (password-confirmed), TMDB OAuth connect
@@ -380,6 +382,7 @@ src/
 │   │                            #   to the unfiltered list if that would empty the result — used by
 │   │                            #   Movie/TV detail pages' Recommendations and Similar sections
 │   ├── watchRuntime.ts          # prefillRuntime(): Mark as Watched runtime (movie runtime, TV episodes × runtime)
+│   ├── spoilerShield.ts         # isEpisodeHidden(): which episodes the Episode Guide hides
 │   ├── personCredits.ts         # Person credits newest first; mergeCrew() = one card per title, jobs joined
 │   ├── listImport.ts            # orderForImport(): undated rows reversed so a list keeps file order
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
@@ -691,11 +694,13 @@ src/utils/__tests__/
 ├── pacedLookup.test.ts           # Rate pacing, 429 Retry-After wait, 404 final, bounded retries
 ├── safeUrl.test.ts               # http(s) kept; javascript:/data:/relative rejected
 ├── tmdbPages.test.tsx            # TMDB's 500-page cap
+├── spoilerShield.test.ts         # Episodes after the tracked one hidden; specials and no progress never
 └── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
 
 src/components/__tests__/
 ├── AuthStage.test.tsx            # Wordmark as h1, tagline, card heading and content
 ├── Wordmark.test.tsx             # Heading level, optional size, extra class
+├── EpisodeGuide.test.tsx         # Spoiler shield: hidden content absent, reveal, switch, waits for progress (first season prefetched), Retry keeps the list, opens on tracked season
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win

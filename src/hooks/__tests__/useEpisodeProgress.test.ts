@@ -54,6 +54,18 @@ describe("useEpisodeProgress", () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it("reports loading for a new show before its request starts (spoiler-shield)", () => {
+    mockGet.mockReturnValue(new Promise(() => {}));
+    const seen: boolean[] = [];
+    renderHook(({ id }) => {
+      const r = useEpisodeProgress(id);
+      seen.push(r.loading);
+      return r;
+    }, { wrapper, initialProps: { id: 1396 } });
+    // The very first render, before the load effect runs, already says loading.
+    expect(seen[0]).toBe(true);
+  });
+
   it("resets when the show changes and ignores the previous show's late response", async () => {
     const slow = deferred<ReturnType<typeof progress>>();
     mockGet.mockImplementation((id: number) => (id === 1 ? slow.promise : Promise.resolve(progress(2, 1, 1))));

@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.30.0] - 2026-10-21
+
+The Episode Guide stops spoiling episodes you haven't reached (`spoiler-shield`, archived; new `spoiler-shield` spec). Frontend only: no backend, API, migration or dependency changes.
+
+### Added
+- **Spoiler shield:** for a show you track and haven't marked watched, the Episode Guide hides the title, still and overview of every episode after your progress. The tracked episode and earlier ones show as usual, specials are never hidden, and air date, runtime and score stay visible. Hidden content is left out of the page (not blurred), so screen readers can't read it and the still isn't downloaded.
+- **"Show details for episode N"** reveals one episode; it stays revealed across season switches while you're on the page.
+- **"Hide spoilers" switch** in the guide, shown where the shield applies, remembered on the device like the theme.
+- **The guide opens on your current season** when you track the show. A later Next Episode or Edit re-applies the shield but never moves the season you're viewing.
+
+### Changed
+- The guide waits for your episode progress before showing episodes, so it never flashes one it would hide; the first season is requested meanwhile, so it costs no extra round trip, and retrying a failed progress load keeps the list on screen. If progress fails to load, it shows every episode with a note that spoilers aren't hidden.
+
+### Fixed
+- `useEpisodeProgress` reported "not loading" on the render before its request started, which read as "no progress" for a moment (backlog 46). Loading is now derived from the last settled show and retry, like the library hooks.
+
+### Internal
+- `PosterPlaceholder` takes optional `children` (default "No Image") and `aria-hidden`; the guide's hidden still reuses it.
+
+### Docs
+- BUG_BACKLOG item 47 (review of this release: early first-season fetch, Retry keeps the list, shield rule inlined, scoped e2e switch; hidden-row score and specials left for a decision).
+- README (Episode Guide feature, tree, tests), `docs/ARCHITECTURE.md` (why hidden content is absent and why the guide waits), `CLAUDE.md` (spoiler-shield convention), features.txt, ideas.md (item 1 done), BUG_BACKLOG item 46.
+
+### Tests
+- `spoilerShield.test.ts` (`isEpisodeHidden`), `EpisodeGuide.test.tsx` (hidden content absent and no still, reveal one, reveal survives a season switch, switch off persists, no switch without progress or when watched, shows nothing while progress loads and shares the early first-season request, Retry keeps the list, error note, opens on tracked season, progress change keeps the viewed season), `useEpisodeProgress` loading on the first render.
+- Python e2e: a later episode hidden at S1E1 and shown after "Show details".
+- Totals: Jest 547 pass; Python `test_detail.py` 26 pass (before the review fixes, which changed only that file's switch locator). Checked in the real app (dark, light, phone width).
+
 ## [0.29.0] - 2026-10-17
 
 The account pages get the CINE DB look (`pilot-login-redesign`, then `auth-pages-identity`; both archived, specs synced into `login-page`, new `auth-pages` and `theme-readability`). Frontend only: no backend, API, migration or dependency changes.

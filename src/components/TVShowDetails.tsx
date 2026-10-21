@@ -466,7 +466,16 @@ const TVShowDetails = ({ tvShow }: Props) => {
               items={[{
                 key: "episode-guide",
                 label: <Typography.Title level={4} style={{ margin: 0 }}>Episode Guide</Typography.Title>,
-                children: <EpisodeGuide tvId={tvShow.id} seasons={tvShow.seasons} />,
+                children: (
+                  <EpisodeGuide
+                    tvId={tvShow.id}
+                    seasons={tvShow.seasons}
+                    progress={epProgress}
+                    progressLoading={epLoading}
+                    progressError={epError}
+                    watched={watched}
+                  />
+                ),
               }]}
             />
           </>

@@ -11,7 +11,7 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
 
-**Status key:** ✅ done (archived) · 📝 proposed (`openspec/changes/<name>`) · ⏳ not yet proposed
+**Status key:** ✅ done (archived) · 📝 proposed (`openspec/changes/<name>`) · 🔧 fixing directly (no change) · ⏳ not yet proposed
 
 | # | Change | Status | Theme |
 |---|---|---|---|
@@ -68,8 +68,10 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 43 | `fix-titles-import-rules` | ✅ 2026-10-16 | 0.28.1 follow-ups: wrong page title for a bad id and on a failed load; Watchlist clamp stuck while watched data errors; backup `poster_path` unbounded; list import and null-score rows ignore the lookup-skip rule; stale platform after a region change; nested `usePageTitle` unmount clears the parent's title |
 | 44 | `fix-library-backup-edges` | ✅ 2026-10-16 | Item 43 follow-ups: Watchlist filter error on a background reload and no loading state; backup restore unbounded runtime/platform/zone/rating/date/title; backup missing score never looked up; empty name titled as failure; stale title on id change |
 | 45 | `fix-restore-text-edges` | ✅ 2026-10-16 | Items 43+44 follow-ups: backup restore drops looked-up scores; title cut splits emoji (chunk fails); length checks count UTF-16 units; Watchlist clamp during watched reload and Retry without feedback; duplicate lookups and counts across backup sections; restore drops near-future timestamps; person tab title vs heading; lookup merge rule; set-state after sign-out |
+| 46 | `spoiler-shield` (feature; fix folded in) | ✅ 2026-10-21 | Found while building the spoiler shield: `useEpisodeProgress` reported `loading: false` on the render before its request started, so a child (the Episode Guide, whose effects run first) read "not started" as "no progress" |
+| 47 | `spoiler-shield` review follow-ups | ✅ 2026-10-21 (4 fixed directly; 2 await a decision) | Review of the uncommitted 0.30.0: guide waits a round trip for progress; progress Retry blanks the guide; dead `enabled` param; unscoped e2e switch; open decisions on hidden-row score and specials |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2. No open items.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47's four fixes in 0.30.0 too (fixed directly, no OpenSpec change); its two decision items (hidden-row score, specials) stay open.
 
 ---
 
@@ -890,6 +892,20 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **Rule going forward:** each fix item adds its own query-sanity checks to this file (35: Calendar coverage and sorts; 36: crew credits), and any new feature that reads TMDB adds its shape check here. Optional later: a scheduled CI job with a repo secret.
 
 Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
+
+## Eleventh review (2026-10-21): item 47
+
+One `/code-review` pass over the uncommitted 0.30.0 (`spoiler-shield`). Read-only; each finding checked against the code by hand.
+
+### 47. Spoiler shield follow-ups (frontend) (✅ fixed directly 2026-10-21, small and inside the `spoiler-shield` spec, so no new OpenSpec change: the four fixes below are done, Jest 547 pass after /simplify, e2e not rerun (only a locator changed); the two [decide] items stay open)
+
+- **[med] The guide's first season fetch waits for the progress request.** `EpisodeGuide.tsx` starts `fetchTVSeason` only once progress settles, so every TV page shows the guide one round trip later, and a slow progress call keeps it on skeletons for users who don't track. Accepted in the design's Risks, but avoidable: fetch the first regular season in parallel, keep it off screen until progress settles, then switch to the tracked season if it differs. Fix.
+- **[med] Progress Retry blanks the guide.** `loading || progressLoading` shows skeletons whenever progress reloads, so after a progress error, Retry drops the episode list (and expanded panels) and disables the Select. Only the first load needs the gate. Fix.
+- **[low] `shieldApplies({ enabled })` is always passed `true`.** The switch value is ANDed separately, so the parameter misleads. Fixed by `/simplify`: the helper was removed, `shieldOn = canShield && hideSpoilers`. Was: pass `hideSpoilers`, compute the switch's visibility without it.
+- **[low] e2e `get_by_role("switch")` is unscoped.** Breaks under strict mode once another switch appears on the TV page. Fix: `name="Hide spoilers"`.
+- **[decide] A hidden row still shows its score.** A standout rating can mark the big episode. The spec keeps score, runtime and air date visible; hiding the score is a spec change.
+- **[decide] Specials are never hidden.** A post-finale special's title and overview can spoil the ending. The spec and design left specials out because they have no place in the progress order.
+- **Later done by `/simplify`:** `PosterPlaceholder` got optional `children` and is reused for the hidden still; `useEpisodeProgress` derives `loading` from a settled `showId:retryToken` key (covers Retry), replacing `startedFor`. Originally won't-fix: reuse `PosterPlaceholder` for the hidden still (it hardcodes "No Image", wrong here); replace `useEpisodeProgress`'s `startedFor` with a `loadedFor` (would read a Retry as not loading).
 
 ## Tenth review (2026-10-16): item 45
 

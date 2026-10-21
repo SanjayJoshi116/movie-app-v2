@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.29.0)
+CINE DB — Feature List (v0.30.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -21,7 +21,7 @@ DETAIL PAGES
 - Info tooltips on non-obvious fields (TMDB Rating, Certification, Budget/Revenue currency)
 - Add to / remove from custom lists via a shared modal (search existing lists, inline create-new-list, no dead end at zero lists); each list is a real, named checkbox (Tab + Space work)
 - Mark as watched goes through a confirm modal with an editable runtime (prefilled: a movie's runtime, or for TV the whole series as episodes × episode runtime) and a streaming-platform pick (or "Other") — feeds Hours Watched / Platform Breakdown on Stats; the modal stays open and can't be closed while saving, and a failed save keeps what you entered
-- Episode guide + episode progress tracker (TV); guide collapsed by default, episode list behind its own toggle; one-click "Next Episode" advance (handles season rollover, hides at the series finale); a failed progress load shows Retry instead of "not tracked", so saving can't overwrite real progress, and a double click sends one write
+- Episode guide + episode progress tracker (TV); episode list behind its own toggle; spoiler shield: for a show you track and haven't marked watched, the guide opens on your current season and hides the title, still and overview of every episode after your progress (air date, runtime and score stay; "Show details for episode N" reveals one; a "Hide spoilers" switch turns it off on this device; nothing shows until your progress has loaded, and a failed progress load shows everything with a note); one-click "Next Episode" advance (handles season rollover, hides at the series finale); a failed progress load shows Retry instead of "not tracked", so saving can't overwrite real progress, and a double click sends one write
 - Person pages: bio (Known For, Birthday/Deathday, IMDb, Website), full uncapped filmography (Movies/TV/Crew/Photos tabs, newest first; Crew shows one card per title with the jobs joined; the first tab follows what the person is known for; credits that fail to load show an error with Retry, never "No credits"), follow button; a website is a clickable link only for a real http(s) address
 - A malformed movie/TV/person address (e.g. /movie/abc) shows "not found" without loading anything
 - Back on a detail or person page always stays in the app: opened in a new tab or from another site, it goes to Movies, TV Shows or People

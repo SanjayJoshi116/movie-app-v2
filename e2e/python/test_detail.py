@@ -210,6 +210,36 @@ class TestTVDetailPage:
         authed_page.get_by_text("1 episode").click()
         expect(authed_page.get_by_text("Pilot")).to_be_visible(timeout=5_000)
 
+    def test_tv_detail_episode_guide_hides_episodes_past_progress(self, authed_page: Page):
+        # spoiler-shield: tracked at S01E01, so E2's title is left out until revealed.
+        mock_tv_detail_routes(authed_page, 1396)
+        authed_page.route("**/api/tmdb/tv/1396/season/**", lambda r: fulfill_json(r, {
+            "id": 3572, "name": "Season 1", "season_number": 1,
+            "episodes": [
+                {"id": 1, "name": "Pilot", "episode_number": 1, "still_path": None,
+                 "overview": "Pilot episode", "vote_average": 9.0, "air_date": "2008-01-20"},
+                {"id": 2, "name": "Cat's in the Bag...", "episode_number": 2, "still_path": None,
+                 "overview": "Second episode", "vote_average": 8.5, "air_date": "2008-01-27"},
+            ],
+        }))
+        authed_page.route(
+            "**/api/episode-progress/1396/**",
+            lambda r: fulfill_json(r, {"showId": 1396, "season": 1, "episode": 1}),
+        )
+
+        authed_page.goto("/tv/1396")
+        expect(authed_page.get_by_text("2 episodes")).to_be_visible(timeout=10_000)
+        authed_page.get_by_text("2 episodes").click()
+        expect(authed_page.get_by_text("Pilot")).to_be_visible(timeout=5_000)
+        expect(authed_page.get_by_text("Hidden to avoid spoilers")).to_be_visible()
+        expect(authed_page.get_by_role("switch", name="Hide spoilers")).to_be_checked()
+        expect(authed_page.get_by_text("Cat's in the Bag...")).to_have_count(0)
+
+        authed_page.get_by_text("Hidden to avoid spoilers").click()
+        authed_page.get_by_role("button", name="Show details for episode 2").click()
+        expect(authed_page.get_by_text("Cat's in the Bag...")).to_be_visible()
+        expect(authed_page.get_by_text("Second episode")).to_be_visible()
+
     def test_tv_detail_episode_progress_section_visible(self, authed_page: Page):
         mock_tv_detail_routes(authed_page, 1396)
         authed_page.goto("/tv/1396")
