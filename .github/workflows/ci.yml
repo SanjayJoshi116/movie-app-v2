@@ -23,7 +23,9 @@ permissions:
 jobs:
   frontend:
     name: Frontend (typecheck + lint + test + build)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that moved to 26.04 on 2026-10-19, which the
+    # pinned Playwright can't install Chromium on. Bump with Playwright.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -49,7 +51,7 @@ jobs:
 
   backend:
     name: Backend (ruff + pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:15-alpine
@@ -109,7 +111,7 @@ jobs:
 
   e2e-python:
     name: E2E (pytest-playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -163,7 +165,7 @@ jobs:
 
   e2e-ts:
     name: E2E (Playwright TS, shard ${{ matrix.shard }}/3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # One worker per runner (playwright.config.ts), so the suite is split
     # across runners instead: unsplit, 412 tests outgrew a 15-minute job.
     # Playwright's own globalTimeout (12 min) fires first, so a slow shard
@@ -207,7 +209,7 @@ jobs:
 
   docker:
     name: Docker images (build + frontend smoke)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

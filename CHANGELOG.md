@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed (CI)
+- **Both e2e jobs failed at browser install** once GitHub's `ubuntu-latest` became Ubuntu 26.04, which Playwright 1.60.0 doesn't support ("Playwright does not support chromium on ubuntu26.04-x64"). Every job now runs on a pinned `ubuntu-24.04`.
+
 ## [0.31.0] - 2026-10-30
 
 Database-layer fixes from the 2026-10-28 review (`fix-db-layer`, backlog item 48), TMDB sessions encrypted at rest (`encrypt-tmdb-session`, split out of item 48), and one shared movie/TV card (`merge-media-cards`). All three OpenSpec changes are archived and their specs synced (`account-security`, `api-hardening`, `recommendation-refresh`, `service-health`; the card merge is a refactor with no spec change). Migrations 0030–0032; new dependency `cryptography`. A 2026-10-26 `/security-review` of 0.30.0 found nothing. There are no open backlog items.
@@ -36,7 +41,7 @@ Database-layer fixes from the 2026-10-28 review (`fix-db-layer`, backlog item 48
 - `cryptography` 50.0.2 (pinned in `requirements.txt`, transitive pins in `constraints.txt`).
 
 ### Docs
-- README (Docker `.env.docker` template, breaking upgrade note, key rotation, component and backend trees, tests), `docs/ARCHITECTURE.md` (why sessions are encrypted with their own key), `CLAUDE.md` (encrypted-session rule, `TMDB_SESSION_KEYS` in the fail-closed list, `Meta.indexes` rule, prune step, `MediaCard`), BUG_BACKLOG (item 48, twelfth and thirteenth reviews; item 47's two product questions moved to ideas.md), ideas.md, features.txt.
+- README (Docker `.env.docker` template, breaking upgrade note, key rotation, component and backend trees, tests), `docs/ARCHITECTURE.md` (why sessions are encrypted with their own key), `CLAUDE.md` (encrypted-session rule, `TMDB_SESSION_KEYS` in the fail-closed list, `Meta.indexes` rule, prune step, `MediaCard`), BUG_BACKLOG (item 48, twelfth and thirteenth reviews; item 49, the CI timeout; item 47's two product questions moved to ideas.md), ideas.md, features.txt.
 
 ### Tests
 - `test_list_indexes.py` (every library list's `order_by` has a matching index), `test_prune_media_cache.py`, `test_tmdb_session_encryption.py` (stored token, blank, removed key → disconnected with nothing logged, rotation and command, migration forward/rerun/reverse, connect/status/rating with an unreadable session), reset atomicity and deleted or renamed account failures in `test_account_security.py`, first-save race in `test_rec_quality.py`, `TMDB_SESSION_KEYS` in `test_settings_fail_closed.py`, warm-up order in `test_startup_warmup.py`.

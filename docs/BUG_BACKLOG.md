@@ -10,6 +10,7 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 - a 2026-10-15 sixth audit (items 35–41) against 0.26.0 (`5155a4d`). One read-only pass over the whole tree, backend, infra, frontend and tests/docs, with three findings checked against live TMDB responses (marked "✔ live").
 - a 2026-10-26 `/security-review` of the whole tree at 0.30.0 (`36e590a`): one read-only pass, no findings (see "Twelfth review" below)
 - a 2026-10-28 `/code-review` of the database layer (models, migrations, and the code that reads and writes them) at 0.30.0 plus uncommitted `merge-media-cards`: item 48 (see "Thirteenth review" below)
+- a 2026-10-30 look at CI's run history (the last three pushes cancelled) and a full local TypeScript e2e run: item 49 (see "CI check" below)
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
 
@@ -73,8 +74,9 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 46 | `spoiler-shield` (feature; fix folded in) | ✅ 2026-10-21 | Found while building the spoiler shield: `useEpisodeProgress` reported `loading: false` on the render before its request started, so a child (the Episode Guide, whose effects run first) read "not started" as "no progress" |
 | 47 | `spoiler-shield` review follow-ups | ✅ 2026-10-21 (fixed directly; 2 product questions moved to `ideas.md`) | Review of the uncommitted 0.30.0: guide waits a round trip for progress; progress Retry blanks the guide; dead `enabled` param; unscoped e2e switch |
 | 48 | `fix-db-layer`; session-id encryption split out as `encrypt-tmdb-session` | ✅ 2026-10-28 (both changes archived) | Database review: per-user date indexes dropped by migration 0009; first recommendations save races; password reset not atomic; `LoginFailure` row outlives a deleted account; TMDB `session_id` in plain text; `TMDBMediaCache` never pruned; two stale comments (backfill-placeholder finding was a false positive) |
+| 49 | CI shards (fixed directly) | ✅ 2026-10-30 | TS e2e job cancelled at its 15-minute cap on 0.28.2, 0.29.0 and 0.30.0 (412 tests, one worker), with no report uploaded on cancel; both e2e jobs then failed at browser install once `ubuntu-latest` became 26.04 |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47 in 0.30.0 too (fixed directly, no OpenSpec change; its two product questions moved to `ideas.md` item 1). 48 in 0.31.0 (`fix-db-layer` and `encrypt-tmdb-session`). No open items.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47 in 0.30.0 too (fixed directly, no OpenSpec change; its two product questions moved to `ideas.md` item 1). 48 in 0.31.0 (`fix-db-layer` and `encrypt-tmdb-session`); 49 in 0.31.0 too (fixed directly, no OpenSpec change). No open items.
 
 ---
 
@@ -895,6 +897,19 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 - **Rule going forward:** each fix item adds its own query-sanity checks to this file (35: Calendar coverage and sorts; 36: crew credits), and any new feature that reads TMDB adds its shape check here. Optional later: a scheduled CI job with a repo secret.
 
 Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
+
+## CI check (2026-10-30): item 49
+
+Read from GitHub's public API (job conclusions, step times, check-run annotations; the logs themselves need sign-in), plus one full local run of `npx playwright test`.
+
+### 49. TypeScript e2e job outgrew its time cap (CI) (✅ fixed directly 2026-10-30, small and inside the `ci-pipeline` spec, so no OpenSpec change; YAML parses and typecheck passes, proven only by the next CI run)
+
+- **[high] The job is cancelled, not failed, on every push since 0.28.2.** `e2e-ts` runs 412 tests on one worker (`workers: process.env.CI ? 1`) under `timeout-minutes: 15`. 0.27.0 passed at about 15 min; 0.28.2, 0.29.0 and 0.30.0 hit "The job has exceeded the maximum execution time of 15m0s" during `npx playwright test`. All other jobs passed. **Fixed:** a 3-shard matrix (`--shard=N/3`, `fail-fast: false`), still one worker per runner.
+- **[med] A cancelled run uploads no report.** The upload ran on `failure()` only, and a timeout cancels, so CI never showed whether any test was red. **Fixed:** Playwright `globalTimeout` 12 min on CI (fails before the job cap, with its report), and the upload also runs on `cancelled()`, one artifact per shard (`playwright-report-<shard>`).
+- **[unknown] 0.28.0 and 0.28.1 failed the same job** (exit code 1, not a timeout). Which tests failed isn't readable without sign-in. 0.28.2 fixed an `import.spec` flake, and the full local run below found nothing failing, so it is likely that flake. Not pursued.
+- **Local run (4 workers):** 393 pass, 15 skip, 4 fail in 15.1 min. The 4 (`auth.spec.ts:166` focus on load, `search-scope.spec.ts:31`, `responsive.spec.ts:76` keyboard viewport and `:145` notification popup on the tablet rail) all passed on a rerun at 1 worker, CI's setting: load-induced, not bugs. Why CI stays at one worker per runner.
+- **[high] Every e2e job failed at browser install** on the first push after `ubuntu-latest` moved to Ubuntu 26.04 (2026-10-19; earlier runs carried GitHub's notice): "Cannot install dependencies for ubuntu26.04-x64 with Playwright 1.60.0!" / "Playwright does not support chromium on ubuntu26.04-x64". **Fixed:** all five jobs pinned to `runs-on: ubuntu-24.04`, matching the rule that everything CI runs is pinned; move with a Playwright version that supports the newer image.
+- **Note:** the job's check name is now `E2E (Playwright TS, shard N/3)`; a branch-protection rule naming the old check needs updating.
 
 ## Thirteenth review (2026-10-28): item 48
 
