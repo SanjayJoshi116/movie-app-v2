@@ -14,4 +14,5 @@ requests==2.34.2
 scikit-learn==1.8.0
 numpy==2.2.6
 gunicorn==23.0.0
+cryptography==50.0.2  # Fernet for TMDB session ids at rest (userdata/secret_fields.py)
 tzdata==2026.5  # IANA zone database for zoneinfo (per-request/per-entry time zones); Linux images may lack a system one

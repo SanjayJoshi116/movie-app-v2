@@ -1,3 +1,4 @@
+import base64
 import os
 import subprocess
 import sys
@@ -9,10 +10,12 @@ PROD = {
     "SECRET_KEY": "test-only-not-the-default-key",
     "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
     "FRONTEND_URL": "https://cinedb.example.com",
+    # A valid Fernet key generated for these tests only (32 bytes, urlsafe base64).
+    "TMDB_SESSION_KEYS": base64.urlsafe_b64encode(b"k" * 32).decode(),
 }
 # Every variable a case sets or deliberately leaves unset; the probe's env drops
 # the developer's own values for all of them.
-CONTROLLED = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "FRONTEND_URL")
+CONTROLLED = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "FRONTEND_URL", "TMDB_SESSION_KEYS")
 # dotenv is disabled before settings import: load_dotenv() never overrides
 # variables that are set, but it *fills in* ones we deliberately left unset —
 # so a developer's backend/.env with DEBUG=True (the documented local setup)
@@ -83,7 +86,10 @@ class FailClosedSettingsTests(TestCase):
     def test_default_secret_key_refused_without_debug(self):
         # SECRET_KEY unset → the built-in development default, which signs JWTs.
         env = {k: v for k, v in os.environ.items() if k not in (*CONTROLLED, "SECRET_KEY")}
-        env.update(EMAIL_BACKEND=PROD["EMAIL_BACKEND"], FRONTEND_URL=PROD["FRONTEND_URL"], ALLOWED_HOSTS="localhost")
+        env.update(
+            EMAIL_BACKEND=PROD["EMAIL_BACKEND"], FRONTEND_URL=PROD["FRONTEND_URL"],
+            TMDB_SESSION_KEYS=PROD["TMDB_SESSION_KEYS"], ALLOWED_HOSTS="localhost",
+        )
         res = subprocess.run(
             [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=env,
             capture_output=True, text=True, timeout=60,
@@ -150,6 +156,59 @@ class FailClosedSettingsTests(TestCase):
         )
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(res.stdout.strip(), "http://localhost:3000")
+
+    def test_missing_or_invalid_session_keys_refused_without_debug(self):
+        env = {k: v for k, v in PROD.items() if k != "TMDB_SESSION_KEYS"}
+        valid = PROD["TMDB_SESSION_KEYS"]
+        for extra in ({}, {"TMDB_SESSION_KEYS": ""}, {"TMDB_SESSION_KEYS": " , "},
+                      {"TMDB_SESSION_KEYS": "not-a-key"}, {"TMDB_SESSION_KEYS": f"{valid},not-a-key"}):
+            with self.subTest(extra=extra):
+                res = _import_settings(**env, **extra, ALLOWED_HOSTS="localhost")
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("ImproperlyConfigured", res.stderr)
+                self.assertIn("TMDB_SESSION_KEYS", res.stderr)
+                self.assertNotIn(valid, res.stderr)
+
+    def test_session_key_list_loads_in_order(self):
+        first = PROD["TMDB_SESSION_KEYS"]
+        second = base64.urlsafe_b64encode(b"j" * 32).decode()
+        probe = f"k = {first!r}; " + PROBE.replace(
+            "print(s.DEBUG, s.ALLOWED_HOSTS)", "print(len(s.TMDB_SESSION_KEYS), s.TMDB_SESSION_KEYS[0] == k)"
+        )
+        env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+        env.update({**PROD, "ALLOWED_HOSTS": "localhost", "TMDB_SESSION_KEYS": f" {first} ,{second},"})
+        res = subprocess.run(
+            [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "2 True")
+
+    def test_debug_keeps_the_dev_key_after_real_keys(self):
+        first = PROD["TMDB_SESSION_KEYS"]
+        probe = f"k = {first!r}; " + PROBE.replace(
+            "print(s.DEBUG, s.ALLOWED_HOSTS)", "print(len(s.TMDB_SESSION_KEYS), s.TMDB_SESSION_KEYS[0] == k)"
+        )
+        env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+        env.update({"DEBUG": "True", "TMDB_SESSION_KEYS": first})
+        res = subprocess.run(
+            [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "2 True")
+
+    def test_debug_derives_a_session_key_when_unset(self):
+        probe = PROBE.replace(
+            "print(s.DEBUG, s.ALLOWED_HOSTS)",
+            "from cryptography.fernet import Fernet; f = Fernet(s.TMDB_SESSION_KEYS[0]); "
+            "print(f.decrypt(f.encrypt(b'ok')).decode())",
+        )
+        env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+        env["DEBUG"] = "True"
+        res = subprocess.run(
+            [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "ok")
 
     def test_debug_defaults_to_console_email(self):
         probe = PROBE.replace("print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.EMAIL_BACKEND)")

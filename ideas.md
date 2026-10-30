@@ -14,6 +14,8 @@ Priority weighs value against effort and fit with the current architecture, and 
 - Movie details already append `release_dates` (`src/api/tmdb.ts:108`), so digital release dates are already fetched.
 - `EpisodeGuide.tsx` hides episodes past your progress (0.30.0, `spoiler-shield`).
 - Stats already counts watch platforms (`stats_views.py:136`).
+- Movies and TV share one poster card, `MediaCard.tsx` (0.31.0), so a card change lands once (browse grids, Anime, Search).
+- A user's TMDB `session_id` is encrypted at rest (0.31.0, `EncryptedSessionField`); read it through the model, never filter on it.
 - No service worker, no scheduler in the Docker stack, no LLM, no live deployment yet.
 
 ---
@@ -23,6 +25,9 @@ Priority weighs value against effort and fit with the current architecture, and 
 Small, self-contained, and they fit the existing patterns.
 
 1. **Spoiler shield** (S). Blur stills and overviews for episodes past your `EpisodeProgress`, tap to reveal. *Done in 0.30.0 (`spoiler-shield`, archived 2026-10-21): hidden content is left out of the page rather than blurred.*
+   - **Follow-ups (S, from the 0.30.0 review, BUG_BACKLOG item 47).** Both change the `spoiler-shield` spec, so each needs its own change:
+     - Hide the score on a hidden row. A standout rating (9.9 among 8.x) can mark the big episode. Runtime and air date are weaker hints; keep them.
+     - Shield specials. A post-finale special's title and overview can spoil the ending, but specials have no place in the progress order. Options: hide all specials while the shield is on, or hide those that aired after the tracked episode.
 2. **Rating queue** (S). "11 watched, unrated": batch quick-rate with a 1–10 tap. Rated titles weigh more in recommendations.
 3. **Hot takes and rating habits** (S). Biggest gaps between your rating and `vote_average` (stored on `WatchedEntry`): contrarian score, "guilty pleasures" (you 9, TMDB 5.2), and "you rate 1.4 above TMDB on average".
 4. **On this day** (S). "One year ago today you watched Dune, rated 9." Home strip; day from `entry_day`, so zone-correct.

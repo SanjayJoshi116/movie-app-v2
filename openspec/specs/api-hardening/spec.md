@@ -47,7 +47,7 @@ In production, each rate limit SHALL be enforced against one counter shared by a
 - **THEN** that client's excess request is still rejected with `429`
 
 ### Requirement: Production configuration fails closed
-When the debug setting isn't explicitly enabled, the backend SHALL run with debug off. With debug off, the backend SHALL refuse to start if the allowed-hosts setting contains a wildcard or is empty, if the secret key is the built-in development default, if no email backend is configured explicitly, or if the frontend URL (the base of password-reset links) is unset, blank, or not an absolute `http` or `https` URL with a host. A trailing slash on the frontend URL SHALL be ignored, so reset links never contain a double slash.
+When the debug setting isn't explicitly enabled, the backend SHALL run with debug off. With debug off, the backend SHALL refuse to start if the allowed-hosts setting contains a wildcard or is empty, if the secret key is the built-in development default, if no email backend is configured explicitly, if the frontend URL (the base of password-reset links) is unset, blank, or not an absolute `http` or `https` URL with a host, or if the TMDB session encryption keys are unset, blank or not valid keys. A trailing slash on the frontend URL SHALL be ignored, so reset links never contain a double slash.
 
 #### Scenario: DEBUG unset
 - **WHEN** the backend starts with no `DEBUG` environment variable and valid production settings
@@ -77,9 +77,13 @@ When the debug setting isn't explicitly enabled, the backend SHALL run with debu
 - **WHEN** the backend runs with `FRONTEND_URL=https://cinedb.example.com/` and a user requests a password reset
 - **THEN** the emailed link starts with `https://cinedb.example.com/reset-password/`
 
+#### Scenario: No TMDB session keys in production
+- **WHEN** the backend starts with debug off and `TMDB_SESSION_KEYS` unset, blank, or containing a value that isn't a valid key
+- **THEN** startup fails with a configuration error naming `TMDB_SESSION_KEYS`, so sessions are never stored under a guessable key
+
 #### Scenario: Local development
 - **WHEN** a developer runs `npm run dev`
-- **THEN** the backend runs with debug on and accepts LAN-address hosts, as it does today, emails go to the console without any extra setting, and reset links point at `http://localhost:3000` unless `FRONTEND_URL` says otherwise
+- **THEN** the backend runs with debug on and accepts LAN-address hosts, as it does today, emails go to the console without any extra setting, and reset links point at `http://localhost:3000` unless `FRONTEND_URL` says otherwise, and TMDB sessions are encrypted with a development key without any extra setting
 
 ### Requirement: TMDB proxy responds within a bounded time
 The TMDB passthrough endpoint SHALL return a response within a bounded worst-case time, retries included. That time SHALL be below the application server's worker timeout, so a slow or unresponsive TMDB results in the endpoint's own error response (`502`) rather than the worker being killed and the request failing at the reverse proxy. The bound SHALL be a limit on elapsed time for the whole TMDB call, so it SHALL hold however many network addresses TMDB's host name resolves to and however many of them fail to connect.

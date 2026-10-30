@@ -145,8 +145,12 @@ A server process SHALL compute at most 4 recommendation refreshes at a time. Fur
 - **THEN** the user is not left marked as refreshing, and a later trigger starts a refresh
 
 ### Requirement: An older recompute never replaces a newer one
-A recompute's result SHALL be stored only if no recompute that started later has already stored its result for that user. This SHALL hold across server processes.
+A recompute's result SHALL be stored only if no recompute that started later has already stored its result for that user. This SHALL hold across server processes, including for a user's first stored result, when nothing was stored before either recompute began.
 
 #### Scenario: Two processes recompute the same user
 - **WHEN** a recompute starts on one process, a watch on another process starts a second recompute that finishes and saves first, and then the first one finishes
+- **THEN** the second recompute's result stays stored
+
+#### Scenario: First result for a new user
+- **WHEN** a user with no stored recommendations triggers a recompute on one process, then a second recompute starts on another process and saves first, and then the first one finishes
 - **THEN** the second recompute's result stays stored

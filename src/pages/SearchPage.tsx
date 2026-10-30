@@ -8,17 +8,17 @@ import SkeletonCard from "../components/SkeletonCard";
 import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
 import PersonCard from "../components/PersonCard";
-import Movie from "../components/Movie";
-import TVShowCard from "../components/TVShowCard";
+import MediaCard from "../components/MediaCard";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import type { LocationRestore } from "../hooks/usePaginatedFetch";
 import { searchMovies, searchTV, searchPeople } from "../api/tmdb";
 import { saveSessionCache } from "../api/userApi";
-import type { TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
+import type { MediaType, TMDBMovieSummary, TMDBTVSummary, TMDBPersonSummary } from "../types";
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
 import { pickKey } from "../utils/queryParams";
+import { toMediaSummary } from "../utils/mediaSummary";
 import { usePageTitle } from "../hooks/usePageTitle";
 
 // ── Shared paginated hook ────────────────────────────────────────────────────
@@ -153,6 +153,7 @@ interface TabProps {
 
 function MoviesTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
+  const openTitle = useCallback((id: number, type: MediaType) => navigate(`/${type}/${id}`), [navigate]);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchMovies(q, p, a);
@@ -175,7 +176,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
       <Row gutter={[16, 20]}>
         {items.map((m: TMDBMovieSummary) => (
           <Col key={m.id} xs={12} sm={8} md={6} lg={4}>
-            <Movie movie={m} onKnowMore={(id: number) => navigate(`/movie/${id}`)} />
+            <MediaCard {...toMediaSummary(m, "movie")} onKnowMore={openTitle} />
           </Col>
         ))}
       </Row>
@@ -188,6 +189,7 @@ function MoviesTab({ query, adult, active }: TabProps) {
 
 function TVTab({ query, adult, active }: TabProps) {
   const navigate = useNavigate();
+  const openTitle = useCallback((id: number, type: MediaType) => navigate(`/${type}/${id}`), [navigate]);
   const { items, loading, loadingMore, hasMore, loadMore, error, retry, loadMoreError, retryLoadMore } = usePaginatedSearch(
     async (q, p, a) => {
       const res = await searchTV(q, p, a);
@@ -210,7 +212,7 @@ function TVTab({ query, adult, active }: TabProps) {
       <Row gutter={[16, 20]}>
         {items.map((t: TMDBTVSummary) => (
           <Col key={t.id} xs={12} sm={8} md={6} lg={4}>
-            <TVShowCard tvShow={t} onKnowMore={(id: number) => navigate(`/tv/${id}`)} />
+            <MediaCard {...toMediaSummary(t, "tv")} onKnowMore={openTitle} />
           </Col>
         ))}
       </Row>

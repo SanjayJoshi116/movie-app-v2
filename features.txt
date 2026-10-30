@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.30.0)
+CINE DB — Feature List (v0.31.0)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -97,6 +97,9 @@ SECURITY & OPERATIONS
 - Endpoints that wait on TMDB (proxy, notifications, followed-people recommendations, Stats genre lookup, TMDB connect, rating sync) each answer within a fixed time budget under the server's request timeout; every TMDB call has a wall-clock limit covering all connection attempts
 - Followed-people recommendations are rate limited per user, like the other endpoints that spend TMDB quota; ratings outside 0–10 are refused, so they can never break Stats; a stalled mail server can't half-apply an email change
 - Production reuses database connections (60 s) instead of connecting per request
+- Users' TMDB sessions are encrypted in the database (a dump or backup gives no working TMDB access); the key is set apart from the database, can be rotated without disconnecting anyone, and production refuses to start without it
+- Library pages stay fast however long a history gets: each list is read straight from a per-user index in its display order; cached title details nobody has watched are pruned at startup
+- A password reset applies completely or not at all, and a deleted or renamed account's failed sign-in count never carries over to whoever registers that username next
 - The backend serves requests on threads (3 processes × 8 threads), so a few requests waiting on a slow TMDB never block sign-in or the rest of the app; background title-detail lookups run at most 2 at a time per process; expired sign-in records are cleaned up at every start, without ever holding startup up
 - No Django admin site: the only login is the app's own, with its rate limits
 - TMDB browsing limits apply per signed-in user, so people sharing one network don't share a limit; a malformed time zone never causes an error

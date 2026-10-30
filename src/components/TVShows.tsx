@@ -1,11 +1,12 @@
 import { Row, Col, Empty, theme } from "antd";
 import { FilterOutlined, InboxOutlined } from "@ant-design/icons";
-import type { TMDBTVSummary } from "../types";
-import TVShowCard from "./TVShowCard";
+import type { MediaType, TMDBTVSummary } from "../types";
+import MediaCard from "./MediaCard";
+import { toMediaSummary } from "../utils/mediaSummary";
 
 interface Props {
   tvShows: TMDBTVSummary[];
-  onKnowMore: (id: number) => void;
+  onKnowMore: (id: number, type: MediaType) => void;
   hasFilters?: boolean;
 }
 
@@ -34,7 +35,7 @@ const TVShows = ({ tvShows, onKnowMore, hasFilters }: Props) => {
       <Row gutter={[16, 20]}>
         {tvShows.map((tvShow) => (
           <Col key={tvShow.id} xs={12} sm={8} md={6} lg={4} xl={4}>
-            <TVShowCard tvShow={tvShow} onKnowMore={onKnowMore} />
+            <MediaCard {...toMediaSummary(tvShow, "tv")} onKnowMore={onKnowMore} />
           </Col>
         ))}
       </Row>

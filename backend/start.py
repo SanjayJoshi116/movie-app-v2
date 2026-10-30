@@ -44,6 +44,8 @@ subprocess.run([sys.executable, manage, "createcachetable"], check=True)
 
 # Step 3: Drop expired session-token rows (best-effort, bounded)
 run_warmup([sys.executable, manage, "flushexpiredtokens"], timeout=60, label="flushexpiredtokens")
+# Stale title-cache rows no watched entry uses (best-effort, bounded)
+run_warmup([sys.executable, manage, "prune_media_cache"], timeout=60, label="prune_media_cache")
 
 # Step 4: Pre-compute recommendation cache (best-effort — failure or a hung
 # TMDB call won't block startup)

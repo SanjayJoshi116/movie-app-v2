@@ -3,8 +3,14 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from .secret_fields import EncryptedSessionField
+
 
 MEDIA_TYPES = [("movie", "Movie"), ("tv", "TV Show")]
+
+# Each library list has a (user, -<date>, -id) index matching its view's order_by
+# (test_list_indexes.py). It is declared in Meta, not only in a migration, or the
+# next makemigrations drops it (0009 did).
 
 
 class WatchlistEntry(models.Model):
@@ -19,6 +25,7 @@ class WatchlistEntry(models.Model):
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")
+        indexes = (models.Index(fields=["user", "-added_at", "-id"], name="watchlist_user_date_idx"),)
 
     def __str__(self):
         return f"{self.user.username} — {self.title}"
@@ -49,6 +56,11 @@ class WatchedEntry(models.Model):
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")
+        indexes = (
+            models.Index(fields=["user", "-watched_at", "-id"], name="watched_user_date_idx"),
+            # Title lookups across users: prune_media_cache's "is anyone watching it".
+            models.Index(fields=["media_id", "media_type"], name="watched_media_idx"),
+        )
 
     def __str__(self):
         return f"{self.user.username} — {self.title}"
@@ -65,6 +77,7 @@ class RatingEntry(models.Model):
 
     class Meta:
         unique_together = ("user", "media_id", "media_type")
+        indexes = (models.Index(fields=["user", "-rated_at", "-id"], name="rating_user_date_idx"),)
 
     def __str__(self):
         return f"{self.user.username} — {self.title} ({self.user_rating})"
@@ -76,6 +89,9 @@ class UserList(models.Model):
     description = models.TextField(blank=True, default="")
     # A default, not auto_now_add: a backup restore supplies the original time.
     created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = (models.Index(fields=["user", "-created_at", "-id"], name="list_user_date_idx"),)
 
     def __str__(self):
         return f"{self.user.username} — {self.name}"
@@ -96,6 +112,13 @@ class UserListItem(models.Model):
 
     def __str__(self):
         return f"{self.user_list.name} — {self.title}"
+
+
+# A TMDBMediaCache row older than this is refetched on use (recommendations)
+# and, if no watched entry uses it, pruned at startup (prune_media_cache).
+# Here rather than in recommendations.py so the startup step doesn't import
+# numpy and scikit-learn for one number.
+CACHE_TTL_DAYS = 7
 
 
 class TMDBMediaCache(models.Model):
@@ -130,7 +153,9 @@ class UserRecommendationCache(models.Model):
 
 class TMDBProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="tmdb_profile")
-    session_id = models.CharField(max_length=200, blank=True, default="")
+    # Encrypted at rest (secret_fields.py): a session can write to the user's
+    # TMDB account, so the database alone must never yield one.
+    session_id = EncryptedSessionField(blank=True, default="")
 
     def __str__(self):
         return f"{self.user.username} — TMDB {'connected' if self.session_id else 'disconnected'}"
@@ -169,6 +194,7 @@ class FollowedPerson(models.Model):
 
     class Meta:
         unique_together = ("user", "person_id")
+        indexes = (models.Index(fields=["user", "-followed_at", "-id"], name="followed_user_date_idx"),)
 
     def __str__(self):
         return f"{self.user.username} follows {self.name}"
@@ -183,6 +209,7 @@ class EpisodeProgress(models.Model):
 
     class Meta:
         unique_together = ("user", "show_id")
+        indexes = (models.Index(fields=["user", "-updated_at", "-id"], name="episode_user_date_idx"),)
 
     def __str__(self):
         return f"{self.user.username} — show {self.show_id} S{self.season_number:02d}E{self.episode_number:02d}"
@@ -210,7 +237,7 @@ class LoginFailure(models.Model):
     the window's first failure.
     """
 
-    key = models.CharField(max_length=64, primary_key=True)  # sha256 of the folded username
+    key = models.CharField(max_length=64, primary_key=True)  # sha256 of the exact username (never folded)
     count = models.PositiveIntegerField()
     window_start = models.DateTimeField(db_index=True)
 

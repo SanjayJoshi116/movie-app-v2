@@ -162,9 +162,17 @@ jobs:
           retention-days: 7
 
   e2e-ts:
-    name: E2E (Playwright TS)
+    name: E2E (Playwright TS, shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    # One worker per runner (playwright.config.ts), so the suite is split
+    # across runners instead: unsplit, 412 tests outgrew a 15-minute job.
+    # Playwright's own globalTimeout (12 min) fires first, so a slow shard
+    # fails with its report instead of being cancelled without one.
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -184,14 +192,14 @@ jobs:
         run: npx playwright install-deps chromium
       # playwright.config.ts starts the CRA dev server itself; every API call
       # is mocked (e2e/fixtures.ts). ipv4first: see the e2e-python job.
-      - run: npx playwright test
+      - run: npx playwright test --shard=${{ matrix.shard }}/3
         env:
           CI: true
           NODE_OPTIONS: --dns-result-order=ipv4first
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: failure()
+        if: failure() || cancelled()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/

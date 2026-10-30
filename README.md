@@ -220,16 +220,21 @@ backend/
 │   │                            #   called by views (cache hit) and management command (pre-compute)
 │   ├── management/
 │   │   └── commands/
-│   │       └── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
-│   │                                       #   run at container startup via docker-entrypoint.sh
+│   │       ├── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
+│   │       │                               #   run at container startup via docker-entrypoint.sh
+│   │       ├── prune_media_cache.py        # Deletes TMDBMediaCache rows past CACHE_TTL_DAYS that no watched
+│   │       │                               #   entry uses (startup step, both paths)
+│   │       └── rotate_tmdb_sessions.py     # Re-encrypts stored TMDB sessions under the first TMDB_SESSION_KEYS key
+│   ├── secret_fields.py         # EncryptedSessionField: TMDB session_id encrypted at rest (Fernet/MultiFernet)
 │   ├── genre_families.py        # Maps TMDB movie/TV genre ids into shared families (recs + Stats);
 │   │                            #   discover calls convert back to each type's own ids
 │   ├── tmdb_client.py           # Server-side TMDB API client
 │   └── tests/                   # pytest suite (see ## Testing)
 ├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable → flushexpiredtokens
-│                                #   (capped at 60s) → compute_recommendations (capped at 30s) → gunicorn
+│                                #   and prune_media_cache (each capped at 60s) → compute_recommendations
+│                                #   (capped at 30s) → gunicorn
 │                                #   (threaded: 3 workers × 8 threads)
-├── warmup.py                  # Time-boxed best-effort startup steps (token flush, recommendations warm-up) used by start.py
+├── warmup.py                  # Time-boxed best-effort startup steps (token flush, media-cache prune, recommendations warm-up) used by start.py
 ├── pytest_dev_env.py            # pytest plugin (-p in pytest.ini): defaults DEBUG=True before settings load
 └── manage.py
 
@@ -293,8 +298,8 @@ src/
 │   │                            #   change password w/ strength meter, delete account (password-confirmed), TMDB OAuth connect
 │   ├── PasswordStrengthMeter.tsx # Live strength bar + label under New Password, used by ProfileModal
 │   ├── RegionSelect.tsx         # Region setting (Data & TMDB tab), options from TMDB's watch-provider regions
-│   ├── Movie.tsx / Movies.tsx
-│   ├── TVShows.tsx / TVShowCard.tsx  # TVShows maps a memoized per-item TVShowCard (mirrors Movie.tsx)
+│   ├── Movies.tsx / TVShows.tsx # Browse/Anime grids; both map a memoized per-item MediaCard
+│   ├── MediaCard.tsx            # Movie/TV poster card (browse grids + Search tabs), fed by utils/mediaSummary's toMediaSummary
 │   ├── MovieDetails.tsx         # Includes add-to-list with checkbox toggle (add + remove)
 │   └── TVShowDetails.tsx        # Includes episode progress tracker; add-to-list with toggle
 ├── context/
@@ -378,6 +383,7 @@ src/
 │   ├── fetchAllPages.ts         # Walks a DRF-paginated endpoint's pages and concatenates results
 │   │                            #   (optional pageSize, up to 500; falls back to a plain array response)
 │   ├── appended.ts              # resultsOf/arrayOr/objectOr shape guards for append_to_response parts
+│   ├── mediaSummary.ts          # toMediaSummary(item, type): TMDB movie/TV list item → MediaCard props (title vs name)
 │   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres; falls back
 │   │                            #   to the unfiltered list if that would empty the result — used by
 │   │                            #   Movie/TV detail pages' Recommendations and Similar sections
@@ -549,6 +555,7 @@ JWT_SIGNING_KEY=your-long-random-jwt-signing-key
 DEBUG=False
 ALLOWED_HOSTS=localhost,<host-lan-ip>
 FRONTEND_URL=http://localhost
+TMDB_SESSION_KEYS=your-fernet-key
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
@@ -556,6 +563,12 @@ EMAIL_USE_TLS=True
 EMAIL_HOST_USER=you@gmail.com
 EMAIL_HOST_PASSWORD=your_app_password
 DEFAULT_FROM_EMAIL=CINE DB <you@gmail.com>
+```
+
+Generate the `TMDB_SESSION_KEYS` value once and keep a copy apart from the database backups (it encrypts users' TMDB sessions; without it they must reconnect TMDB):
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 3. Build and start all services (no extra flags; compose reads both files itself):
@@ -567,6 +580,10 @@ docker compose up --build
 The app will be available at `http://localhost`. If `.env.db` is missing, compose refuses to start and names the file.
 
 ### Upgrading an existing deployment
+
+**Breaking: `TMDB_SESSION_KEYS` is required (`encrypt-tmdb-session`):** with `DEBUG` off the backend refuses to start without it. Add it to `.env.docker` (generator above) *before* upgrading; the upgrade's migration then encrypts the TMDB sessions already stored, and connected users stay connected. Rolling back: `docker compose exec backend python manage.py migrate userdata 0030` decrypts them again before you start the older image.
+
+**Rotating the TMDB session key:** put the new key first and keep the old one (`TMDB_SESSION_KEYS=new,old`), restart, run `docker compose exec backend python manage.py rotate_tmdb_sessions`, then remove the old key and restart. A session whose key is gone reads as "not connected" and the user reconnects.
 
 **`FRONTEND_URL` is required (0.26.0):** with `DEBUG` off the backend refuses to start unless `.env.docker` sets `FRONTEND_URL` to the app's absolute `http(s)` address (the base of password-reset links). The template above already has it.
 
@@ -692,6 +709,7 @@ src/utils/__tests__/
 ├── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
 ├── goBack.test.ts                # from, in-app history, no history → section fallback
 ├── pacedLookup.test.ts           # Rate pacing, 429 Retry-After wait, 404 final, bounded retries
+├── mediaSummary.test.ts          # TMDB movie title / TV name mapped into one card shape
 ├── safeUrl.test.ts               # http(s) kept; javascript:/data:/relative rejected
 ├── tmdbPages.test.tsx            # TMDB's 500-page cap
 ├── spoilerShield.test.ts         # Episodes after the tracked one hidden; specials and no progress never
@@ -705,6 +723,7 @@ src/components/__tests__/
 ├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
 ├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
+├── MediaCard.test.tsx            # Poster link, labelled actions, placeholder, add/remove (never toggle) for movie and TV
 ├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save or a region change
 ├── MarqueeTitle.test.tsx         # Ellipsis + full-title tooltip, no scroll under reduced motion
 ├── RouteAnnouncer.test.tsx       # Tab title per page; only the new page's loaded title announced, never the first load
@@ -748,7 +767,8 @@ Covers auth, sessions and account security (including password-bound tokens, TMD
 backend/userdata/tests/
 ├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
 ├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry,
-│                                   #   reset mail off the request thread, per-username login failure limit
+│                                   #   reset mail off the request thread, per-username login failure limit,
+│                                   #   reset all-or-nothing, a deleted or renamed account's failures cleared
 ├── test_account_input_2.py         # Rename needs the current password + notice, password similarity on
 │                                   #   register/profile/reset, failure limit per exact username
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
@@ -759,7 +779,11 @@ backend/userdata/tests/
 │                                   #   versioned names, old file deleted on commit, failed replace keeps the old photo,
 │                                   #   re-encoded with EXIF stripped and orientation applied
 ├── test_settings_fail_closed.py    # DEBUG default off, wildcard/empty ALLOWED_HOSTS, implicit EMAIL_BACKEND and
-│                                   #   missing/malformed FRONTEND_URL refused, DB password fallback
+│                                   #   missing/malformed FRONTEND_URL and TMDB_SESSION_KEYS refused, DB password fallback
+├── test_tmdb_session_encryption.py # session_id stored as a Fernet token, unreadable → disconnected, key rotation +
+│                                   #   rotate_tmdb_sessions, migration 0031 forward/rerun/reverse
+├── test_list_indexes.py            # Each library list's order_by has a matching (user, -date, -id) index in Meta
+├── test_prune_media_cache.py       # Stale unwatched cache rows deleted, watched/fresh kept
 ├── test_app_config.py              # No Django admin; backend/.env.example lists every variable settings.py reads
 ├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache,
 │                                   #   immutable /static/ cache (not on 404s), gzip off for /api/ and /media/,
@@ -780,6 +804,7 @@ backend/userdata/tests/
 │                                   #   connect bound to the requesting user (single-use token), reconnect revokes
 ├── test_rec_quality.py             # Taste clusters skip genre-less/disliked titles, split-type genre fallback,
 │                                   #   rated titles excluded, 30-day genre recheck + migration, newest compute wins
+│                                   #   (first save too)
 ├── test_rec_refresh_bounds.py      # Failure backoff, 200-title fill cap, per-user daily title budget (atomic),
 │                                   #   warm-up order, 4 concurrent refreshes, thread-start failure
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
@@ -911,7 +936,7 @@ pytest
 
 ### CI
 
-GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded artifact (the TS report, or the Python job's `test-results` traces, uploaded only on failure). A newer push to a pull request cancels that PR's older run.
+GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects, split across 3 runners with `--shard`) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded artifact (the TS report, or the Python job's `test-results` traces, uploaded only on failure). A newer push to a pull request cancels that PR's older run.
 
 Everything CI runs is pinned: actions by commit SHA (version in a comment), the workflow token is read-only (`permissions: contents: read`), npm tools (including `wait-on`) through the lockfile, the Python e2e environment through `e2e/python/constraints.txt`, and base images by exact version and digest. Bumping any of them is a deliberate edit; see CLAUDE.md for how.
 

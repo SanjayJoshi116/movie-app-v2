@@ -1,11 +1,12 @@
 import { Row, Col, Empty, theme } from "antd";
 import { FilterOutlined, InboxOutlined } from "@ant-design/icons";
-import Movie from "./Movie";
-import type { TMDBMovieSummary } from "../types";
+import MediaCard from "./MediaCard";
+import { toMediaSummary } from "../utils/mediaSummary";
+import type { MediaType, TMDBMovieSummary } from "../types";
 
 interface Props {
   movies: TMDBMovieSummary[];
-  onKnowMore: (id: number) => void;
+  onKnowMore: (id: number, type: MediaType) => void;
   hasFilters?: boolean;
 }
 
@@ -35,10 +36,7 @@ function Movies({ movies, onKnowMore, hasFilters }: Props) {
       <Row gutter={[16, 20]}>
         {movies.map((movie) => (
           <Col key={movie.id} xs={12} sm={8} md={6} lg={4} xl={4}>
-            <Movie
-              movie={movie}
-              onKnowMore={() => onKnowMore(movie.id)}
-            />
+            <MediaCard {...toMediaSummary(movie, "movie")} onKnowMore={onKnowMore} />
           </Col>
         ))}
       </Row>

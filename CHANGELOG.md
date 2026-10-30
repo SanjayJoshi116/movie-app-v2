@@ -3,6 +3,46 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.0] - 2026-10-30
+
+Database-layer fixes from the 2026-10-28 review (`fix-db-layer`, backlog item 48), TMDB sessions encrypted at rest (`encrypt-tmdb-session`, split out of item 48), and one shared movie/TV card (`merge-media-cards`). All three OpenSpec changes are archived and their specs synced (`account-security`, `api-hardening`, `recommendation-refresh`, `service-health`; the card merge is a refactor with no spec change). Migrations 0030–0032; new dependency `cryptography`. A 2026-10-26 `/security-review` of 0.30.0 found nothing. There are no open backlog items.
+
+### Breaking
+- **`TMDB_SESSION_KEYS` is required with `DEBUG` off.** Add it to `.env.docker` before upgrading (generator and steps in README, "Upgrading an existing deployment"). Migration 0031 then encrypts the stored sessions in place and connected users stay connected; `migrate userdata 0030` decrypts them again for a rollback.
+
+### Security
+- **TMDB `session_id` encrypted at rest** (`EncryptedSessionField`, Fernet through `MultiFernet`, `userdata/secret_fields.py`). Its own key list, not `SECRET_KEY`: the first key encrypts, all decrypt. Under `DEBUG` a key derived from `SECRET_KEY` is added last, so dev needs no setup. A value no key can read comes back blank, i.e. "not connected", and only the exception type is logged. New `rotate_tmdb_sessions` command re-encrypts every row under the first key, in one bulk update.
+
+### Fixed
+- **Per-user list indexes are back.** Migration 0008's `(user, date)` indexes lived only in a migration, so 0009 dropped them as drift. Watchlist, Watched, Ratings, Lists, followed people and episode progress now declare `(user, -<date>, -id)` in `Meta.indexes` (migration 0030), matching each view's `order_by`; `EXPLAIN` on the dev DB shows an index scan with no sort.
+- **A user's first recommendations save can no longer be overwritten by an older compute.** `select_for_update` locked nothing when no row existed yet; saves now take a per-user advisory lock, so the compute that started last wins on the first save too.
+- **Password reset is all-or-nothing.** Setting the password, revoking refresh tokens and clearing login failures run in one transaction; a failure keeps the old password and the link stays usable.
+- **Deleting an account or renaming it clears the old username's login-failure count,** so whoever registers that name next doesn't start rate limited.
+- Two stale comments (`LoginFailure` key, `OutstandingToken` flushing) now match the code.
+
+### Added
+- **`prune_media_cache` startup step** (`start.py` and the Docker entrypoint, best-effort, 60 s): deletes `TMDBMediaCache` rows older than `CACHE_TTL_DAYS` that no watched entry uses; watched titles' stale rows stay as the outage fallback. A `(media_id, media_type)` index on `WatchedEntry` (migration 0032) keeps its "is anyone watching it" check cheap.
+
+### Changed
+- **One poster card for movies and TV:** `Movie.tsx` and `TVShowCard.tsx` are replaced by `MediaCard.tsx`, fed through `toMediaSummary(item, type)` (`src/utils/mediaSummary.ts`) by the Movies/TV/Anime grids and Search's Movies/TV tabs. Same DOM, labels, links and toasts. Its watched/watchlist writes are explicit add/remove, never toggle, and Home/Anime/Search pass a stable `onKnowMore`, so the memoized cards skip re-rendering when a page appends.
+
+### Fixed (CI)
+- **The TypeScript e2e job no longer runs out of time.** At 412 tests on one worker, the suite outgrew the job's 15-minute cap, and the 0.28.2, 0.29.0 and 0.30.0 runs were cancelled before it finished, with no report uploaded (the upload ran only on `failure()`). It now runs as 3 shards on separate runners; Playwright's `globalTimeout` (12 min on CI) fails a slow shard with its report before the job cap, and the report also uploads on cancel (`playwright-report-<shard>`). A full local run found no failing test (4 load-induced failures at 4 workers all passed at CI's 1 worker).
+
+### Internal
+- `/simplify` pass over the release: one shared comment for the library-list indexes in `models.py`, one label per card action in `MediaCard`, a single empty check in `EncryptedSessionField`.
+
+### Dependencies
+- `cryptography` 50.0.2 (pinned in `requirements.txt`, transitive pins in `constraints.txt`).
+
+### Docs
+- README (Docker `.env.docker` template, breaking upgrade note, key rotation, component and backend trees, tests), `docs/ARCHITECTURE.md` (why sessions are encrypted with their own key), `CLAUDE.md` (encrypted-session rule, `TMDB_SESSION_KEYS` in the fail-closed list, `Meta.indexes` rule, prune step, `MediaCard`), BUG_BACKLOG (item 48, twelfth and thirteenth reviews; item 47's two product questions moved to ideas.md), ideas.md, features.txt.
+
+### Tests
+- `test_list_indexes.py` (every library list's `order_by` has a matching index), `test_prune_media_cache.py`, `test_tmdb_session_encryption.py` (stored token, blank, removed key → disconnected with nothing logged, rotation and command, migration forward/rerun/reverse, connect/status/rating with an unreadable session), reset atomicity and deleted or renamed account failures in `test_account_security.py`, first-save race in `test_rec_quality.py`, `TMDB_SESSION_KEYS` in `test_settings_fail_closed.py`, warm-up order in `test_startup_warmup.py`.
+- Jest: `mediaSummary.test.ts`, `MediaCard.test.tsx`.
+- Totals: backend pytest 616 pass. The Docker image build with the new wheel is checked only by CI's `docker` job.
+
 ## [0.30.0] - 2026-10-21
 
 The Episode Guide stops spoiling episodes you haven't reached (`spoiler-shield`, archived; new `spoiler-shield` spec). Frontend only: no backend, API, migration or dependency changes.

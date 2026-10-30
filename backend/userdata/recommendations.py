@@ -21,11 +21,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 from . import genre_families, tmdb_budget, tmdb_client
 from .metadata_backfill import backfill_entries
 from .social_views import is_talk_or_news
-from .models import RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
+from .models import CACHE_TTL_DAYS, RatingEntry, TMDBMediaCache, UserRecommendationCache, WatchedEntry
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL_DAYS = 7
 # One refresh fetches at most this many titles' details (missing first, then
 # the oldest cached); the rest wait for later runs. A 50k-title import used to
 # mean ~50k server-key TMDB calls in one refresh.
@@ -709,6 +708,9 @@ def _non_empty_sections(*section_lists):
 
 
 SAVED, KEPT_OUTAGE, SUPERSEDED = "saved", "kept_outage", "superseded"
+# First key of save_recommendations' per-user advisory lock (pg's two-int form,
+# second key the user id), so it can't collide with other advisory locks.
+SAVE_LOCK_NAMESPACE = 7311
 
 
 def save_recommendations(user, for_you, personalized, health, started=None):
@@ -722,18 +724,23 @@ def save_recommendations(user, for_you, personalized, health, started=None):
     began later is kept (SUPERSEDED, not a failure): two processes can each
     refresh one user. A clean, current compute writes: SAVED.
     """
-    if health.failed:
-        new_count = _non_empty_sections(for_you, personalized)
-        stored = UserRecommendationCache.objects.filter(user=user).first()
-        old_count = _non_empty_sections(stored.for_you_json, stored.personalized_json) if stored else 0
-        if new_count == 0 or new_count < old_count:
-            logger.warning(
-                "Rec cache refresh for user %s kept the previous result: TMDB failed (%s -> %s sections)",
-                user.id, old_count, new_count,
-            )
-            return KEPT_OUTAGE
     with transaction.atomic():
+        # Serializes this user's saves even before a row exists to lock (a
+        # first compute): row locks alone let two first saves both pass. Both
+        # checks below read the row under it, so a save landing in between
+        # can't be overwritten by an outage result.
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [SAVE_LOCK_NAMESPACE, user.id])
         stored = UserRecommendationCache.objects.select_for_update().filter(user=user).first()
+        if health.failed:
+            new_count = _non_empty_sections(for_you, personalized)
+            old_count = _non_empty_sections(stored.for_you_json, stored.personalized_json) if stored else 0
+            if new_count == 0 or new_count < old_count:
+                logger.warning(
+                    "Rec cache refresh for user %s kept the previous result: TMDB failed (%s -> %s sections)",
+                    user.id, old_count, new_count,
+                )
+                return KEPT_OUTAGE
         if (
             started is not None and stored is not None
             and stored.source_started_at is not None and stored.source_started_at > started

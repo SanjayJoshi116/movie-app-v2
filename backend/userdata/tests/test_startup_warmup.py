@@ -60,6 +60,7 @@ class EntrypointWarmupTests(TestCase):
 
 
 FLUSH_LINE = next(line for line in ENTRYPOINT.splitlines() if "flushexpiredtokens" in line and not line.startswith("#"))
+PRUNE_LINE = next(line for line in ENTRYPOINT.splitlines() if "prune_media_cache" in line and not line.startswith("#"))
 GUNICORN_LINE = next(line for line in ENTRYPOINT.splitlines() if line.startswith("exec gunicorn"))
 
 
@@ -83,6 +84,22 @@ class ExpiredTokenFlushTests(TestCase):
         with redirect_stdout(out):
             run_warmup([sys.executable, "-c", "raise SystemExit(2)"], timeout=30, label="flushexpiredtokens")
         self.assertIn("flushexpiredtokens exited with 2", out.getvalue())
+
+
+class MediaCachePruneStepTests(TestCase):
+    """fix-db-layer: stale title-cache rows are pruned at every start, bounded
+    and best-effort, after the token flush."""
+
+    def test_entrypoint_prune_is_bounded_and_cannot_fail_the_script(self):
+        self.assertRegex(PRUNE_LINE, r"^timeout \d+ python manage\.py prune_media_cache \|\| echo ")
+        self.assertLess(ENTRYPOINT.index(FLUSH_LINE), ENTRYPOINT.index(PRUNE_LINE))
+        self.assertLess(ENTRYPOINT.index(PRUNE_LINE), ENTRYPOINT.index("exec gunicorn"))
+
+    def test_start_py_runs_it_through_the_bounded_helper(self):
+        start = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
+        self.assertRegex(start, r'run_warmup\(\[sys\.executable, manage, "prune_media_cache"\], timeout=\d+')
+        self.assertLess(start.index('"flushexpiredtokens"'), start.index('"prune_media_cache"'))
+        self.assertLess(start.index('"prune_media_cache"'), start.index('"runserver"'))
 
 
 class ThreadedServerTests(TestCase):

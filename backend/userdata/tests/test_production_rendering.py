@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import subprocess
@@ -11,6 +12,7 @@ PROD = {
     "ALLOWED_HOSTS": "testserver",
     "EMAIL_BACKEND": "django.core.mail.backends.locmem.EmailBackend",
     "FRONTEND_URL": "https://cinedb.example.com",
+    "TMDB_SESSION_KEYS": base64.urlsafe_b64encode(b"k" * 32).decode(),  # a test-only Fernet key
 }
 # Same isolation as test_settings_fail_closed: dotenv off, so a developer's
 # backend/.env with DEBUG=True can't turn the production cases into DEBUG ones.

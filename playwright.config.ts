@@ -3,6 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
+  // Under CI's 15-minute job cap (ci.yml), so an overrun fails with a report
+  // rather than the runner cancelling the job without one.
+  globalTimeout: process.env.CI ? 12 * 60_000 : undefined,
   expect: { timeout: 5_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

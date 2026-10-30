@@ -2,6 +2,7 @@
 titles never recommended, genre-less rechecks, unknown genre ids on both
 types, and the newest compute winning the save."""
 import importlib
+import threading
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -9,7 +10,8 @@ import numpy as np
 from django.apps import apps
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from userdata import genre_families, metadata_backfill, recommendations
@@ -204,6 +206,44 @@ class NewestComputeWinsTests(TestCase):
                 patch.object(recommendations, "_finish_refresh"):
             recommendations._refresh_cache(self.user)
         self.assertFalse(recommendations.in_failure_backoff(self.user.id))
+
+
+class FirstSaveRaceTests(TransactionTestCase):
+    """fix-db-layer: with no stored row there was nothing to lock, so an older
+    compute could overwrite a newer first save made by another process."""
+
+    def test_older_first_save_waits_and_is_superseded(self):
+        user = User.objects.create_user(username="race", password="Xk9#mQ2vTz8p")
+        self.addCleanup(cache.delete, recommendations._backoff_key(user.id))
+        t0 = timezone.now()
+
+        def save(label, started):
+            return recommendations.save_recommendations(
+                user, [{"key": label, "label": label, "items": [{"id": 1}]}], [], recommendations.FetchHealth(),
+                started=started,
+            )
+
+        outcome = {}
+
+        def older():
+            try:
+                outcome["older"] = save("older", t0)
+            finally:
+                connection.close()
+
+        # The newer save holds its lock (and its uncommitted row) until this
+        # outer transaction commits; the older one, on its own connection, must
+        # wait for it instead of reading "no row".
+        with transaction.atomic():
+            self.assertEqual(save("newer", t0 + timedelta(seconds=5)), recommendations.SAVED)
+            worker = threading.Thread(target=older)
+            worker.start()
+            worker.join(timeout=1)
+            self.assertTrue(worker.is_alive(), "the older save didn't wait for the newer one's lock")
+        worker.join(timeout=10)
+
+        self.assertEqual(outcome["older"], recommendations.SUPERSEDED)
+        self.assertEqual(UserRecommendationCache.objects.get(user=user).for_you_json[0]["key"], "newer")
 
 
 class ActorSectionTalkShowTests(_Base):

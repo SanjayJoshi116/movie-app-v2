@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator, default_token_generator
 from django.core import mail
 from django.core.cache import cache
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.db.models import F
 from django.test import override_settings
 from django.utils import timezone
@@ -384,6 +384,89 @@ class PasswordResetClearsLimitTests(APITestCase):
     def test_confirm_rate_is_configured(self):
         from django.conf import settings
         self.assertEqual(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["password_reset_confirm"], "10/hour")
+
+
+class AllOrNothingResetTests(APITestCase):
+    """fix-db-layer: a reset that can't end the old sessions changes nothing."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.user = User.objects.create_user(username="alice", email="alice@example.com", password=PASSWORD)
+        self.body = {
+            "uid": urlsafe_base64_encode(force_bytes(self.user.pk)),
+            "token": default_token_generator.make_token(self.user),
+            "new_password": "N3w#Passw0rd!x",
+        }
+
+    def test_failed_revoke_keeps_old_password_and_link(self):
+        revoke_fails = patch("userdata.auth_views._revoke_all_refresh_tokens", side_effect=DatabaseError("db gone"))
+        with revoke_fails, self.assertRaises(DatabaseError):
+            self.client.post("/api/auth/password-reset/confirm/", self.body, format="json")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(PASSWORD))
+
+        res = self.client.post("/api/auth/password-reset/confirm/", self.body, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("N3w#Passw0rd!x"))
+
+
+    def test_reset_keeps_a_profile_edit_made_meanwhile(self):
+        def edit_meanwhile(*args, **kwargs):
+            User.objects.filter(pk=self.user.pk).update(first_name="Edited")
+
+        with patch("django.contrib.auth.password_validation.validate_password", side_effect=edit_meanwhile):
+            res = self.client.post("/api/auth/password-reset/confirm/", self.body, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Edited")
+        self.assertTrue(self.user.check_password("N3w#Passw0rd!x"))
+
+
+class DeletedAccountFailuresTests(APITestCase):
+    """fix-db-layer: a reused username doesn't inherit failed attempts."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _login(self, password, n):
+        # A different client address per attempt, so only the per-username
+        # limit is in play.
+        return self.client.post(
+            "/api/auth/login/", {"username": "alice", "password": password}, format="json",
+            REMOTE_ADDR=f"10.0.1.{n}",
+        )
+
+    def test_new_account_starts_with_no_failures(self):
+        old = User.objects.create_user(username="alice", password=PASSWORD)
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            for n in (1, 2):
+                self.assertEqual(self._login("wrong-pass", n).status_code, 401)
+            self.client.force_authenticate(user=old)
+            res = self.client.delete("/api/auth/delete-account/", {"password": PASSWORD}, format="json")
+            self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+            self.client.force_authenticate(user=None)
+            self.assertFalse(LoginFailure.objects.filter(key=_failure_key("alice")).exists())
+
+            User.objects.create_user(username="alice", password="Qz7!newAlice#2")
+            self.assertEqual(self._login("wrong-pass", 3).status_code, 401)
+            res = self._login("Qz7!newAlice#2", 4)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_rename_frees_the_old_name_without_its_failures(self):
+        old = User.objects.create_user(username="alice", password=PASSWORD)
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            for n in (1, 2):
+                self.assertEqual(self._login("wrong-pass", n).status_code, 401)
+            self.client.force_authenticate(user=old)
+            res = self.client.patch(
+                "/api/auth/profile/", {"username": "alice2", "current_password": PASSWORD}, format="json"
+            )
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.client.force_authenticate(user=None)
+            self.assertFalse(LoginFailure.objects.filter(key=_failure_key("alice")).exists())
 
 
 def _failure_key(username):

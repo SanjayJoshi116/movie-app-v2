@@ -1,9 +1,12 @@
+import base64
+import hashlib
 import os
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from corsheaders.defaults import default_headers
+from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -285,6 +288,30 @@ if not DEBUG:
             "FRONTEND_URL must be the app's absolute http(s) address when DEBUG is off "
             "(e.g. FRONTEND_URL=https://cinedb.example.com); password-reset links are built from it."
         )
+
+# Fernet keys for TMDB session ids at rest (userdata/secret_fields.py),
+# comma-separated: the first encrypts, every one decrypts, so a key can be
+# rotated without disconnecting anyone. Required with DEBUG off; under DEBUG a
+# key derived from SECRET_KEY is always added last. Never put a key value in an
+# error message.
+TMDB_SESSION_KEYS = [k.strip() for k in os.environ.get("TMDB_SESSION_KEYS", "").split(",") if k.strip()]
+if DEBUG:
+    # Last, so it only decrypts once real keys are set: sessions stored under
+    # it in development stay readable after TMDB_SESSION_KEYS is added.
+    _dev_key = base64.urlsafe_b64encode(hashlib.sha256(b"tmdb-session:" + SECRET_KEY.encode()).digest()).decode()
+    if _dev_key not in TMDB_SESSION_KEYS:
+        TMDB_SESSION_KEYS.append(_dev_key)
+try:
+    if not TMDB_SESSION_KEYS:
+        raise ValueError
+    for _key in TMDB_SESSION_KEYS:
+        Fernet(_key)
+except ValueError:
+    raise ImproperlyConfigured(
+        "TMDB_SESSION_KEYS must be one or more comma-separated Fernet keys (required when DEBUG is off; "
+        "generate one with: python -c \"from cryptography.fernet import Fernet; "
+        "print(Fernet.generate_key().decode())\")."
+    ) from None
 
 # Reset links expire after 1 hour (Django default is 3 days); the reset
 # email builds its "expires in" sentence from this value.

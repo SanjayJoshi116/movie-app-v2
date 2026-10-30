@@ -11,9 +11,11 @@
 # tzdata is a direct dependency (requirements.txt), so it installs everywhere.
 asgiref==3.12.1
 certifi==2026.7.22
+cffi==2.0.0
 charset-normalizer==3.5.2
 cloudpickle==3.1.2
 colorama==0.4.6
+cryptography==50.0.2
 Django==5.2.17
 django-cors-headers==4.9.0
 djangorestframework==3.16.1
@@ -27,6 +29,7 @@ packaging==26.3
 pillow==12.3.0
 pluggy==1.6.0
 psycopg2-binary==2.9.13
+pycparser==3.0
 Pygments==2.21.0
 PyJWT==2.15.1
 pytest==9.1.1

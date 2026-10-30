@@ -8,10 +8,12 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 - a 2026-10-09 fourth round (items 22–25, plus additions to 17, 20 and 21), same day, cross-cutting instead of per-layer: a sibling hunt for the third audit's patterns, cross-feature data flows, an adversarial security pass, and a spec-vs-code conformance check of all 29 `openspec/specs`. A live Playwright run of the app was the fifth pass.
 - a 2026-10-13 fifth audit (items 27–34) against 0.24.0 (`11b8c84`)
 - a 2026-10-15 sixth audit (items 35–41) against 0.26.0 (`5155a4d`). One read-only pass over the whole tree, backend, infra, frontend and tests/docs, with three findings checked against live TMDB responses (marked "✔ live").
+- a 2026-10-26 `/security-review` of the whole tree at 0.30.0 (`36e590a`): one read-only pass, no findings (see "Twelfth review" below)
+- a 2026-10-28 `/code-review` of the database layer (models, migrations, and the code that reads and writes them) at 0.30.0 plus uncommitted `merge-media-cards`: item 48 (see "Thirteenth review" below)
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
 
-**Status key:** ✅ done (archived) · 📝 proposed (`openspec/changes/<name>`) · 🔧 fixing directly (no change) · ⏳ not yet proposed
+**Status key:** ✅ done (archived) · 📝 proposed (`openspec/changes/<name>`) · ⏳ not yet proposed
 
 | # | Change | Status | Theme |
 |---|---|---|---|
@@ -69,9 +71,10 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 44 | `fix-library-backup-edges` | ✅ 2026-10-16 | Item 43 follow-ups: Watchlist filter error on a background reload and no loading state; backup restore unbounded runtime/platform/zone/rating/date/title; backup missing score never looked up; empty name titled as failure; stale title on id change |
 | 45 | `fix-restore-text-edges` | ✅ 2026-10-16 | Items 43+44 follow-ups: backup restore drops looked-up scores; title cut splits emoji (chunk fails); length checks count UTF-16 units; Watchlist clamp during watched reload and Retry without feedback; duplicate lookups and counts across backup sections; restore drops near-future timestamps; person tab title vs heading; lookup merge rule; set-state after sign-out |
 | 46 | `spoiler-shield` (feature; fix folded in) | ✅ 2026-10-21 | Found while building the spoiler shield: `useEpisodeProgress` reported `loading: false` on the render before its request started, so a child (the Episode Guide, whose effects run first) read "not started" as "no progress" |
-| 47 | `spoiler-shield` review follow-ups | ✅ 2026-10-21 (4 fixed directly; 2 await a decision) | Review of the uncommitted 0.30.0: guide waits a round trip for progress; progress Retry blanks the guide; dead `enabled` param; unscoped e2e switch; open decisions on hidden-row score and specials |
+| 47 | `spoiler-shield` review follow-ups | ✅ 2026-10-21 (fixed directly; 2 product questions moved to `ideas.md`) | Review of the uncommitted 0.30.0: guide waits a round trip for progress; progress Retry blanks the guide; dead `enabled` param; unscoped e2e switch |
+| 48 | `fix-db-layer`; session-id encryption split out as `encrypt-tmdb-session` | ✅ 2026-10-28 (both changes archived) | Database review: per-user date indexes dropped by migration 0009; first recommendations save races; password reset not atomic; `LoginFailure` row outlives a deleted account; TMDB `session_id` in plain text; `TMDBMediaCache` never pruned; two stale comments (backfill-placeholder finding was a false positive) |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47's four fixes in 0.30.0 too (fixed directly, no OpenSpec change); its two decision items (hidden-row score, specials) stay open.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47 in 0.30.0 too (fixed directly, no OpenSpec change; its two product questions moved to `ideas.md` item 1). 48 in 0.31.0 (`fix-db-layer` and `encrypt-tmdb-session`). No open items.
 
 ---
 
@@ -893,18 +896,39 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 
 Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
 
+## Thirteenth review (2026-10-28): item 48
+
+One `/code-review` pass over the database layer: `backend/userdata/models.py`, every migration, and the views, serializers and helpers that write to or query those tables, at 0.30.0 (`36e590a`). Read-only: no finding was reproduced or run yet, so re-check each before fixing. Checked clean in this pass: bulk import, the `LoginFailure` upsert, the `TmdbTitleBudget` grant, avatar locking, and the guards that stop a title's id and type from changing.
+
+### 48. Database review follow-ups (backend) (✅ `fix-db-layer` archived 2026-10-28, specs synced; pytest 606 pass, migration 0030, `EXPLAIN` on the dev DB shows an index scan with no sort; session-id encryption done separately in `encrypt-tmdb-session`, archived 2026-10-28, specs synced: Fernet `EncryptedSessionField`, `TMDB_SESSION_KEYS` required with DEBUG off, migration 0031, pytest 616 pass. Proposed 2026-10-28; findings checked against the code: indexes, first-save race, reset, deletion and comments confirmed; reset impact is consistency only, since the `hash_password` claim already kills old tokens; session-id encryption left for its own change; backfill placeholders were a false positive)
+
+- **[med] Per-user date indexes are gone.** Migration 0008 added `watched_user_date_idx`, `watched_user_year_idx`, `watchlist_user_date_idx`, `rating_user_date_idx`, `followed_user_date_idx` and `episode_user_date_idx` in a migration only, never in the models' `Meta.indexes`, so a later `makemigrations` read them as drift and 0009 (`0009_remove_episodeprogress_episode_user_date_idx_and_more.py:13`) dropped them all. Every library page (filter by user, order by date then `-id`, up to 500 per page) now uses the unique `(user, media_id, media_type)` index and sorts all of that user's rows on each request; the global single-column `watched_at` index doesn't help a per-user query. Fix: declare them in `Meta.indexes` and generate the migration. Check first with `EXPLAIN` on a large history.
+- **[med] First recommendations save can be overwritten by an older compute.** `save_recommendations` (`recommendations.py:736`) decides "superseded" under `select_for_update`, which locks nothing when the user has no row yet. Two computes in different gunicorn processes (a new user importing watched entries, then ratings) can both pass, and `update_or_create` keeps whichever finishes last, even when it started first, with its older `source_started_at`. Fix: create the row first (`get_or_create` then lock), or an advisory lock per user.
+- **[med] Password reset isn't all-or-nothing.** `password_reset_confirm` (`auth_views.py:312`) runs `user.save()`, `_revoke_all_refresh_tokens` and `_clear_login_failures` without a shared transaction. If revoking fails (a DB error, a dropped connection), the new password is committed, the old refresh tokens are never blacklisted, and the user gets a 500. The `hash_password` claim check should still refuse those tokens, so check how much this matters before fixing. Fix: `transaction.atomic()` around the three steps.
+- **[low-med] A deleted account leaves its `LoginFailure` row.** (`/simplify` on 2026-10-30 found a rename frees the old name the same way; fixed there too.) Account deletion (`auth_views.py:407`) doesn't clear the failure key for the exact username, which becomes free immediately. Whoever registers that name next starts with the old failure count and can get a 429 on their first sign-in or first password-gated profile edit. Fix: clear the key on deletion, as password reset does.
+- **[low-med] TMDB `session_id` is stored in plain text** (`models.py:133`). It can write to the user's TMDB account (ratings, lists), and the code already treats it as a secret in logs (`RedactingFormatter`), but anyone with a DB dump, backup or read access gets working sessions for every connected user. [decide] Encrypt at rest with a key from settings, or accept and document. Needs a key-rotation story if encrypted.
+- **[false positive] Backfill writes the 404 placeholders for a real but empty answer.** `None` means "never fetched" (`entry_needs_metadata`), so storing it would refetch the title forever; `metadata_settled` and `metadata_checked_at` already tell a 404 apart. Original finding: `metadata_backfill.py:104` stores language `'??'` and year `-1` both for a TMDB 404 and for a real answer that has no language or date. Migrations 0022 and 0028 tell a 404 apart by exactly those values, so a future cleanup written the same way would settle a real title and stop rechecking it. Fix: store `None` for a missing language or year on a real answer (a migration for existing rows is optional, since `metadata_settled` already separates them today).
+- **[low] `TMDBMediaCache` is never pruned** (`models.py:101`). Rows are only upserted (404 placeholders included), never deleted, so the table grows with every title any user ever watched, deleted accounts included. Fix: a periodic delete of rows older than `CACHE_TTL_DAYS` that no `WatchedEntry` references, in the same best-effort startup step as `flushexpiredtokens`.
+- **[low] Stale comments.** `models.py:213` says the `LoginFailure` key hashes the folded username; `_login_failure_key` hashes the exact username on purpose (`harden-account-input-2`), and "fixing" it to match the comment would bring back the cross-account lockout. `auth_views.py:175` says `OutstandingToken` is never flushed; `start.py` and the Docker entrypoint now run `flushexpiredtokens`.
+
+## Twelfth review (2026-10-26): security, no items
+
+One `/security-review` pass over the whole tree at 0.30.0 (`36e590a`), read-only. Bar: HIGH/MEDIUM, ≥8/10 confidence of real exploitability; DoS, rate limiting and hardening-only items excluded. **No findings**, so no item number and nothing to propose. Coverage is listed under "Verified fine" (2026-10-26).
+
+Noted below the bar: JWTs live in `localStorage`, exploitable only through an XSS, and none was found.
+
 ## Eleventh review (2026-10-21): item 47
 
 One `/code-review` pass over the uncommitted 0.30.0 (`spoiler-shield`). Read-only; each finding checked against the code by hand.
 
-### 47. Spoiler shield follow-ups (frontend) (✅ fixed directly 2026-10-21, small and inside the `spoiler-shield` spec, so no new OpenSpec change: the four fixes below are done, Jest 547 pass after /simplify, e2e not rerun (only a locator changed); the two [decide] items stay open)
+### 47. Spoiler shield follow-ups (frontend) (✅ fixed directly 2026-10-21, small and inside the `spoiler-shield` spec, so no new OpenSpec change: the four fixes below are done, Jest 547 pass after /simplify, e2e not rerun (only a locator changed); the two [decide] items are product questions, moved to `ideas.md` item 1)
 
-- **[med] The guide's first season fetch waits for the progress request.** `EpisodeGuide.tsx` starts `fetchTVSeason` only once progress settles, so every TV page shows the guide one round trip later, and a slow progress call keeps it on skeletons for users who don't track. Accepted in the design's Risks, but avoidable: fetch the first regular season in parallel, keep it off screen until progress settles, then switch to the tracked season if it differs. Fix.
-- **[med] Progress Retry blanks the guide.** `loading || progressLoading` shows skeletons whenever progress reloads, so after a progress error, Retry drops the episode list (and expanded panels) and disables the Select. Only the first load needs the gate. Fix.
-- **[low] `shieldApplies({ enabled })` is always passed `true`.** The switch value is ANDed separately, so the parameter misleads. Fixed by `/simplify`: the helper was removed, `shieldOn = canShield && hideSpoilers`. Was: pass `hideSpoilers`, compute the switch's visibility without it.
-- **[low] e2e `get_by_role("switch")` is unscoped.** Breaks under strict mode once another switch appears on the TV page. Fix: `name="Hide spoilers"`.
-- **[decide] A hidden row still shows its score.** A standout rating can mark the big episode. The spec keeps score, runtime and air date visible; hiding the score is a spec change.
-- **[decide] Specials are never hidden.** A post-finale special's title and overview can spoil the ending. The spec and design left specials out because they have no place in the progress order.
+- **[med] The guide's first season fetch waits for the progress request.** `EpisodeGuide.tsx` starts `fetchTVSeason` only once progress settles, so every TV page shows the guide one round trip later, and a slow progress call keeps it on skeletons for users who don't track. Accepted in the design's Risks, but avoidable: fetch the first regular season in parallel, keep it off screen until progress settles, then switch to the tracked season if it differs. **Fixed:** the first regular season is requested while progress loads; `sharedGet` joins the real load to it.
+- **[med] Progress Retry blanks the guide.** `loading || progressLoading` shows skeletons whenever progress reloads, so after a progress error, Retry drops the episode list (and expanded panels) and disables the Select. Only the first load needs the gate. **Fixed:** a one-time `ready` state gates the list; later reloads leave it on screen.
+- **[low] `shieldApplies({ enabled })` is always passed `true`.** The switch value is ANDed separately, so the parameter misleads. **Fixed** by `/simplify`: the helper was removed, `shieldOn = canShield && hideSpoilers`. Was: pass `hideSpoilers`, compute the switch's visibility without it.
+- **[low] e2e `get_by_role("switch")` is unscoped.** Breaks under strict mode once another switch appears on the TV page. **Fixed:** `name="Hide spoilers"`.
+- **[moved to ideas.md] A hidden row still shows its score.** A standout rating can mark the big episode. The spec keeps score, runtime and air date visible; hiding the score is a spec change.
+- **[moved to ideas.md] Specials are never hidden.** A post-finale special's title and overview can spoil the ending. The spec and design left specials out because they have no place in the progress order.
 - **Later done by `/simplify`:** `PosterPlaceholder` got optional `children` and is reused for the hidden still; `useEpisodeProgress` derives `loading` from a settled `showId:retryToken` key (covers Retry), replacing `startedFor`. Originally won't-fix: reuse `PosterPlaceholder` for the hidden still (it hardcodes "No Image", wrong here); replace `useEpisodeProgress`'s `startedFor` with a `loadedFor` (would read a Retry as not loading).
 
 ## Tenth review (2026-10-16): item 45
@@ -1082,3 +1106,13 @@ Nothing open.
   - gunicorn 30s is under nginx's 60s timeout; non-root uid and media chown; no published db/backend ports
   - `.env.docker` is ignored by git and Docker
   - the icon files match the manifest
+- 2026-10-26 security review (whole tree, 0.30.0):
+  - authz: every object lookup scoped to `request.user`; list items only via an owned list; `bulk_import` owner scope; no writable `user`/owner/list FK in any serializer; `UserSerializer` (email, `is_staff`) only returned to its own user; `AllowAny` only on auth, TMDB proxy and health
+  - TMDB proxy: host/scheme from env, client `api_key` stripped, server never attaches a user's TMDB session, session/account paths uncached, GET-only
+  - TMDB connect: request token per user, single use, `hmac.compare_digest` (no forced account linking)
+  - JWT: `CHECK_REVOKE_TOKEN` also on refresh; prod refuses default `SECRET_KEY`; email/username/password change and account deletion need `current_password`
+  - password reset: link from `FRONTEND_URL`, not `Host`; same response for unknown email, mail sent in background; 1 h token
+  - injection: raw SQL only in `_login_failure_*` and `insert_ignoring_conflicts`, values parameterized, identifiers constant/model-derived; no eval/pickle/yaml; no subprocess fed by user input
+  - uploads: avatar type from PIL decode + re-encode; `/media/` serve has no traversal, `nosniff`
+  - frontend: no `dangerouslySetInnerHTML`/`innerHTML`/`eval`; external links via `safeHttpUrl` or fixed templates; CSV export formula-escaped; stored text only shown to its author
+  - config: `ALLOWED_HOSTS` fail-closed, CORS wildcard only under `DEBUG`, bearer tokens (no cookies), admin removed, JSON-only renderer in prod, nginx CSP `script-src 'self'`, token URLs redacted in access logs

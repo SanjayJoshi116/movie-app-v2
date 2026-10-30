@@ -2,7 +2,8 @@ import { memo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, Tag, Button, Tooltip } from "antd";
 import { EyeOutlined, EyeFilled, BookOutlined, BookFilled } from "@ant-design/icons";
-import type { TMDBMovieSummary } from "../types";
+import type { MediaType } from "../types";
+import type { MediaSummary } from "../utils/mediaSummary";
 import MarqueeTitle from "./MarqueeTitle";
 import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
@@ -16,18 +17,28 @@ import { ratingColor } from "../utils/colors";
 import { FONT_SIZE } from "../constants/typography";
 import CardLink from "./CardLink";
 
-interface Props {
-  movie: TMDBMovieSummary;
-  onKnowMore: (id: number) => void;
+// The movie/TV poster card of the browse grids (Movies, TV, Anime) and Search's
+// Movies/TV tabs. Not MediaGrid (library grid) or MediaCardGrid (detail pages).
+// Props are flat so memo's shallow compare holds (callers keep onKnowMore stable);
+// build them with toMediaSummary. Writes are explicit add/remove, never toggle:
+// the toast must match what ran, and marking goes through MarkWatchedModal.
+interface Props extends MediaSummary {
+  // Gets the card's own type, so a plain click and the poster link's href
+  // always agree on /movie or /tv.
+  onKnowMore: (id: number, type: MediaType) => void;
 }
 
-const Movie = ({ movie, onKnowMore }: Props) => {
-  const { title, poster_path, vote_average } = movie;
+const MediaCard = ({ id, type, title, posterPath, voteAverage, onKnowMore }: Props) => {
   const idleIconColor = useActionIconColor();
-  const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
-  const { isWatched, toggle: toggleWatched } = useWatchedContext();
+  const { isIn: isInWatchlist, add: addToWatchlist, remove: removeFromWatchlist } = useWatchlistContext();
+  const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
+  const watched = isWatched(id, type);
+  const inWatchlist = isInWatchlist(id, type);
+  const watchedLabel = watched ? "Unmark watched" : "Mark as watched";
+  const watchlistLabel = inWatchlist ? "Remove from watchlist" : "Add to watchlist";
+  const item = { id, type, title, posterPath, voteAverage };
 
   return (
     <>
@@ -36,7 +47,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
       whileHover={{ scale: 1.04, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
       style={{ cursor: "pointer" }}
-      onClick={() => onKnowMore(movie.id)}
+      onClick={() => onKnowMore(id, type)}
     >
       <Card
         hoverable
@@ -44,10 +55,10 @@ const Movie = ({ movie, onKnowMore }: Props) => {
         cover={
           // Poster-only link (the card has its own buttons); the card's mouse
           // onClick stays, so stop the click there.
-          <CardLink to={`/movie/${movie.id}`} onNavigate={() => onKnowMore(movie.id)} label={title} stopPropagation>
-            {poster_path ? (
+          <CardLink to={`/${type}/${id}`} onNavigate={() => onKnowMore(id, type)} label={title} stopPropagation>
+            {posterPath ? (
               <img
-                src={`${POSTER_URL}${poster_path}`}
+                src={`${POSTER_URL}${posterPath}`}
                 alt=""
                 loading="lazy"
                 className="movie-poster-img"
@@ -66,21 +77,21 @@ const Movie = ({ movie, onKnowMore }: Props) => {
           }
           description={
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Tag color={ratingColor(vote_average)} style={{ margin: 0 }}>
-                ★ {vote_average.toFixed(1)}
+              <Tag color={ratingColor(voteAverage)} style={{ margin: 0 }}>
+                ★ {voteAverage.toFixed(1)}
               </Tag>
               <div style={{ display: "flex", gap: 4 }}>
-                <Tooltip title={isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}>
+                <Tooltip title={watchedLabel}>
                   <Button
                     size="small"
                     type="text"
-                    icon={isWatched(movie.id, "movie") ? <EyeFilled /> : <EyeOutlined />}
-                    style={{ color: isWatched(movie.id, "movie") ? WATCHED_GREEN : idleIconColor }}
+                    icon={watched ? <EyeFilled /> : <EyeOutlined />}
+                    style={{ color: watched ? WATCHED_GREEN : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      if (isWatched(movie.id, "movie")) {
+                      if (watched) {
                         try {
-                          await toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                          await removeWatched(id, type);
                           showSuccess("Removed from watched");
                         } catch (err) {
                           showError(getApiError(err, "Failed to update watched status."));
@@ -89,26 +100,28 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                         setShowMarkWatchedModal(true);
                       }
                     }}
-                    aria-label={`${isWatched(movie.id, "movie") ? "Unmark watched" : "Mark as watched"}: ${title}`}
+                    aria-label={`${watchedLabel}: ${title}`}
                   />
                 </Tooltip>
-                <Tooltip title={isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}>
+                <Tooltip title={watchlistLabel}>
                   <Button
                     size="small"
                     type="text"
-                    icon={isInWatchlist(movie.id, "movie") ? <BookFilled /> : <BookOutlined />}
-                    style={{ color: isInWatchlist(movie.id, "movie") ? IN_WATCHLIST_BLUE : idleIconColor }}
+                    icon={inWatchlist ? <BookFilled /> : <BookOutlined />}
+                    style={{ color: inWatchlist ? IN_WATCHLIST_BLUE : idleIconColor }}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const inList = isInWatchlist(movie.id, "movie");
+                      // Explicit add/remove, not toggle: the toast names the action
+                      // taken, even when the list changed since this render.
                       try {
-                        await toggleWatchlist({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
-                        showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
+                        if (inWatchlist) await removeFromWatchlist(id, type);
+                        else await addToWatchlist(item);
+                        showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
                       } catch (err) {
                         showError(getApiError(err, "Failed to update watchlist."));
                       }
                     }}
-                    aria-label={`${isInWatchlist(movie.id, "movie") ? "Remove from watchlist" : "Add to watchlist"}: ${title}`}
+                    aria-label={`${watchlistLabel}: ${title}`}
                   />
                 </Tooltip>
                 <Button
@@ -117,7 +130,7 @@ const Movie = ({ movie, onKnowMore }: Props) => {
                   ghost
                   onClick={(e) => {
                     e.stopPropagation();
-                    onKnowMore(movie.id);
+                    onKnowMore(id, type);
                   }}
                   aria-label={`Know more about ${title}`}
                 >
@@ -132,12 +145,12 @@ const Movie = ({ movie, onKnowMore }: Props) => {
 
     <MarkWatchedModal
       open={showMarkWatchedModal}
-      mediaId={movie.id}
-      mediaType="movie"
+      mediaId={id}
+      mediaType={type}
       onCancel={() => setShowMarkWatchedModal(false)}
       onConfirm={async (details) => {
         try {
-          await toggleWatched({ id: movie.id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+          await addWatched({ ...item, ...details });
           showSuccess("Marked as watched");
         } catch (err) {
           showError(getApiError(err, "Failed to mark as watched."));
@@ -150,4 +163,4 @@ const Movie = ({ movie, onKnowMore }: Props) => {
   );
 };
 
-export default memo(Movie);
+export default memo(MediaCard);

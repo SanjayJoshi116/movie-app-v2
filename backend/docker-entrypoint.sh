@@ -8,6 +8,8 @@ python manage.py createcachetable
 # grow with every sign-in and refresh; drop them at each start. Best-effort
 # and bounded, like the warm-up below.
 timeout 60 python manage.py flushexpiredtokens || echo "[cinedb] flushexpiredtokens skipped (failed or timed out after 60s)"
+# Stale title-cache rows that no watched entry uses; same bound and rules.
+timeout 60 python manage.py prune_media_cache || echo "[cinedb] prune_media_cache skipped (failed or timed out after 60s)"
 # Best-effort cache warm-up, capped like start.py so a hung TMDB call can't
 # keep gunicorn from ever starting.
 timeout 30 python manage.py compute_recommendations || echo "[cinedb] compute_recommendations skipped (failed or timed out after 30s)"

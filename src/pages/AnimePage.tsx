@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Space, Button, Radio } from "antd";
@@ -18,7 +18,7 @@ import {
 } from "../api/tmdb";
 import { genresFor, hasActiveFilters, todayLocalISO } from "../utils/browseFilters";
 import { stashReturnState } from "../utils/browseReturnState";
-import type { TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
+import type { MediaType, TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
 import { pageableTotal } from "../utils/tmdbPages";
 import { usePageTitle } from "../hooks/usePageTitle";
@@ -141,12 +141,18 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   const stashBrowseState = () =>
     stashReturnState({ scrollY: window.scrollY, loadedPages: currentPage, activeCategory, isReturn: true });
 
-  const handleKnowMore = (id: number) => {
-    stashBrowseState();
-    navigate(animeTab === "movies" ? `/movie/${id}` : `/tv/${id}`, {
-      state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
-    });
-  };
+  // Stable identity (latest values through a ref) so the memoized cards skip
+  // re-rendering when a page appends or the category changes.
+  const knowMoreRef = useRef<(id: number, type: MediaType) => void>(() => undefined);
+  useEffect(() => {
+    knowMoreRef.current = (id: number, type: MediaType) => {
+      stashBrowseState();
+      navigate(`/${type}/${id}`, {
+        state: { from: location.pathname, scrollY: window.scrollY, loadedPages: currentPage, isReturn: false, activeCategory },
+      });
+    };
+  });
+  const handleKnowMore = useCallback((id: number, type: MediaType) => knowMoreRef.current(id, type), []);
 
   const categories = animeTab === "tv" ? ANIME_TV_CATEGORIES : ANIME_MOVIE_CATEGORIES;
   const animeMediaType = animeTab === "tv" ? "tv" : "movie";

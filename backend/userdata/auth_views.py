@@ -172,8 +172,8 @@ def _revoke_all_refresh_tokens(user):
     rotated refresh tokens as outstanding — older versions would miss them.
 
     Only live, not-yet-blacklisted tokens: expired ones already fail validation,
-    and OutstandingToken is never flushed, so a per-row loop over the whole
-    history grew without bound. Two queries regardless of history;
+    and expired rows pile up between the startup flushexpiredtokens runs, so a
+    per-row loop over the whole history grew without bound. Two queries regardless of history;
     ignore_conflicts covers a concurrent logout blacklisting one of them.
     """
     live = OutstandingToken.objects.filter(
@@ -308,14 +308,19 @@ def password_reset_confirm(request):
     except DjangoValidationError as exc:
         return Response({"detail": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
-    user.set_password(new_password)
-    user.save()
-    # Whoever triggered the reset may be locking out an attacker: end every
-    # existing session (at its next refresh) along with the old password.
-    _revoke_all_refresh_tokens(user)
-    # Someone else's guessing may have locked this username; the new password
-    # must work straight away.
-    _clear_login_failures(_login_failure_key(user.username))
+    # All or nothing: a failure leaves the old password (so the link still
+    # works) rather than a new password with the old sessions on record.
+    with transaction.atomic():
+        user.set_password(new_password)
+        # Only the password: `user` was read before validation, and a full save
+        # would revert a profile edit committed meanwhile.
+        user.save(update_fields=["password"])
+        # Whoever triggered the reset may be locking out an attacker: end every
+        # existing session (at its next refresh) along with the old password.
+        _revoke_all_refresh_tokens(user)
+        # Someone else's guessing may have locked this username; the new password
+        # must work straight away.
+        _clear_login_failures(_login_failure_key(user.username))
     return Response({"detail": "Password reset successfully."})
 
 
@@ -405,7 +410,11 @@ def delete_account(request):
     # the deletion, in the background, so a slow TMDB can never stop it.
     session_id = TMDBProfile.objects.filter(user=request.user).values_list("session_id", flat=True).first()
     user_id = request.user.id
-    request.user.delete()
+    with transaction.atomic():
+        request.user.delete()
+        # The username is free again: whoever registers it next must not
+        # inherit this account's failed attempts (a rename clears it too).
+        _clear_login_failures(failure_key)
     if session_id:
         tmdb_client.revoke_in_background(user_id, session_id)
     return Response(status=status.HTTP_204_NO_CONTENT)
@@ -459,6 +468,9 @@ def profile(request):
                 # server must not keep the token revoke/reissue below from running.
                 username, user_pk = user.username, user.pk
                 transaction.on_commit(lambda: _notify_email_changed(user_pk, username, old_email))
+            if user.username != old_username:
+                # The old name is free again, as after a deletion.
+                _clear_login_failures(failure_key)
             if old_email and user.username != old_username:
                 # To the address on file before this update, so a rename plus
                 # an email change made with a stolen token still reaches the owner.
