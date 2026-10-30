@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.31.0)
+CINE DB — Feature List (v0.31.1)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -61,10 +61,12 @@ AUTH
 - After signing out, a late response for the previous account is never shown to whoever signs in next in that tab
 - Changing your account email asks for your current password, rejects an email already used by another account (even when two sign-ups or changes race), and notifies your old address
 - Changing your username asks for your current password too (it's how you sign in), and your email address is told about the change
-- Email-based password reset; reset links expire after 1 hour
+- Email-based password reset; reset links expire after 1 hour, and signing in ends any link mailed before; an address shared by two older accounts gets a link for each
+- A profile edit never undoes a password change or reset made at the same moment, and a failed edit or account deletion never signs you out
+- A successful sign-in clears that account's failed-attempt count
 - Password policy: minimum length, common-password blocklist, no all-numeric passwords, and not too similar to your username, email or name (at sign-up, on a password change and on a reset; reinstated in 0.27.0 after being dropped in 0.15.3)
 - Profile photo upload/remove (JPEG/PNG/WebP, 5MB max, checked by the image's actual content rather than its file name, and re-saved so location and camera details embedded in a photo are removed), shown wherever the avatar appears; a new photo shows at once, old or removed photos stop being served (also on account deletion), and a failed replace keeps the current photo; images over 16 megapixels are refused and stored photos are scaled to at most 1024 px a side
-- Connecting TMDB completes only for the account that started it (a connect link sent by someone else is refused); reconnecting, disconnecting or deleting your account revokes the old TMDB session on TMDB's side, in the background after the change is saved, so a slow TMDB never blocks or half-applies it
+- Connecting TMDB completes only for the account that started it (a connect link sent by someone else is refused, and a connect link can't be used twice even at the same moment); a TMDB session that couldn't be saved is revoked at TMDB; reconnecting, disconnecting or deleting your account revokes the old TMDB session on TMDB's side, in the background after the change is saved, so a slow TMDB never blocks or half-applies it
 - Edit Profile modal is tabbed: Account (incl. password strength meter), Data & TMDB (says "Checking TMDB connection…" until it knows), Danger Zone
 - Failed login keeps username filled in (password cleared + refocused), and distinguishes bad-credentials from can't-reach-server errors; register, forgot-password and reset-password errors are readable too (an unreachable server is never reported as an expired reset link)
 - Repeated wrong passwords for one account (its exact username, so `Alice` and `alice` are separate), from any number of devices or at once, pause sign-in for that account for a full hour (Retry-After shows the time left); wrong passwords on a profile update or account deletion count toward the same limit; a password reset clears it, and reset confirmation has its own rate limit

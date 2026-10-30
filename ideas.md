@@ -20,6 +20,32 @@ Priority weighs value against effort and fit with the current architecture, and 
 
 ---
 
+## Top priority: module-by-module review sweep
+
+Added 2026-10-30, ahead of every feature below. Run `/code-review high <paths>` on each module, and `/security-review` on the ones marked **high**. Unnumbered so the feature numbers (referenced from BUG_BACKLOG and CHANGELOG) stay put.
+
+Step-by-step workflow (review → security → verify → propose → apply → simplify → review → archive): BUG_BACKLOG "Module sweep". Per module: paste BUG_BACKLOG's "Verified fine (don't re-audit)" entries into the prompt; log the findings as one backlog item per module (50, 51, …), marked unverified; verify each against the code before proposing; fix high and medium only. `/security-review` is built for pending changes, so either run it on a clean tree (a whole-tree pass, like 2026-10-26) or name the module's paths in its argument and check the report covers them.
+
+Order: B1 → F1 → B3 → B2 → I1 → B7 → B4 → F2 → F3 → B6 → B5 → F4 → F5 (highest risk first; B6 late, reviewed 2026-10-28).
+
+| # | Module | Paths | Lines | Security |
+|---|---|---|---|---|
+| B1 ✅ | Auth & account | `backend/userdata/auth_views.py serializers.py secret_fields.py tmdb_views.py` | ~1,230 | **high** |
+| B2 | TMDB access | `backend/userdata/tmdb_proxy_views.py tmdb_client.py tmdb_budget.py timezones.py logging.py` | ~470 | **high** |
+| B3 | Library CRUD | `backend/userdata/watchlist_views.py watched_views.py ratings_views.py lists_views.py bulk_import.py pagination.py views.py urls.py health_views.py` | ~740 | **high** |
+| B4 | Social & notifications | `backend/userdata/social_views.py notifications_views.py` | ~490 | med |
+| B5 | Recommendations & stats | `backend/userdata/recommendations.py metadata_backfill.py genre_families.py stats_views.py signals.py` | ~1,400 | low |
+| B6 | Data layer | `backend/userdata/models.py backend/userdata/migrations backend/userdata/management` | ~1,340 | med |
+| B7 | Config & startup | `backend/cinedb backend/start.py backend/warmup.py backend/docker-entrypoint.sh` | ~480 | **high** |
+| F1 | API, auth & session | `src/api src/context` | ~1,410 | **high** |
+| F2 | Hooks & utils | `src/hooks src/utils` | ~3,110 | med |
+| F3 | Pages (split account vs library/browse if shallow) | `src/pages` | ~4,900 | med |
+| F4 | Components (split detail/media vs rest if shallow) | `src/components` | ~4,800 | low |
+| F5 | Shell & theme | `src/App.tsx src/index.tsx src/*.css src/constants src/theme src/types` | ~1,900 | low |
+| I1 | Deploy & CI | `nginx.conf Dockerfile.frontend backend/Dockerfile docker-compose.yml .github/workflows scripts` | ~550 | **high** |
+
+Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1). Next: F1. Next feature after the sweep: item 2, rating queue.
+
 ## Tier 1: quick wins
 
 Small, self-contained, and they fit the existing patterns.

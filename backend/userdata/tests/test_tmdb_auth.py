@@ -69,11 +69,12 @@ class TmdbAuthDisclosureTests(APITestCase):
     def test_logged_failure_is_redacted(self, _):
         with self.assertLogs("userdata.tmdb_views", level="WARNING") as cm:
             self.client.post("/api/tmdb-auth/create-session/", {"request_token": "bad"}, format="json")
-        record = cm.records[0]
-        self.assertIn(FAKE_KEY, record.getMessage())  # raw record does carry it...
-        formatted = RedactingFormatter().format(record)
-        self.assertNotIn(FAKE_KEY, formatted)  # ...the configured formatter strips it
-        self.assertIn("***", formatted)
+        # Only the exception type: the call carries the request token, so the
+        # message never holds the URL (the formatter stays a backstop).
+        message = cm.records[0].getMessage()
+        self.assertIn("HTTPError", message)
+        for leaked in (FAKE_KEY, "bad", "themoviedb.org"):
+            self.assertNotIn(leaked, message)
 
     def test_console_handler_uses_redacting_formatter(self):
         handler = settings.LOGGING["handlers"]["console"]
@@ -301,16 +302,40 @@ class TmdbLocalChangeFirstTests(APITestCase):
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
         self.assertEqual(len(callbacks), 1)
 
+    def test_malformed_session_answer_is_a_502_and_keeps_the_old_session(self):
+        TMDBProfile.objects.create(user=self.user, session_id="sess-old")
+        for answer in ({"session_id": 12345}, {"session_id": ""}, ["not", "a", "dict"]):
+            self._issue("tok")
+            with patch("userdata.tmdb_client.create_session", return_value=answer), \
+                    self.assertLogs("userdata.tmdb_views", level="WARNING"):
+                res = self._create("tok")
+            self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY, answer)
+            self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-old")
+
     @patch("userdata.tmdb_client.requests.delete")
     @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
-    def test_failed_save_on_reconnect_revokes_nothing(self, _, delete):
+    def test_failed_save_on_reconnect_revokes_only_the_new_session(self, _, delete):
+        delete.return_value.json.return_value = {"success": True}
         TMDBProfile.objects.create(user=self.user, session_id="sess-old")
         self._issue("tok")
-        with patch.object(TMDBProfile, "save", side_effect=DatabaseError("down")), inline_background(self):
+        with patch.object(TMDBProfile, "save", side_effect=DatabaseError("down")), inline_background(self), \
+                self.assertLogs("userdata.tmdb_views", level="WARNING") as cm:
             res = self._create("tok")
         self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
-        delete.assert_not_called()
+        delete.assert_called_once()
+        self.assertEqual(delete.call_args.kwargs["json"], {"session_id": "sess-new"})
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-old")
+        self.assertNotIn("sess-new", "\n".join(cm.output))
+
+    @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
+    def test_token_read_by_two_requests_creates_one_session(self, create):
+        self._issue("tok")
+        # The other request read the token too, but its delete removed it first.
+        with patch("userdata.tmdb_views.cache.delete", return_value=False):
+            res = self._create("tok")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        create.assert_not_called()
+        self.assertFalse(TMDBProfile.objects.filter(user=self.user, session_id="sess-new").exists())
 
     @patch("userdata.tmdb_client.TMDB_CALL_DEADLINE", 0.3)
     def test_create_session_hanging_returns_502_in_time_and_keeps_the_session(self):

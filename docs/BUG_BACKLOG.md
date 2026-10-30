@@ -10,6 +10,7 @@ The working list of known bugs, grouped into planned OpenSpec changes. Sources:
 - a 2026-10-15 sixth audit (items 35–41) against 0.26.0 (`5155a4d`). One read-only pass over the whole tree, backend, infra, frontend and tests/docs, with three findings checked against live TMDB responses (marked "✔ live").
 - a 2026-10-26 `/security-review` of the whole tree at 0.30.0 (`36e590a`): one read-only pass, no findings (see "Twelfth review" below)
 - a 2026-10-28 `/code-review` of the database layer (models, migrations, and the code that reads and writes them) at 0.30.0 plus uncommitted `merge-media-cards`: item 48 (see "Thirteenth review" below)
+- the 2026-10-30 module review sweep (`ideas.md` top priority), one item per module: item 50 = B1 auth & account (see "Module sweep" below)
 - a 2026-10-30 look at CI's run history (the last three pushes cancelled) and a full local TypeScript e2e run: item 49 (see "CI check" below)
 
 Line numbers were accurate on 2026-10-05; re-check before fixing. When a change is proposed, link it here. When it's archived, mark it done.
@@ -75,8 +76,9 @@ Line numbers were accurate on 2026-10-05; re-check before fixing. When a change 
 | 47 | `spoiler-shield` review follow-ups | ✅ 2026-10-21 (fixed directly; 2 product questions moved to `ideas.md`) | Review of the uncommitted 0.30.0: guide waits a round trip for progress; progress Retry blanks the guide; dead `enabled` param; unscoped e2e switch |
 | 48 | `fix-db-layer`; session-id encryption split out as `encrypt-tmdb-session` | ✅ 2026-10-28 (both changes archived) | Database review: per-user date indexes dropped by migration 0009; first recommendations save races; password reset not atomic; `LoginFailure` row outlives a deleted account; TMDB `session_id` in plain text; `TMDBMediaCache` never pruned; two stale comments (backfill-placeholder finding was a false positive) |
 | 49 | CI shards (fixed directly) | ✅ 2026-10-30 | TS e2e job cancelled at its 15-minute cap on 0.28.2, 0.29.0 and 0.30.0 (412 tests, one worker), with no report uploaded on cancel; both e2e jobs then failed at browser install once `ubuntu-latest` became 26.04 |
+| 50 | `fix-auth-sweep-b1` (sweep B1: auth & account) | ✅ 2026-10-30 | Profile PATCH full `save()` can undo a concurrent password reset; rehash-then-fail signs the session out; new username inherits pre-recorded failures; TMDB session lost and unrevoked on a DB error; reset mails first account only and inactive ones; login doesn't clear failures or set last_login; exception logged around a token call; triple PBKDF2; mail-thread copies; hand-parsed `current_password` |
 
-Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47 in 0.30.0 too (fixed directly, no OpenSpec change; its two product questions moved to `ideas.md` item 1). 48 in 0.31.0 (`fix-db-layer` and `encrypt-tmdb-session`); 49 in 0.31.0 too (fixed directly, no OpenSpec change). No open items.
+Items 0–34 are done (0.26.0); 35, 36, 39 and 41 in 0.27.0; 37, 38 and 40 in 0.28.0. 42 in 0.28.1; 43, 44 and 45 in 0.28.2; 46 in 0.30.0. 47 in 0.30.0 too (fixed directly, no OpenSpec change; its two product questions moved to `ideas.md` item 1). 48 in 0.31.0 (`fix-db-layer` and `encrypt-tmdb-session`); 49 in 0.31.0 too (fixed directly, no OpenSpec change). 50 in 0.31.1 (`fix-auth-sweep-b1`; `/simplify` skipped, `/code-review` run after archive and its findings fixed directly). No open items.
 
 ---
 
@@ -898,11 +900,45 @@ Against 0.26.0 (`5155a4d`), after items 0–34 were all archived. One read-only 
 
 Checked clean in this pass: every view filters by `request.user`; bulk endpoints, input serializers and `FiniteFloatField` cover every write; TMDB calls in requests run under `call_with_deadline`; worker threads do HTTP only; recommendation save/backoff/supersede logic and refresh coalescing hold; session generation guards are in every library hook, provider and import; the import dialogs block closing while busy and stop on sign-out; nginx/CSP/Docker match CLAUDE.md; `build/` and `playwright-report/` are ignored.
 
+## Module sweep (2026-10-30): items 50+
+
+The `ideas.md` top-priority sweep (module list, paths and order are there): one backlog item per module. Findings are read-only until verified.
+
+**Workflow per module:**
+
+| Step | Command | What it does |
+|---|---|---|
+| 1 | `/code-review high <module paths>` | Finds bugs; findings logged here as the module's item, ⏳ unverified |
+| 2 | `/security-review <module paths>` | Only for modules marked **high** in `ideas.md`. Before fixing, so every finding lands in one fix; check the report covers the named paths |
+| 3 | Verify | Check each finding against the code (reproduce where possible), drop false positives, mark ✅ confirmed / ❌ false positive here |
+| 4 | `/opsx:propose <name>` | One change for the verified high and medium findings; open [decide] questions settled here |
+| 5 | `/opsx:apply` | Fix + tests; pytest/Jest, ruff, lint, typecheck |
+| 6 | `/simplify` | Quality pass on the fix's diff, before the final review so it reviews the final code |
+| 7 | `/code-review high` (no paths: the fix's diff) | Catches bugs the fix introduced |
+| 8 | Fix confirmed findings directly | **No second review round** (the 42→45 review-of-review chain is what this avoids) |
+| 9 | `/opsx:archive`, item ✅ here, commit | Then the next module from step 1 |
+
+Skip steps when: the module isn't **high** (skip 2); nothing verified is high or medium (stop after 3, logged only); the fix is a few lines inside an existing spec (skip 4, fix directly, as items 47 and 49 did). Batching steps 1–3 over several modules before one fix per area is fine too.
+
+### 50. B1 auth & account (`auth_views.py`, `serializers.py`, `secret_fields.py`, `tmdb_views.py`) (✅ `fix-auth-sweep-b1` archived 2026-10-30, spec `account-security` synced (4 added, 3 modified), pytest 632 pass + 25 skip; proposed same day, findings checked against the code: 7 confirmed, 1 by design, cleanups folded in; `secret_fields.py` clean. Step 2 `/security-review` of the four files, same day: no findings at the ≥0.8 exploitability bar (the PATCH-undoes-reset race was not raised); below the bar, a lone-surrogate username/password can 500 `_login_failure_key`'s `.encode()`, DoS only)
+
+- **[high] ✅ confirmed. Profile PATCH can undo a password reset.** `profile` (`auth_views.py:465`) runs a full `user.save()` on the `request.user` loaded at authentication, writing back every column, the password hash included. A PATCH in flight (a stolen access token sending `{first_name}`, no password needed) that authenticated before `password_reset_confirm` committed restores the old hash. Fix: `save(update_fields=[changed fields, + password only with new_password])`.
+- **[med] ✅ confirmed (only after a hasher-parameter change). Rehash before a failed PATCH signs the session out.** `check_password` in the serializer (`:442`) upgrades and saves the hash outside the view's transaction when hasher parameters changed. If the PATCH then fails (validator, email taken, username `IntegrityError`), the claim has changed but the 400 carries no new tokens, so the session dies on its next request.
+- **[med] ❌ by design, not fixed: anyone can already lock any taken username for an hour with 20 bad attempts, so pre-seeding a free name adds no new attack. A new username inherits failures recorded before it existed.** `register` (`:359`) and a rename (`:471`, clears only the old name) don't clear the new name's `LoginFailure` row. Pre-seeding failures on a chosen name gets its future owner 429s for up to an hour, repeatably.
+- **[med] ✅ confirmed. TMDB session lost and never revoked on a DB error.** `tmdb_views.py:76`: TMDB issues the session, `profile.save()`/`get_or_create` raises, the except returns 502 "Couldn't reach TMDB", and the live session is neither stored nor revoked. Also `cache.get` + `cache.delete` (`:61-62`) isn't atomic, so two concurrent submits of one request token both pass the single-use check.
+- **[med] ✅ confirmed (legacy duplicates only; nothing deactivates accounts today). Password reset mails the first account only, and inactive ones.** `password_reset_request` (`:237`) uses `.first()` of accounts sharing an email, so legacy duplicates beyond the first can never reset; `is_active=False` and unusable-password accounts get working links (Django's `PasswordResetForm` excludes both).
+- **[med] ✅ confirmed; decided: clear on success and set `last_login` (Django's own login does both effects). Login clears no failures and doesn't set `last_login`.** `:389`. 19 typos then a success leaves one typo from a lock. And a reset link stays valid after a normal sign-in, because the token hash relies on `last_login` changing.
+- **[low] ✅ fixed in the change (the token travels in the body, so the log held only the redacted URL; convention). Whole exception logged around a token call.** `tmdb_views.py:81` logs `%s` of the exception around `create_session` (carries `request_token`). CLAUDE.md: log only the type.
+- **[low] ✅ fixed in the change. Up to three PBKDF2 runs per PATCH.** `serializers.py:99` `_require_current_password` checks once per sensitive field. Check once and reuse.
+- **[low] ✅ fixed in the change. Three copies of the background mail wrapper** (`:251`, `:498`, `:526`), and `_in_background` (`:53`) duplicates `tmdb_client._start_background`.
+- **Step 7 `/code-review high` of the fix (2026-10-30, after archive), 7 findings, fixed directly per step 8:** ✅ fixed: `delete_account` still verified with the rehashing `user.check_password()` (now setter-less, like the profile); a non-string, empty or non-dict `session_id` answer 500'd or stored "not connected" while replying connected (now a 502, old session kept); `docs/ARCHITECTURE.md` still described the removed claim snapshot. ⏭ by design: success clears the failure count (decided in the change). ⏭ skipped, low: `update_fields` save on an account deleted mid-request 500s instead of 401; a new connect started during another create-session's millisecond window loses its token (no compare-and-delete in Django's cache); the clear on success is a DELETE even with no failures.
+- **[low] partly: the `settings` re-import goes; the `isinstance`-guarded pre-check and test-only `_login_failures` stay (design non-goals). `current_password` hand-parsed** with `request.data.get` (`:437`) next to the serializer's own parse; `_login_failures` (`:87`) used only by tests; `password_reset_request` re-imports `settings` (`:223`).
+
 ## CI check (2026-10-30): item 49
 
 Read from GitHub's public API (job conclusions, step times, check-run annotations; the logs themselves need sign-in), plus one full local run of `npx playwright test`.
 
-### 49. TypeScript e2e job outgrew its time cap (CI) (✅ fixed directly 2026-10-30, small and inside the `ci-pipeline` spec, so no OpenSpec change; YAML parses and typecheck passes, proven only by the next CI run)
+### 49. TypeScript e2e job outgrew its time cap (CI) (✅ fixed directly 2026-10-30, small and inside the `ci-pipeline` spec, so no OpenSpec change; proven green on `3c46b97` after the runner pin: TS shards' test steps 6:30, 4:11 and 4:54, the longest about 5.5 min under the 12-min `globalTimeout`; Python e2e 6:01)
 
 - **[high] The job is cancelled, not failed, on every push since 0.28.2.** `e2e-ts` runs 412 tests on one worker (`workers: process.env.CI ? 1`) under `timeout-minutes: 15`. 0.27.0 passed at about 15 min; 0.28.2, 0.29.0 and 0.30.0 hit "The job has exceeded the maximum execution time of 15m0s" during `npx playwright test`. All other jobs passed. **Fixed:** a 3-shard matrix (`--shard=N/3`, `fail-fast: false`), still one worker per runner.
 - **[med] A cancelled run uploads no report.** The upload ran on `failure()` only, and a timeout cancels, so CI never showed whether any test was red. **Fixed:** Playwright `globalTimeout` 12 min on CI (fails before the job cap, with its report), and the upload also runs on `cancelled()`, one artifact per shard (`playwright-report-<shard>`).

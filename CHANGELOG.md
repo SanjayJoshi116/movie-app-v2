@@ -3,10 +3,33 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.31.1] - 2026-10-30
+
+Fixes from the first module of the review sweep (B1, auth & account: `fix-auth-sweep-b1`, backlog item 50; archived, `account-security` spec synced with 4 added and 3 modified requirements), the review of that fix, and a CI runner pin. Backend only: no API shape, migration, setting or dependency change.
+
+### Security
+- **A profile edit can no longer undo a password reset.** The edit saved the whole user row it had loaded when the request was authenticated, so one in flight while a reset committed put the old password hash back (and with it the old password and old tokens). It now saves only the fields it changes.
+- **A TMDB session that couldn't be stored is revoked at TMDB** instead of staying live and unknown to the app, and the connect token's single use holds even for two requests submitted at once.
+- **Signing in ends reset links mailed before it**: a successful login now records `last_login`, which Django's reset token covers.
+
+### Fixed
+- **A failed profile edit or account deletion no longer signs the session out.** Checking the current password used `user.check_password()`, which re-hashes and saves the password when the hasher's parameters changed, outside the action's transaction. Both now use the setter-less hasher check, once per request; the profile's "rehash only" token reissue is gone.
+- **Password reset reaches every active account on the address** (legacy accounts can share one), one link each; inactive and password-less accounts get none. The response is unchanged.
+- **A successful sign-in clears that username's failure count**, as a reset already did.
+- A malformed TMDB session answer (non-string, empty or non-object) is a 502 that keeps the old session, not a 500 or a "connected" reply with nothing stored.
+
+### Internal
+- One background mail helper for the reset link and the email/username change notices. Only the exception type is logged around the TMDB create-session call.
 
 ### Fixed (CI)
 - **Both e2e jobs failed at browser install** once GitHub's `ubuntu-latest` became Ubuntu 26.04, which Playwright 1.60.0 doesn't support ("Playwright does not support chromium on ubuntu26.04-x64"). Every job now runs on a pinned `ubuntu-24.04`.
+
+### Docs
+- `CLAUDE.md` (password-gated actions verify without rehashing; profile saves edited fields only; sign-in clears the count), `docs/ARCHITECTURE.md` (rehash entry rewritten), BUG_BACKLOG (module-sweep workflow, item 49 proven green, item 50 with per-finding verdicts), `ideas.md` (module review sweep as top priority), README, features.txt.
+
+### Tests
+- `test_password_bound_tokens.py`: a profile edit keeps a concurrent reset; a password check never rehashes, on success, on a failed edit or a failed deletion; several gated fields verify once. `test_tmdb_auth.py`: an unstored session is revoked, the old one kept; a token read by two requests creates one session; malformed session answers are 502s. `test_account_security.py`: reset mails per account on a shared address, none to inactive or password-less accounts, same answer for 0/1/2 matches; sign-in clears the count, a limited sign-in clears nothing, sign-in ends an earlier reset link.
+- Totals: backend pytest 632 pass + 25 skip (before the review follow-ups; the 5 touched test files, 102 tests, pass after them).
 
 ## [0.31.0] - 2026-10-30
 

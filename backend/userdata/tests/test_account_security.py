@@ -205,6 +205,56 @@ class PasswordResetTimingTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
+class PasswordResetRecipientsTests(APITestCase):
+    """A reset reaches every active account with a usable password on the address."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _request(self, email):
+        with patch("userdata.auth_views._in_background", side_effect=lambda send: send()):
+            return self.client.post("/api/auth/password-reset/", {"email": email}, format="json")
+
+    def _link_parts(self, body):
+        uid, token = body.split("/reset-password/")[1].split()[0].split("/")
+        return uid, token
+
+    def test_accounts_sharing_an_address_each_get_their_own_link(self):
+        # Legacy duplicates: registration didn't always enforce unique emails.
+        users = [User.objects.create_user(username=n, email="a@x.com", password=PASSWORD) for n in ("ava", "ava2")]
+        res = self._request("A@x.com")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 2)
+        for message in mail.outbox:
+            self.assertEqual(message.to, ["a@x.com"])
+        uids = {self._link_parts(m.body)[0] for m in mail.outbox}
+        self.assertEqual(uids, {urlsafe_base64_encode(force_bytes(u.pk)) for u in users})
+        for message in mail.outbox:
+            uid, token = self._link_parts(message.body)
+            res = self.client.post("/api/auth/password-reset/confirm/", {
+                "uid": uid, "token": token, "new_password": "N3w#Passw0rd!x",
+            }, format="json")
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_inactive_and_passwordless_accounts_get_no_link(self):
+        User.objects.create_user(username="gone", email="g@x.com", password=PASSWORD, is_active=False)
+        nopass = User.objects.create_user(username="nopass", email="n@x.com")
+        nopass.set_unusable_password()
+        nopass.save()
+        self.assertEqual(self._request("g@x.com").status_code, status.HTTP_200_OK)
+        self.assertEqual(self._request("n@x.com").status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_same_answer_for_zero_one_or_two_matches(self):
+        User.objects.create_user(username="one", email="one@x.com", password=PASSWORD)
+        for n in ("two", "two2"):
+            User.objects.create_user(username=n, email="two@x.com", password=PASSWORD)
+        answers = [self._request(e) for e in ("none@x.com", "one@x.com", "two@x.com")]
+        self.assertEqual({a.status_code for a in answers}, {status.HTTP_200_OK})
+        self.assertEqual(len({str(a.data) for a in answers}), 1)
+
+
 class LoginFailureLimitTests(APITestCase):
     def setUp(self):
         cache.clear()
@@ -248,6 +298,32 @@ class LoginFailureLimitTests(APITestCase):
             _age_window("alice", seconds=3601)
             res = self._login("alice", PASSWORD, "10.9.9.9")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_success_clears_the_count(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            self._fail("alice", 2)
+            self.assertEqual(self._login("alice", PASSWORD, "10.9.9.9").status_code, 200)
+            self._fail("alice", 1)
+            res = self._login("alice", PASSWORD, "10.9.9.9")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_limited_login_clears_nothing(self):
+        with self.settings(LOGIN_FAILURE_LIMIT=3):
+            self._fail("alice", 3)
+            self.assertEqual(self._login("alice", PASSWORD, "10.9.9.9").status_code, 429)
+        self.assertTrue(LoginFailure.objects.filter(key=_failure_key("alice")).exists())
+        self.assertIsNone(User.objects.get(username="alice").last_login)
+
+    def test_sign_in_ends_an_earlier_reset_link(self):
+        alice = User.objects.get(username="alice")
+        uid = urlsafe_base64_encode(force_bytes(alice.pk))
+        token = default_token_generator.make_token(alice)
+        self.assertEqual(self._login("alice", PASSWORD, "10.9.9.9").status_code, 200)
+        self.assertIsNotNone(User.objects.get(username="alice").last_login)
+        res = self.client.post("/api/auth/password-reset/confirm/", {
+            "uid": uid, "token": token, "new_password": "N3w#Passw0rd!x",
+        }, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_limit_outlasts_default_cache_timeout(self):
         # DatabaseCache's incr reset the expiry to 300 s, so the lock lapsed

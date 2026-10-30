@@ -66,6 +66,7 @@ class PasswordResetRevocationTests(SessionTestCase):
         rotated = self._refresh(first).data["refresh"]  # rotation blacklists `first`, issues `rotated`
         _, other_device = self._login()
 
+        self.user.refresh_from_db()  # sign-in set last_login, part of the reset token
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
         token = default_token_generator.make_token(self.user)
         res = self.client.post("/api/auth/password-reset/confirm/", {

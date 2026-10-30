@@ -6,7 +6,8 @@ import threading
 from datetime import timedelta
 
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth.hashers import check_password
+from django.contrib.auth.models import User, update_last_login
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
@@ -55,6 +56,30 @@ def _in_background(target):
     thread = threading.Thread(target=target, daemon=True)
     thread.start()
     return thread
+
+
+def _mail_in_background(address, subject, message, what, user_pk):
+    """Send one plain-text mail off the request thread (best-effort). Takes
+    plain values only: the thread never touches the DB or the cache."""
+    from django.core.mail import send_mail
+
+    def send():
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[address],
+                fail_silently=False,
+            )
+        except Exception:
+            # Broad on purpose: the configured EMAIL_BACKEND varies by deploy
+            # (console/SMTP/a 3rd-party API), each with its own exception types
+            # (smtplib.SMTPException, socket/OSError, SDK-specific errors), and
+            # the action this mail reports has already succeeded.
+            logger.exception("Failed to send %s email to user %s", what, user_pk)
+
+    return _in_background(send)
 
 
 class LoginThrottle(AnonRateThrottle):
@@ -219,8 +244,6 @@ def password_reset_request(request):
     from django.contrib.auth.tokens import default_token_generator
     from django.utils.http import urlsafe_base64_encode
     from django.utils.encoding import force_bytes
-    from django.core.mail import send_mail
-    from django.conf import settings
 
     body = PasswordResetRequestInputSerializer(data=request.data)
     body.is_valid(raise_exception=True)
@@ -228,50 +251,25 @@ def password_reset_request(request):
     if not email:
         return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        # filter().first() rather than get(): registration didn't enforce email
-        # uniqueness until now, so accounts created before that fix can still have a
-        # duplicate email in the DB. get() would raise MultipleObjectsReturned in that
-        # case -- an unhandled 500 that surfaces to the user as a generic
-        # "Something went wrong" with no indication of the real cause.
-        user = User.objects.filter(email__iexact=email).first()
-        if user is None:
-            raise User.DoesNotExist
+    # Every active account on the address gets its own link: accounts from
+    # before registration enforced unique emails can share one. Inactive and
+    # password-less accounts get none, as in Django's PasswordResetForm.
+    for user in User.objects.filter(email__iexact=email, is_active=True):
+        if not user.has_usable_password():
+            continue
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"
-        user_pk, username, address = user.pk, user.username, user.email
         message = (
-            f"Hi {username},\n\n"
+            f"Hi {user.username},\n\n"
             f"Click the link below to reset your password:\n{reset_url}\n\n"
             f"This link expires in {_reset_link_lifetime()}.\n\n"
             f"If you didn't request this, you can ignore this email."
         )
-
-        def send():
-            # Everything is computed above: no DB or cache access on this thread.
-            try:
-                send_mail(
-                    subject="Reset your CINE DB password",
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[address],
-                    fail_silently=False,
-                )
-            except Exception:
-                # Broad on purpose: the configured EMAIL_BACKEND varies by deploy
-                # (console/SMTP/a 3rd-party API), each with its own exception
-                # types (smtplib.SMTPException, socket/OSError, SDK-specific
-                # errors) — narrowing would mean missing whichever backend isn't
-                # anticipated.
-                logger.exception("Failed to send password reset email to user %s", user_pk)
-
         # Off the request thread: waiting for the mail server only on the
         # registered-email path would make response time reveal account existence.
-        _in_background(send)
-    except User.DoesNotExist:
-        pass  # Don't reveal whether the email is registered
-
+        _mail_in_background(user.email, "Reset your CINE DB password", message, "password reset", user.pk)
+    # The same answer whether zero, one or several accounts matched.
     return Response({"detail": "If that email is registered, a reset link has been sent."})
 
 
@@ -386,6 +384,11 @@ def login(request):
     if user is None:
         _record_login_failure(failure_key)
         return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+    # The right password ends this username's failure run, as a reset does.
+    _clear_login_failures(failure_key)
+    # As Django's own login does: last_login is part of the reset-token hash,
+    # so signing in ends any reset link mailed before.
+    update_last_login(None, user)
     tokens = _tokens_for_user(user)
     return Response({"user": UserSerializer(user).data, **tokens})
 
@@ -402,7 +405,9 @@ def delete_account(request):
     limited = _login_limited_response(failure_key)
     if limited:
         return limited
-    if not password or not request.user.check_password(password):
+    # Setter-less check: user.check_password() would rehash and commit outside
+    # the delete's transaction, so a failed delete could still end the session.
+    if not password or not check_password(password, request.user.password):
         if password:
             _record_login_failure(failure_key)
         return Response({"detail": "Incorrect password."}, status=status.HTTP_400_BAD_REQUEST)
@@ -426,10 +431,6 @@ def profile(request):
     if request.method == "GET":
         return Response(UserSerializer(request.user).data)
 
-    # Verifying current_password (in is_valid) can rehash the stored password
-    # when the hasher's parameters changed, which changes the CHECK_REVOKE_TOKEN
-    # claim and kills this session's tokens. Snapshot it before that happens.
-    claim_before = get_md5_hash_password(request.user.password)
     # A current_password is checked against the same per-username limit as
     # login (before it is verified), and a wrong one counts toward it. Edits
     # that send no password are unaffected.
@@ -450,11 +451,15 @@ def profile(request):
     old_username = user.username
     new_email = data.get("email") or ""
     email_changed = bool(new_email) and new_email.lower() != (old_email or "").lower()
-    for field in ("first_name", "last_name", "username", "email"):
-        if field in data:
-            setattr(user, field, data[field])
+    # Only what this update changes: request.user was read at authentication,
+    # and a full save would put back anything committed since, a password
+    # reset's new hash included.
+    changed = [f for f in ("first_name", "last_name", "username", "email") if f in data]
+    for field in changed:
+        setattr(user, field, data[field])
     if data.get("new_password"):
         user.set_password(data["new_password"])
+        changed.append("password")
     try:
         # The serializer's uniqueness check can't see a concurrent rename that
         # commits first; the DB constraint can. atomic() keeps the connection
@@ -462,7 +467,8 @@ def profile(request):
         with transaction.atomic():
             if email_changed and _email_taken_under_lock(new_email, exclude_pk=user.pk):
                 return Response({"email": [EMAIL_TAKEN]}, status=status.HTTP_400_BAD_REQUEST)
-            user.save()
+            if changed:
+                user.save(update_fields=changed)
             if old_email and user.email.lower() != old_email.lower():
                 # After commit and off the request thread: a stalled mail
                 # server must not keep the token revoke/reissue below from running.
@@ -488,67 +494,37 @@ def profile(request):
         # while every other session ends at its next refresh.
         _revoke_all_refresh_tokens(user)
         body.update(_tokens_for_user(user))
-    elif get_md5_hash_password(user.password) != claim_before:
-        # Rehash only: same password, so nothing to revoke, but this session
-        # needs tokens carrying the new claim to stay signed in.
-        body.update(_tokens_for_user(user))
     return Response(body)
 
 
 def _notify_email_changed(user_pk, username, old_email):
-    """Tell the previous address its account email changed (best-effort, on a
-    background thread, so it takes plain values and never touches the ORM)."""
-    from django.core.mail import send_mail
-
-    def send():
-        try:
-            send_mail(
-                subject="Your CINE DB email was changed",
-                message=(
-                    f"Hi {username},\n\n"
-                    f"The email address on your CINE DB account was just changed from this "
-                    f"address to a new one.\n\n"
-                    f"If you didn't do this, reset your password and contact support right away."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[old_email],
-                fail_silently=False,
-            )
-        except Exception:
-            # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
-            # password_reset_request's send_mail. The email change itself already
-            # succeeded and must not be reported as failed because of this.
-            logger.exception("Failed to send email-change notice for user %s", user_pk)
-
-    _in_background(send)
+    """Tell the previous address its account email changed (best-effort; the
+    change already succeeded and is never reported as failed because of this)."""
+    _mail_in_background(
+        old_email,
+        "Your CINE DB email was changed",
+        f"Hi {username},\n\n"
+        "The email address on your CINE DB account was just changed from this "
+        "address to a new one.\n\n"
+        "If you didn't do this, reset your password and contact support right away.",
+        "email-change notice",
+        user_pk,
+    )
 
 
 def _notify_username_changed(user_pk, old_username, new_username, address):
-    """Tell the account's address its username changed (best-effort, on a
-    background thread, so it takes plain values and never touches the ORM)."""
-    from django.core.mail import send_mail
-
-    def send():
-        try:
-            send_mail(
-                subject="Your CINE DB username was changed",
-                message=(
-                    "Hi,\n\n"
-                    f"The username on your CINE DB account was just changed from {old_username} "
-                    f"to {new_username}. Use the new username to sign in.\n\n"
-                    "If you didn't do this, reset your password and contact support right away."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[address],
-                fail_silently=False,
-            )
-        except Exception:
-            # Broad on purpose: same EMAIL_BACKEND-varies-by-deploy rationale as
-            # password_reset_request's send_mail. The rename itself already
-            # succeeded and must not be reported as failed because of this.
-            logger.exception("Failed to send username-change notice for user %s", user_pk)
-
-    _in_background(send)
+    """Tell the account's address its username changed (best-effort, like
+    _notify_email_changed)."""
+    _mail_in_background(
+        address,
+        "Your CINE DB username was changed",
+        "Hi,\n\n"
+        f"The username on your CINE DB account was just changed from {old_username} "
+        f"to {new_username}. Use the new username to sign in.\n\n"
+        "If you didn't do this, reset your password and contact support right away.",
+        "username-change notice",
+        user_pk,
+    )
 
 
 def _reencode_avatar(file, image_format):

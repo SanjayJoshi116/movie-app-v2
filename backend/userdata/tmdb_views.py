@@ -56,17 +56,26 @@ def tmdb_create_session(request):
     request_token = body.validated_data["request_token"]
     if not request_token:
         return Response({"error": "request_token is required."}, status=status.HTTP_400_BAD_REQUEST)
-    # Single use: the issued token is consumed even if TMDB then fails.
+    # Single use: the issued token is consumed even if TMDB then fails. Of two
+    # requests that both read it, only the one whose delete removed it goes on.
     key = _request_token_key(request.user.id)
     issued = cache.get(key)
-    cache.delete(key)
-    if not isinstance(issued, str) or not hmac.compare_digest(issued, request_token):
+    consumed = cache.delete(key)
+    if not consumed or not isinstance(issued, str) or not hmac.compare_digest(issued, request_token):
         return Response({"error": TMDB_CONNECT_RESTART}, status=status.HTTP_400_BAD_REQUEST)
     try:
         data = tmdb_client.call_with_deadline(
             tmdb_client.create_session, tmdb_client.TMDB_CALL_DEADLINE, request_token
         )
         session_id = data["session_id"]
+        if not isinstance(session_id, str) or not session_id:
+            # Nothing usable to store (or to revoke): a malformed answer, not a 500.
+            raise ValueError("TMDB returned no usable session id")
+    except (requests.RequestException, ValueError, KeyError, TypeError) as e:
+        # Type only: this call carries the request token.
+        logger.warning("TMDB create-session failed for user %s (%s)", request.user.id, type(e).__name__)
+        return Response({"error": TMDB_UNREACHABLE}, status=status.HTTP_502_BAD_GATEWAY)
+    try:
         profile, _ = TMDBProfile.objects.get_or_create(user=request.user)
         old_session_id = profile.session_id
         # Store the new session first, then revoke the old one after commit in
@@ -77,8 +86,11 @@ def tmdb_create_session(request):
         if old_session_id and old_session_id != session_id:
             tmdb_client.revoke_in_background(request.user.id, old_session_id)
         return Response({"connected": True})
-    except (requests.RequestException, ValueError, KeyError, DBError) as e:
-        logger.warning("TMDB create-session failed for user %s: %s", request.user.id, e)
+    except DBError as e:
+        # TMDB issued a session the app couldn't store: revoke it, so no live
+        # session exists that nothing knows about. The old one stays as it was.
+        logger.warning("Storing the TMDB session failed for user %s (%s)", request.user.id, type(e).__name__)
+        tmdb_client.revoke_in_background(request.user.id, session_id)
         return Response({"error": TMDB_UNREACHABLE}, status=status.HTTP_502_BAD_GATEWAY)
 
 

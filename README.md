@@ -768,11 +768,14 @@ backend/userdata/tests/
 ├── test_auth.py                    # Register password strength, delete-account confirmation, reset-confirm
 ├── test_account_security.py        # Email change re-auth/uniqueness/notification, reset-link expiry,
 │                                   #   reset mail off the request thread, per-username login failure limit,
-│                                   #   reset all-or-nothing, a deleted or renamed account's failures cleared
+│                                   #   reset all-or-nothing, a deleted or renamed account's failures cleared,
+│                                   #   reset mailed to every active account on the address, sign-in clears the
+│                                   #   count and ends earlier reset links
 ├── test_account_input_2.py         # Rename needs the current password + notice, password similarity on
 │                                   #   register/profile/reset, failure limit per exact username
 ├── test_session_revocation.py      # Logout endpoint, revoke-all on reset/password change, refresh regression
-├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens
+├── test_password_bound_tokens.py   # Refresh racing a password change, stale access tokens, claimless tokens,
+│                                   #   profile edit keeps a concurrent reset, password checks never rehash
 ├── test_logging.py                 # TMDB key, (guest_)session_id and request_token redacted from every logger;
 │                                   #   prod 500s logged, 4xx quiet
 ├── test_avatar.py                  # Upload/delete/replace, extension from decoded format (polyglots served as images),
@@ -801,7 +804,8 @@ backend/userdata/tests/
 ├── test_stats_math.py              # Half-up rounding and buckets, gap-free monthly activity, unscored titles
 │                                   #   left out of the TMDB average
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
-│                                   #   connect bound to the requesting user (single-use token), reconnect revokes
+│                                   #   connect bound to the requesting user (atomic single-use token), reconnect revokes,
+│                                   #   an unstored session revoked, malformed session answer a 502
 ├── test_rec_quality.py             # Taste clusters skip genre-less/disliked titles, split-type genre fallback,
 │                                   #   rated titles excluded, 30-day genre recheck + migration, newest compute wins
 │                                   #   (first save too)

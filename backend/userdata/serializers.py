@@ -1,6 +1,7 @@
 import math
 from datetime import UTC, datetime, timedelta
 
+from django.contrib.auth.hashers import check_password
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.validators import UnicodeUsernameValidator
@@ -71,6 +72,7 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, required=False)
 
     password_rejected = False
+    _password_ok = None  # verified once per update, however many gated fields
 
     def validate_username(self, value):
         user = self.context["request"].user
@@ -96,7 +98,13 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     def _require_current_password(self, data, purpose):
         if not data.get("current_password"):
             raise serializers.ValidationError({"current_password": f"Required to change {purpose}."})
-        if not self.context["request"].user.check_password(data["current_password"]):
+        if self._password_ok is None:
+            # The plain hasher check, not user.check_password(): that one re-hashes
+            # and saves when the hasher's parameters changed, outside the view's
+            # transaction, which changes the session's token claim even when
+            # this update then fails.
+            self._password_ok = check_password(data["current_password"], self.context["request"].user.password)
+        if not self._password_ok:
             self.password_rejected = True  # the view counts it toward the per-username limit
             raise serializers.ValidationError({"current_password": "Incorrect password."})
 
