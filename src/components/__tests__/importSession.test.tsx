@@ -91,6 +91,9 @@ beforeEach(() => {
   for (const f of [mockApp.reloadWatched, mockApp.reloadWatchlist, mockApp.reloadRatings, mockLists.reloadLists]) {
     f.mockResolvedValue(undefined);
   }
+  // A real signed-in tab: the stored account is the bound one. Without it every
+  // request is refused as "another tab changed the account", which now ends the run.
+  localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
   bindSessionUser(1);
   post = jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => (
     { data: { added: (body as { entries?: unknown[] })?.entries?.length ?? 0, skipped: 0 } } as never
@@ -99,6 +102,7 @@ beforeEach(() => {
 afterEach(() => {
   post.mockRestore();
   bindSessionUser(null);
+  localStorage.removeItem("cinedb_user");
 });
 
 describe.each([

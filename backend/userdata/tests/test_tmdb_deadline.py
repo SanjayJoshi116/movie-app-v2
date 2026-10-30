@@ -51,12 +51,51 @@ class TimeoutTupleTests(SimpleTestCase):
 
     def test_get_post_delete_use_the_tuple(self):
         ok = type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: {}})()
-        with patch("userdata.tmdb_client.requests.get", return_value=ok) as get, \
-                patch("userdata.tmdb_client.requests.post", return_value=ok) as post, \
-                patch("userdata.tmdb_client.requests.delete", return_value=ok) as delete:
+        with patch("userdata.tmdb_client._session.request", return_value=ok) as request:
             tmdb_client._get("/x")
             tmdb_client._post("/x")
             tmdb_client._delete("/x")
-        for call in (get, post, delete):
-            self.assertEqual(call.call_args.kwargs["timeout"], tmdb_client.TMDB_TIMEOUT)
+        # Every verb goes through the one shared session, with the tuple.
+        self.assertEqual([c.args[0] for c in request.call_args_list], ["GET", "POST", "DELETE"])
+        for call in request.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], tmdb_client.TMDB_TIMEOUT)
         self.assertEqual(len(tmdb_client.TMDB_TIMEOUT), 2)
+
+
+class SharedClientTests(SimpleTestCase):
+    """fix-tmdb-sweep-b2: every backend call shares the session; malformed bodies are failures."""
+
+    def _answer(self, body):
+        return type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: body})()
+
+    def test_non_object_body_is_a_value_error(self):
+        with patch("userdata.tmdb_client._session.request", return_value=self._answer([1, 2])), \
+                self.assertRaises(ValueError):
+            tmdb_client._get("/x")
+
+    def test_malformed_genre_lists_fall_back_to_names(self):
+        for body in ({"genres": None}, {"genres": [{"id": 18}]}, {"genres": "x"}, {}):
+            with patch("userdata.tmdb_client._session.request", return_value=self._answer(body)):
+                self.assertEqual(tmdb_client.get_genre_names("movie"), tmdb_client.STATIC_GENRE_NAMES, body)
+        with patch("userdata.tmdb_client._session.request", return_value=self._answer([])):
+            self.assertEqual(tmdb_client.get_genre_names("tv"), tmdb_client.STATIC_GENRE_NAMES)
+
+    def test_good_genre_list_is_used(self):
+        body = {"genres": [{"id": 18, "name": "Drama"}, {"id": 99}]}
+        with patch("userdata.tmdb_client._session.request", return_value=self._answer(body)):
+            self.assertEqual(tmdb_client.get_genre_names("movie"), {18: "Drama"})
+
+    def test_null_lists_read_as_empty(self):
+        body = {"genres": None, "credits": {"cast": None}, "results": None}
+        with patch("userdata.tmdb_client._session.request", return_value=self._answer(body)):
+            self.assertEqual(tmdb_client.get_details_with_cast(1, "movie"), {"genre_ids": [], "top_cast": []})
+            self.assertEqual(tmdb_client.discover("movie", "18"), [])
+
+
+class SharedRetryTests(SimpleTestCase):
+    def test_a_post_on_a_dropped_pooled_connection_is_retried(self):
+        # A pooled connection TMDB already closed fails the POST with a read
+        # error; every TMDB write here is safe to resend, so it's retried.
+        self.assertIn("POST", tmdb_client.RETRY.allowed_methods)
+        self.assertTrue(tmdb_client.RETRY._is_method_retryable("POST"))
+        self.assertTrue(tmdb_client.RETRY._is_method_retryable("DELETE"))

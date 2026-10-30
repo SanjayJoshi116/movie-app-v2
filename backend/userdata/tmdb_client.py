@@ -7,6 +7,8 @@ from concurrent.futures import TimeoutError as FutureTimeout
 import requests
 from django.db import transaction
 from django.conf import settings
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,29 @@ STATIC_GENRE_NAMES = {
 # and to each read separately, so the old `timeout=10` meant ~20s per attempt.
 TMDB_TIMEOUT = (3.05, 6)
 
+# One session for every TMDB call (the proxy's and the backend's own): it pools
+# connections instead of a fresh TLS handshake per call, and retries transient
+# connection resets, which some network paths produce on a good share of
+# handshakes. POST is retried on a read error too: a pooled connection TMDB
+# already closed fails that way, and every write here is safe to resend (a
+# rating POST sets a value, the DELETEs are idempotent, and create_session's
+# request token is single use, so a resend can only fail). Background calls
+# (recommendations, backfill) get the same retries with no deadline: a stall
+# costs them more time, a reset no longer costs a refresh. A request-path
+# call's wall-clock bound is its deadline (call_with_deadline), not these
+# attempts: urllib3 tries the connect once per address DNS returns.
+RETRY = Retry(
+    total=2, connect=2, read=1, backoff_factor=0.5,
+    allowed_methods=Retry.DEFAULT_ALLOWED_METHODS | {"POST"},
+)
+# Every thread that calls TMDB shares this pool: the proxy's and the deadline
+# pool's 16 each, plus background work. Smaller, and urllib3 discards the extra
+# connections, which brings the per-call handshake back under load.
+# (test_startup_warmup pins it at least the request threads.)
+SESSION_POOL_SIZE = 32
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=SESSION_POOL_SIZE, max_retries=RETRY))
+
 # Wall-clock limit for one TMDB call made while a request waits (connect,
 # token, rating sync). Per-attempt timeouts can't bound a call on their own:
 # urllib3 tries the connect once per address DNS returns (api.tmdb.org has
@@ -57,10 +82,12 @@ class TMDBDeadlineExceeded(requests.Timeout):
     `except requests.RequestException` already treats it as a failed call."""
 
 
-def call_with_deadline(fn, deadline, *args, **kwargs):
+def call_with_deadline(fn, deadline, *args, executor=None, **kwargs):
     """Run fn(*args, **kwargs) (a TMDB HTTP call) and give up after `deadline`
-    seconds of elapsed time, every connect attempt and retry included."""
-    future = _DEADLINE_POOL.submit(fn, *args, **kwargs)
+    seconds of elapsed time, every connect attempt and retry included. The
+    proxy passes its own `executor`, so its abandoned calls can't fill the
+    pool that rating sync, TMDB connect and Stats wait on."""
+    future = (executor or _DEADLINE_POOL).submit(fn, *args, **kwargs)
     try:
         return future.result(timeout=deadline)
     except FutureTimeout:
@@ -76,17 +103,21 @@ def is_not_found(exc):
     return isinstance(exc, requests.HTTPError) and response is not None and response.status_code == 404
 
 
-def _get(path, params=None, timeout=TMDB_TIMEOUT):
+def _request(method, path, params=None, json=None, timeout=TMDB_TIMEOUT):
+    """One TMDB call through the shared session. Raises for an HTTP error, and
+    ValueError for a body that isn't a JSON object (every TMDB v3 answer is
+    one), so callers' existing ValueError handling covers a malformed reply."""
     p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.get(f"{TMDB_BASE}{path}", params=p, timeout=timeout)
+    r = _session.request(method, f"{TMDB_BASE}{path}", params=p, json=json, timeout=timeout)
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    if not isinstance(data, dict):
+        raise ValueError(f"TMDB answered {path} with a {type(data).__name__}, not an object")
+    return data
 
 
-def get_genre_ids(media_id, media_type):
-    """Return genre ID list for a movie or TV show."""
-    data = _get(f"/{media_type}/{media_id}")
-    return [g["id"] for g in data.get("genres", [])]
+def _get(path, params=None, timeout=TMDB_TIMEOUT):
+    return _request("GET", path, params, timeout=timeout)
 
 
 def discover(media_type, with_genres, page=1):
@@ -99,7 +130,7 @@ def discover(media_type, with_genres, page=1):
         "page": page,
     }
     data = _get(f"/discover/{media_type}", params)
-    return data.get("results", [])
+    return data.get("results") or []
 
 
 def get_details_with_cast(media_id, media_type):
@@ -108,16 +139,16 @@ def get_details_with_cast(media_id, media_type):
         data = _get(f"/movie/{media_id}", {"append_to_response": "credits"})
         cast = [
             {"id": c["id"], "name": c["name"]}
-            for c in (data.get("credits") or {}).get("cast", [])[:3]
+            for c in ((data.get("credits") or {}).get("cast") or [])[:3]
         ]
     else:
         data = _get(f"/tv/{media_id}", {"append_to_response": "aggregate_credits"})
         cast = [
             {"id": c["id"], "name": c["name"]}
-            for c in (data.get("aggregate_credits") or {}).get("cast", [])[:3]
+            for c in ((data.get("aggregate_credits") or {}).get("cast") or [])[:3]
         ]
     return {
-        "genre_ids": [g["id"] for g in data.get("genres", [])],
+        "genre_ids": [g["id"] for g in data.get("genres") or []],
         "top_cast": cast,
     }
 
@@ -129,25 +160,27 @@ def get_genre_names(media_type, timeout=TMDB_TIMEOUT, *, fallback=True):
     know it got the static names (e.g. to cache them only briefly)."""
     try:
         data = _get(f"/genre/{media_type}/list", timeout=timeout)
-        return {g["id"]: g["name"] for g in data.get("genres", [])}
-    except (requests.RequestException, ValueError, KeyError):
+        names = {
+            g["id"]: g["name"]
+            for g in data.get("genres") or []
+            if isinstance(g, dict) and isinstance(g.get("id"), int) and g.get("name")
+        }
+        if not names:
+            # A null, empty or all-malformed list: never hand back ids without names.
+            raise ValueError(f"TMDB's {media_type} genre list had no usable entries")
+        return names
+    except (requests.RequestException, ValueError, KeyError, TypeError):
         if not fallback:
             raise
         return dict(STATIC_GENRE_NAMES)
 
 
 def _post(path, body=None, params=None):
-    p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.post(f"{TMDB_BASE}{path}", params=p, json=body or {}, timeout=TMDB_TIMEOUT)
-    r.raise_for_status()
-    return r.json()
+    return _request("POST", path, params, json=body or {})
 
 
 def _delete(path, params=None, json=None):
-    p = {"api_key": settings.TMDB_API_KEY, **(params or {})}
-    r = requests.delete(f"{TMDB_BASE}{path}", params=p, json=json, timeout=TMDB_TIMEOUT)
-    r.raise_for_status()
-    return r.json()
+    return _request("DELETE", path, params, json=json)
 
 
 def revoke_tmdb_session(user_id, session_id):

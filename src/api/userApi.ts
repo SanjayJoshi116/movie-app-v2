@@ -17,10 +17,6 @@ export const publicApi = axios.create({
   baseURL: DJANGO_BASE,
 });
 
-/** The session ended or changed hands (logout, or a different login): either
- *  while a refresh was in flight, or while this tab still shows the previous
- *  account. Drop the result or refuse the request, don't redirect. */
-class SessionChangedError extends Error {}
 
 function storedUserId(): number | undefined {
   try {
@@ -45,6 +41,17 @@ export function bindSessionUser(id: number | null) {
   boundUserId = id;
 }
 
+/** True once another tab stored a different account (or signed out) and this
+ *  tab hasn't followed yet: the stored token is no longer this tab's. */
+function tabAccountChanged(): boolean {
+  return boundUserId !== null && storedUserId() !== boundUserId;
+}
+
+/** The stored access token, only while it belongs to the account this tab shows. */
+export function currentAccessToken(): string | null {
+  return tabAccountChanged() ? null : localStorage.getItem("cinedb_access");
+}
+
 export function currentSessionGeneration(): number {
   return sessionGeneration;
 }
@@ -60,6 +67,12 @@ export class SessionEndedError extends Error {
     this.name = "SessionEndedError";
   }
 }
+
+/** The session ended or changed hands (logout, or a different login): either
+ *  while a refresh was in flight, or while this tab still shows the previous
+ *  account. Drop the result or refuse the request, don't redirect.
+ *  A SessionEndedError, so an import refused this way ends without a toast. */
+export class SessionChangedError extends SessionEndedError {}
 
 export interface SessionGuard {
   /** Throws SessionEndedError if the session this guard was taken in has ended. */
@@ -87,7 +100,7 @@ export function sessionGuard(): SessionGuard {
 
 userApi.interceptors.request.use((config) => {
   // Before the other tab's storage event reaches us: refuse rather than send.
-  if (boundUserId !== null && storedUserId() !== boundUserId) throw new SessionChangedError();
+  if (tabAccountChanged()) throw new SessionChangedError();
   const token = localStorage.getItem("cinedb_access");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -278,6 +291,10 @@ userApi.interceptors.response.use(
         return userApi(original);
       }
 
+      // Another tab signed out or switched accounts and our storage event
+      // hasn't run yet: follow that change, don't force a logout that would
+      // carry this page into the next account's sign-in.
+      if (tabAccountChanged()) return Promise.reject(new SessionChangedError());
       const refresh = localStorage.getItem("cinedb_refresh");
       if (!refresh) {
         forceLogout();

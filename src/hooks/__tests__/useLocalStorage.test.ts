@@ -85,3 +85,12 @@ describe("useLocalStorage same-tab sync", () => {
     expect(result.current[0]).toBe(2);
   });
 });
+
+test("the setter keeps its identity across renders (fix-session-sweep-f1)", () => {
+  const { result, rerender } = renderHook(() => useLocalStorage("cinedb_stable", 1));
+  const first = result.current[1];
+  act(() => result.current[1](2));
+  rerender();
+  expect(result.current[1]).toBe(first);
+  expect(result.current[0]).toBe(2);
+});

@@ -205,7 +205,8 @@ backend/
 │   │                            #   revoke-all-sessions on password change/reset
 │   ├── health_views.py          # /api/health/ liveness check (never throttled)
 │   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout;
-│   │                            #   200s cached in their own `tmdb` cache alias (TTL by path, X-Cache header)
+│   │                            #   200s cached in their own `tmdb` cache alias (TTL by path, X-Cache header);
+│   │                            #   plain paths only, own deadline pool, TMDB 401/403 → 502, 429 keeps Retry-After
 │   ├── logging.py               # RedactingFormatter: strips the TMDB API key from log output
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list) + bulk import
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
@@ -228,7 +229,7 @@ backend/
 │   ├── secret_fields.py         # EncryptedSessionField: TMDB session_id encrypted at rest (Fernet/MultiFernet)
 │   ├── genre_families.py        # Maps TMDB movie/TV genre ids into shared families (recs + Stats);
 │   │                            #   discover calls convert back to each type's own ids
-│   ├── tmdb_client.py           # Server-side TMDB API client
+│   ├── tmdb_client.py           # Server-side TMDB API client: the one pooled, retrying session every TMDB call uses
 │   └── tests/                   # pytest suite (see ## Testing)
 ├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable → flushexpiredtokens
 │                                #   and prune_media_cache (each capped at 60s) → compute_recommendations
@@ -674,16 +675,19 @@ src/context/__tests__/
 ├── AppContext.test.tsx
 ├── AuthContext.logout.test.tsx   # Logout teardown, recent-search reset, unmount-cache guard
 ├── AuthContext.sync.test.tsx     # Other tab logs out / signs in as someone else / updates the profile
+├── AuthContext.lateResponse.test.tsx # A profile/avatar response landing after sign-out + another sign-in is dropped
 ├── FollowedPeopleContext.test.tsx # Lazy fetch, state shared across consumers, new follow first, `changes`
 └── UIContext.test.tsx            # Search, adult content and genres reset on sign-out; theme kept
 
 src/api/__tests__/
 ├── userApi.test.ts               # Token rotation, 401 bursts/late 401s, cross-tab refresh,
                                   #   logout during refresh, retry-on-500 for safe methods only,
-                                  #   X-Timezone header sent (omitted if Intl fails)
+                                  #   X-Timezone header sent (omitted if Intl fails); a 401 after another
+                                  #   tab signed out rejects as SessionChangedError, no forced logout
 ├── bulkImport.test.ts            # 500-entry chunking + per-chunk result aggregation
 └── tmdb.test.ts                  # Token attached; a 401 retries once without it; never logs out;
-                                  #   identical in-flight GETs shared, failures not kept
+                                  #   identical in-flight GETs shared, failures not kept; only this tab's
+                                  #   account token, an expired token sent once
 
 src/utils/__tests__/
 ├── apiError.test.ts              # Object bodies only; HTML/string bodies → fallback; network → connection message
@@ -725,6 +729,7 @@ src/components/__tests__/
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
 ├── MediaCard.test.tsx            # Poster link, labelled actions, placeholder, add/remove (never toggle) for movie and TV
 ├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save or a region change
+├── ProfileModalBusy.test.tsx     # Edit Profile can't close (button, Escape) while a write is in flight
 ├── MarqueeTitle.test.tsx         # Ellipsis + full-title tooltip, no scroll under reduced motion
 ├── RouteAnnouncer.test.tsx       # Tab title per page; only the new page's loaded title announced, never the first load
 ├── renderCertifications.test.ts  # A malformed country entry empties only the Certification cell
@@ -798,7 +803,8 @@ backend/userdata/tests/
 ├── test_session_throttle.py        # Refresh/logout on their own token_refresh scope, not anon 300/day
 ├── test_health.py                  # Health check never throttled
 ├── test_tmdb_proxy.py              # Clean 502s, retry/timeout budget under gunicorn's timeout, per-user throttle,
-│                                   #   response cache (TTL tiers, credential bypass, errors never cached)
+│                                   #   response cache (TTL tiers, credential bypass, errors never cached, order-free key),
+│                                   #   plain-path allowlist, 401/403 → 502, 429 Retry-After, own pool
 ├── test_pagination.py              # Library lists accept page_size up to 500
 ├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout
 ├── test_stats_math.py              # Half-up rounding and buckets, gap-free monthly activity, unscored titles
@@ -845,7 +851,8 @@ backend/userdata/tests/
 │                                   #   all-or-nothing; list createdAt on create only
 ├── test_input_bounds.py            # voteAverage 0–10 (Stats ignores stored outliers), episode progress needs
 │                                   #   season + episode (no PATCH), list deleted mid-add → 404
-├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled
+├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled;
+│                                   #   one shared session, non-object bodies and malformed genre lists handled
 ├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
 │                                   #   review (5000) and list description (200) caps
 ├── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id

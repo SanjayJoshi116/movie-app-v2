@@ -150,6 +150,12 @@ class BudgetTests(_Base):
         TmdbTitleBudget.objects.filter(user=self.user).update(day=date(2000, 1, 1))
         self.assertEqual(tmdb_budget.take(self.user.id, 5), 5)
 
+    def test_spent_budget_writes_nothing(self):
+        tmdb_budget.take(self.user.id, tmdb_budget.DAILY_TITLE_FETCHES)
+        with patch.object(TmdbTitleBudget, "save") as save:
+            self.assertEqual(tmdb_budget.take(self.user.id, 5), 0)
+        save.assert_not_called()
+
     def test_clear_and_import_loop_stops_at_the_budget(self):
         calls = []
 

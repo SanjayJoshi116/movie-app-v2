@@ -16,7 +16,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from userdata import tmdb_proxy_views
+from userdata import tmdb_client, tmdb_proxy_views
 
 
 @patch.object(tmdb_proxy_views.TmdbProxyThrottle, "rate", "2/min", create=True)
@@ -85,7 +85,7 @@ class TmdbProxyTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
         self.assertEqual(
             mock_get.call_args.kwargs["timeout"],
-            (tmdb_proxy_views.CONNECT_TIMEOUT, tmdb_proxy_views.READ_TIMEOUT),
+            tmdb_proxy_views.TMDB_TIMEOUT,
         )
 
 
@@ -103,7 +103,8 @@ class TmdbProxyTimeBudgetTests(SimpleTestCase):
 
     def test_session_uses_the_budgeted_retry(self):
         adapter = tmdb_proxy_views._session.get_adapter("https://api.themoviedb.org/3/movie/550")
-        self.assertIs(adapter.max_retries, tmdb_proxy_views.RETRY)
+        self.assertIs(adapter.max_retries, tmdb_client.RETRY)
+        self.assertIs(tmdb_proxy_views._session, tmdb_client._session)  # one session for every TMDB call
 
 
 class TmdbProxyDeadlineTests(APITestCase):
@@ -139,7 +140,7 @@ class TmdbProxyDeadlineTests(APITestCase):
         # Only the TMDB call's own thread gets the fakes; anything else in the
         # test process that resolves or connects keeps the real functions.
         def in_tmdb_thread():
-            return threading.current_thread().name.startswith("tmdb-deadline")
+            return threading.current_thread().name.startswith("tmdb-proxy")
 
         def fake_getaddrinfo(*args, **kwargs):
             return infos if in_tmdb_thread() else real_getaddrinfo(*args, **kwargs)
@@ -157,6 +158,9 @@ class TmdbProxyDeadlineTests(APITestCase):
             finally:
                 done.set()
 
+        # Load the URLconf and its view modules (scikit-learn, scipy) first: a
+        # cold import on the first request takes seconds and isn't the call's time.
+        self.assertEqual(self.client.get("/api/tmdb/movie/..").status_code, 400)
         with patch("socket.getaddrinfo", fake_getaddrinfo), \
                 patch("socket.socket.connect", slow_connect), \
                 patch("userdata.tmdb_proxy_views._session.get", side_effect=tracked_get):
@@ -293,3 +297,69 @@ class TmdbProxyCacheIsolationTests(SimpleTestCase):
         self.assertNotEqual(prod["LOCATION"], settings.PRODUCTION_CACHE["LOCATION"])
         self.assertTrue(prod["OPTIONS"]["MAX_ENTRIES"])
         self.assertNotEqual(settings.TMDB_CACHE_DEV["LOCATION"], settings.CACHES["default"].get("LOCATION", ""))
+
+
+@patch("userdata.tmdb_proxy_views._session.get")
+class TmdbProxySweepB2Tests(APITestCase):
+    """fix-tmdb-sweep-b2: plain paths only, translated upstream errors, order-free keys."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        caches["tmdb"].clear()
+
+    def _answer(self, mock_get, status_code=200, body=None, headers=None):
+        mock_get.return_value = Mock(
+            status_code=status_code, headers=headers or {}, **{"json.return_value": body or {"id": 550}}
+        )
+
+    def test_paths_that_arent_plain_are_refused_before_tmdb(self, mock_get):
+        self._answer(mock_get)
+        for path in ("movie/550%3Fsession_id=abc", "..%2F4%2Flist%2F1", "movie/550%23x",
+                     "movie/./550", "movie//550", "movie/550%25"):
+            res = self.client.get(f"/api/tmdb/{path}")
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, path)
+        mock_get.assert_not_called()
+
+    def test_nested_plain_paths_are_forwarded(self, mock_get):
+        self._answer(mock_get)
+        for path in ("tv/1396/season/1", "watch/providers/regions", "person/287/combined_credits"):
+            self.assertEqual(self.client.get(f"/api/tmdb/{path}").status_code, 200, path)
+
+    def test_refused_server_key_is_a_502_never_a_401(self, mock_get):
+        for code in (401, 403):
+            self._answer(mock_get, code, {"status_code": 7})
+            with self.assertLogs("userdata.tmdb_proxy_views", level="WARNING"):
+                res = self.client.get("/api/tmdb/movie/550")
+            self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY, code)
+            self.assertEqual(res.data, {"error": "TMDB request failed."})
+        self.assertIsNone(caches["tmdb"].get(tmdb_proxy_views._cache_key("movie/550", [])))
+
+    def test_rate_limit_keeps_retry_after(self, mock_get):
+        self._answer(mock_get, 429, {"status_code": 25}, {"Retry-After": "7"})
+        res = self.client.get("/api/tmdb/movie/550")
+        self.assertEqual(res.status_code, 429)
+        self.assertEqual(res["Retry-After"], "7")
+
+    def test_same_params_in_another_order_hit_the_cache(self, mock_get):
+        self._answer(mock_get)
+        self.client.get("/api/tmdb/discover/movie?page=1&language=en-US")
+        res = self.client.get("/api/tmdb/discover/movie?language=en-US&page=1")
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertEqual(res["X-Cache"], "HIT")
+
+
+class TmdbProxyPoolTests(SimpleTestCase):
+    def test_full_proxy_pool_doesnt_delay_other_tmdb_calls(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        blockers = [tmdb_proxy_views.PROXY_POOL.submit(release.wait, 10)
+                    for _ in range(tmdb_proxy_views.PROXY_POOL_SIZE)]
+        try:
+            started = time.monotonic()
+            self.assertEqual(tmdb_client.call_with_deadline(lambda: "synced", 1), "synced")
+            self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            release.set()
+            for b in blockers:
+                b.result(timeout=5)

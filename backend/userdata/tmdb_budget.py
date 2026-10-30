@@ -25,15 +25,20 @@ def take(user_id, n):
     with transaction.atomic():
         row = TmdbTitleBudget.objects.select_for_update().filter(user_id=user_id).first()
         if row is None:
+            granted = min(n, DAILY_TITLE_FETCHES)
             try:
                 with transaction.atomic():
-                    row = TmdbTitleBudget.objects.create(user_id=user_id, day=today, used=0)
+                    TmdbTitleBudget.objects.create(user_id=user_id, day=today, used=granted)
+                return granted
             except IntegrityError:
                 # Another process created it first: lock theirs.
                 row = TmdbTitleBudget.objects.select_for_update().get(user_id=user_id)
-        if row.day != today:
+        new_day = row.day != today
+        if new_day:
             row.day, row.used = today, 0
         granted = max(0, min(n, DAILY_TITLE_FETCHES - row.used))
-        row.used += granted
-        row.save(update_fields=["day", "used"])
+        # No write when nothing changed (a spent budget, same day).
+        if granted or new_day:
+            row.used += granted
+            row.save(update_fields=["day", "used"])
     return granted

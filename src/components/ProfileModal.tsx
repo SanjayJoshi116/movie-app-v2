@@ -25,7 +25,7 @@ import {
   getTMDBAuthStatus, getTMDBRequestToken, disconnectTMDB, uploadAvatar, removeAvatar,
   getFollowedPeople, getAllEpisodeProgress,
 } from "../api/userApi";
-import userApi from "../api/userApi";
+import userApi, { SessionEndedError } from "../api/userApi";
 import { getApiError } from "../utils/apiError";
 import { FONT_SIZE } from "../constants/typography";
 import { AVATAR_INITIALS_TEXT } from "../constants/ui";
@@ -49,7 +49,7 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 /** Backup parts read at export time, named in the "couldn't load" message. */
 const SOCIAL_PARTS = { followed: "followed people", progress: "episode progress" };
 
-function ProfileModalBody({ onClose }: { onClose: () => void }) {
+function ProfileModalBody({ onClose, onBusyChange }: { onClose: () => void; onBusyChange: (busy: boolean) => void }) {
   const { user, updateProfile, setUserData, logout } = useAuth();
   const { showSuccess, showError } = useToast();
   const watchlistCtx = useWatchlistContext();
@@ -68,6 +68,11 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const busy = loading || deleteLoading || avatarLoading || tmdbLoading;
+  useEffect(() => {
+    onBusyChange(busy);
+    return () => onBusyChange(false);
+  }, [busy, onBusyChange]);
   const [newPassword, setNewPassword] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportBlocked, setExportBlocked] = useState<string[] | null>(null);
@@ -166,6 +171,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
       showSuccess("Profile updated successfully.");
       onClose();
     } catch (err) {
+      if (err instanceof SessionEndedError) return; // answered after a sign-out: nothing to report here
       showError(getApiError(err, "Failed to update profile."));
     } finally {
       setLoading(false);
@@ -231,8 +237,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
     setAvatarLoading(true);
     try {
       const { data } = await uploadAvatar(file);
-      setUserData(data);
-      showSuccess("Profile photo updated.");
+      if (setUserData(data)) showSuccess("Profile photo updated.");
     } catch (err) {
       showError(getApiError(err, "Failed to upload photo."));
     } finally {
@@ -245,8 +250,7 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
     setAvatarLoading(true);
     try {
       const { data } = await removeAvatar();
-      setUserData(data);
-      showSuccess("Profile photo removed.");
+      if (setUserData(data)) showSuccess("Profile photo removed.");
     } catch (err) {
       showError(getApiError(err, "Failed to remove photo."));
     } finally {
@@ -501,10 +505,25 @@ function ProfileModalBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-const ProfileModal = ({ open, onClose }: Props) => (
-  <Modal title="Edit Profile" open={open} onCancel={onClose} footer={null} destroyOnHidden>
-    <ProfileModalBody onClose={onClose} />
-  </Modal>
-);
+const ProfileModal = ({ open, onClose }: Props) => {
+  const [busy, setBusy] = useState(false);
+  // While a save, photo change or deletion is in flight nothing closes the
+  // dialog: its result has to land in front of the user, and closing it was
+  // the way to sign out with a profile save still pending.
+  return (
+    <Modal
+      title="Edit Profile"
+      open={open}
+      onCancel={busy ? undefined : onClose}
+      maskClosable={!busy}
+      keyboard={!busy}
+      closable={!busy}
+      footer={null}
+      destroyOnHidden
+    >
+      <ProfileModalBody onClose={onClose} onBusyChange={setBusy} />
+    </Modal>
+  );
+};
 
 export default ProfileModal;

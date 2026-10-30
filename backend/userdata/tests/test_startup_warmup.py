@@ -118,6 +118,8 @@ class ThreadedServerTests(TestCase):
         from userdata import tmdb_client, tmdb_proxy_views
         threads = int(re.search(r"--threads (\d+)", GUNICORN_LINE).group(1))
         self.assertGreaterEqual(tmdb_client.DEADLINE_POOL_SIZE, threads)
-        self.assertGreaterEqual(tmdb_proxy_views.SESSION_POOL_SIZE, threads)
-        adapter = tmdb_proxy_views._session.get_adapter("https://api.tmdb.org")
-        self.assertEqual(adapter._pool_maxsize, tmdb_proxy_views.SESSION_POOL_SIZE)
+        self.assertGreaterEqual(tmdb_proxy_views.PROXY_POOL_SIZE, threads)
+        self.assertEqual(tmdb_proxy_views.PROXY_POOL._max_workers, tmdb_proxy_views.PROXY_POOL_SIZE)
+        self.assertGreaterEqual(tmdb_client.SESSION_POOL_SIZE, threads)
+        adapter = tmdb_client._session.get_adapter("https://api.tmdb.org")
+        self.assertEqual(adapter._pool_maxsize, tmdb_client.SESSION_POOL_SIZE)

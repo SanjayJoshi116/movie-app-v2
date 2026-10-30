@@ -115,10 +115,11 @@ class TmdbSessionRevokeTests(APITestCase):
 
     def _assert_revoke_call(self, delete):
         delete.assert_called_once()
-        self.assertTrue(delete.call_args.args[0].endswith("/authentication/session"))
+        self.assertEqual(delete.call_args.args[0], "DELETE")
+        self.assertTrue(delete.call_args.args[1].endswith("/authentication/session"))
         self.assertEqual(delete.call_args.kwargs["json"], {"session_id": SESSION_ID})
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     def test_disconnect_revokes_session(self, delete):
         delete.return_value.json.return_value = {"success": True}
         with inline_background(self):
@@ -127,7 +128,7 @@ class TmdbSessionRevokeTests(APITestCase):
         self._assert_revoke_call(delete)
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "")
 
-    @patch("userdata.tmdb_client.requests.delete", side_effect=_revoke_error)
+    @patch("userdata.tmdb_client._session.request", side_effect=_revoke_error)
     def test_tmdb_failure_still_disconnects_and_logs_no_secrets(self, delete):
         with self.assertLogs("userdata.tmdb_client", level="WARNING") as cm, inline_background(self):
             res = self.client.delete("/api/tmdb-auth/disconnect/")
@@ -139,7 +140,7 @@ class TmdbSessionRevokeTests(APITestCase):
         for secret in (SESSION_ID, FAKE_KEY):
             self.assertNotIn(secret, logged)
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     def test_disconnect_without_session_skips_tmdb(self, delete):
         TMDBProfile.objects.filter(user=self.user).update(session_id="")
         self.user.refresh_from_db()  # drop the cached tmdb_profile on the shared force_authenticate user
@@ -147,7 +148,7 @@ class TmdbSessionRevokeTests(APITestCase):
         self.assertEqual(res.data, {"connected": False})
         delete.assert_not_called()
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     def test_account_delete_revokes_after_user_is_gone(self, delete):
         user_existed = []
 
@@ -163,7 +164,7 @@ class TmdbSessionRevokeTests(APITestCase):
         self.assertEqual(user_existed, [False])
         self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
 
-    @patch("userdata.tmdb_client.requests.delete", side_effect=_revoke_error)
+    @patch("userdata.tmdb_client._session.request", side_effect=_revoke_error)
     def test_account_delete_survives_tmdb_failure(self, _):
         with self.assertLogs("userdata.tmdb_client", level="WARNING"), inline_background(self):
             res = self.client.delete("/api/auth/delete-account/", {"password": "Xk9#mQ2vTz8p"}, format="json")
@@ -245,7 +246,7 @@ class TmdbConnectBindingTests(APITestCase):
             self.client.get("/api/tmdb-auth/request-token/")
         cache_set.assert_any_call(_request_token_key(self.user.id), "t", 3600)
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
     def test_reconnect_revokes_previous_session(self, _, delete):
         delete.return_value.json.return_value = {"success": True}
@@ -257,7 +258,7 @@ class TmdbConnectBindingTests(APITestCase):
         self.assertEqual(delete.call_args.kwargs["json"], {"session_id": "sess-old"})
         self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-new")
 
-    @patch("userdata.tmdb_client.requests.delete", side_effect=requests.ConnectionError("down"))
+    @patch("userdata.tmdb_client._session.request", side_effect=requests.ConnectionError("down"))
     @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
     def test_failed_revoke_does_not_block_reconnect(self, *_):
         TMDBProfile.objects.create(user=self.user, session_id="sess-old")
@@ -288,7 +289,7 @@ class TmdbLocalChangeFirstTests(APITestCase):
     def _create(self, token):
         return self.client.post("/api/tmdb-auth/create-session/", {"request_token": token}, format="json")
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
     def test_reconnect_revokes_only_after_the_new_session_is_committed(self, _, delete):
         TMDBProfile.objects.create(user=self.user, session_id="sess-old")
@@ -312,7 +313,7 @@ class TmdbLocalChangeFirstTests(APITestCase):
             self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY, answer)
             self.assertEqual(TMDBProfile.objects.get(user=self.user).session_id, "sess-old")
 
-    @patch("userdata.tmdb_client.requests.delete")
+    @patch("userdata.tmdb_client._session.request")
     @patch("userdata.tmdb_client.create_session", return_value={"session_id": "sess-new"})
     def test_failed_save_on_reconnect_revokes_only_the_new_session(self, _, delete):
         delete.return_value.json.return_value = {"success": True}
@@ -368,7 +369,7 @@ class TmdbLocalChangeFirstTests(APITestCase):
             return Mock(**{"json.return_value": {"success": True}})
 
         def hang():
-            return patch("userdata.tmdb_client.requests.delete", side_effect=hanging_delete)
+            return patch("userdata.tmdb_client._session.request", side_effect=hanging_delete)
 
         def request_then_commit(send):
             """Send the request, then run its on-commit callbacks (what autocommit

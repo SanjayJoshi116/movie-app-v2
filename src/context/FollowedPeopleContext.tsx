@@ -5,10 +5,12 @@ import {
   unfollowPerson,
   currentSessionGeneration,
   isCurrentSession,
+  SessionEndedError,
   type FollowedPersonEntry,
 } from "../api/userApi";
 import { useAuth } from "./AuthContext";
 import { createInflight } from "../utils/inflight";
+import { guardedReload } from "../utils/guardedReload";
 
 export interface FollowedPeopleContextType {
   followed: FollowedPersonEntry[];
@@ -51,7 +53,10 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
   const [changes, setChanges] = useState(0);
-  const inflight = useRef(createInflight());
+  // Bumped when a follow/unfollow settles: a load that started before it is
+  // run again rather than applied (guardedReload), like the library hooks.
+  const writeSeq = useRef(0);
+  const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -63,12 +68,20 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
     }
     if (!requested) return;
     let cancelled = false;
-    getFollowedPeople()
-      .then((data) => { if (!cancelled) { setFollowed(data); setError(false); } })
+    const gen = currentSessionGeneration();
+    // Dropped after the effect re-ran or the session changed (sign-out lands
+    // before this cleanup can), so another account's list is never applied.
+    const live = () => !cancelled && isCurrentSession(gen);
+    // A rerun (a follow settled meanwhile) never goes out for a dead session:
+    // after a sign-out it would 401 with no token and force a logout.
+    const fetchIfLive = () => (live() ? getFollowedPeople() : Promise.reject(new SessionEndedError()));
+    guardedReload(writeSeq, fetchIfLive, (data) => {
+      if (live()) { setFollowed(data); setError(false); }
+    })
       // Keep whatever we had: an empty list here used to read as "not following
       // anyone" on the Following page and as "Follow" on every person card.
-      .catch(() => { if (!cancelled) setError(true); })
-      .finally(() => { if (!cancelled) setLoaded(true); });
+      .catch(() => { if (live()) setError(true); })
+      .finally(() => { if (live()) setLoaded(true); });
     return () => { cancelled = true; };
   }, [isAuthenticated, requested, retryToken]);
 

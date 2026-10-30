@@ -5,11 +5,14 @@ import userApi, {
   currentSessionGeneration,
   isCurrentSession,
   fetchNewReleaseNotifications,
+  getFollowedPeople,
 } from "../../api/userApi";
 import { useWatched } from "../useWatched";
 import { useLists } from "../useLists";
 import { NotificationsProvider, useNotifications } from "../useNotifications";
 import { AuthContext } from "../../context/AuthContext";
+import { FollowedPeopleProvider } from "../../context/FollowedPeopleContext";
+import { useFollowedPeople } from "../useFollowedPeople";
 
 // The real generation functions; only the network is mocked.
 jest.mock("../../api/userApi", () => {
@@ -23,6 +26,7 @@ jest.mock("../../api/userApi", () => {
     },
     fetchNewReleaseNotifications: jest.fn(),
     markNotificationsSeen: jest.fn(),
+    getFollowedPeople: jest.fn(),
   };
 });
 
@@ -137,6 +141,25 @@ describe("a response for the previous account is dropped", () => {
     expect(result.current.isLoading).toBe(true);
     await act(async () => { b.resolve({ data: [] }); });
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe("followed people across an account switch", () => {
+  it("drops A's list when it lands after the session changed", async () => {
+    const a = deferred<unknown>();
+    const mockFollowed = getFollowedPeople as jest.Mock;
+    mockFollowed.mockReturnValueOnce(a.promise);
+    const followedWrapper = ({ children }: { children: React.ReactNode }) =>
+      wrapper({ children: React.createElement(FollowedPeopleProvider, null, children) });
+    const { result } = renderHook(() => useFollowedPeople(), { wrapper: followedWrapper });
+    await waitFor(() => expect(mockFollowed).toHaveBeenCalled());
+
+    // The sign-out binds a new session before the provider's effect cleanup runs.
+    act(() => bindSessionUser(2));
+    await act(async () => {
+      a.resolve([{ id: 10, personId: 287, name: "A's follow", profilePath: null, followedAt: "2026-10-01T10:00:00Z" }]);
+    });
+    expect(result.current.followed).toEqual([]);
   });
 });
 

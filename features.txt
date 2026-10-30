@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.31.1)
+CINE DB — Feature List (v0.31.3)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -52,6 +52,8 @@ AUTH
 - JWT login/register; stay signed in for the full 7-day session (silent token refresh, works with several tabs open)
 - Sign Out revokes the session on the server too, and clears everything account-related from the tab (cached recommendations, search results, filters, recent searches) so the next person to sign in sees none of it; browse settings (search term, include adult, genres, filters, sort) reset too; theme and sidebar preferences are kept
 - Tabs stay in step: signing out in one tab signs out the others, and signing in as someone else in another tab reloads this one (no request ever goes out under the wrong account)
+- A profile save or photo change that finishes after you signed out (and someone else signed in) is ignored: it never switches the tab, or other tabs, back to your account; the Edit Profile dialog stays open until a save, photo change, TMDB disconnect or account deletion finishes
+- Signing out in another tab never sends the next person to your last page after they sign in, even if a request was in flight; a follow made while your followed list reloads is never lost
 - A busy or unreachable server never signs you out; only a rejected session does
 - Changing your password signs out every other device at once, including their already-issued access and any refresh that was in flight (this one stays signed in); completing a password reset signs out all devices
 - Accounts without an email can edit their profile and change their password; clearing an email needs the current password
@@ -99,6 +101,8 @@ SECURITY & OPERATIONS
 - Endpoints that wait on TMDB (proxy, notifications, followed-people recommendations, Stats genre lookup, TMDB connect, rating sync) each answer within a fixed time budget under the server's request timeout; every TMDB call has a wall-clock limit covering all connection attempts
 - Followed-people recommendations are rate limited per user, like the other endpoints that spend TMDB quota; ratings outside 0–10 are refused, so they can never break Stats; a stalled mail server can't half-apply an email change
 - Production reuses database connections (60 s) instead of connecting per request
+- Every server-side TMDB call reuses pooled connections and retries a dropped connection, so recommendations and imports don't fail on a flaky network; a slow TMDB on browsing pages never holds up rating sync, TMDB connect or Stats
+- If TMDB rejects the server's own key, pages show a TMDB error instead of acting as if you were signed out; TMDB's rate-limit wait is passed on; a malformed TMDB answer never shows raw genre numbers
 - Users' TMDB sessions are encrypted in the database (a dump or backup gives no working TMDB access); the key is set apart from the database, can be rotated without disconnecting anyone, and production refuses to start without it
 - Library pages stay fast however long a history gets: each list is read straight from a per-user index in its display order; cached title details nobody has watched are pruned at startup
 - A password reset applies completely or not at all, and a deleted or renamed account's failed sign-in count never carries over to whoever registers that username next

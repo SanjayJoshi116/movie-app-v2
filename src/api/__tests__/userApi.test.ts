@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from "axios";
-import userApi, { bindSessionUser, clearSession, saveSessionCache } from "../userApi";
+import userApi, { bindSessionUser, clearSession, saveSessionCache, SessionChangedError } from "../userApi";
 
 // A tiny fake Django: rotating refresh tokens (old one dies on use, like
 // ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION), Bearer-checked endpoints,
@@ -176,6 +176,22 @@ describe("tab bound to the account it shows", () => {
     localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
     bindSessionUser(1);
     await expect(userApi.get("/thing/")).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("a 401 that lands after another tab signed out doesn't force a logout", async () => {
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
+    bindSessionUser(1);
+    let release!: () => void;
+    server.gates["/thing/"] = new Promise((r) => { release = r; });
+    expireAccess();
+    const replaceState = jest.spyOn(window.history, "replaceState");
+    const pending = userApi.get("/thing/");
+    // The other tab signs out before this tab's storage event has run.
+    ["cinedb_access", "cinedb_refresh", "cinedb_user"].forEach((k) => localStorage.removeItem(k));
+    release();
+    await expect(pending).rejects.toBeInstanceOf(SessionChangedError);
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 });
 

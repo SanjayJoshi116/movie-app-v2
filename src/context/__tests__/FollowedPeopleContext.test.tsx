@@ -232,3 +232,21 @@ describe("follow order and change counter", () => {
   });
 });
 
+describe("a reload racing a follow (fix-session-sweep-f1)", () => {
+  it("is run again instead of dropping a follow that settled during it", async () => {
+    let a!: FollowedPeopleContextType;
+    render(<Shell><Consumer name="a" onValue={(v) => { a = v; }} /></Shell>);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Brad Pitt"));
+
+    let answerStale!: (v: unknown) => void;
+    mockGet
+      .mockReturnValueOnce(new Promise((r) => { answerStale = r; })) // the reload, answered before the follow commits
+      .mockResolvedValueOnce([{ ...BRAD, id: 11, personId: 500, name: "Kim" }, BRAD]); // its rerun
+    act(() => a.reload());
+    await act(() => a.follow(500, "Kim", null));
+    await act(async () => answerStale([BRAD]));
+
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("Kim"));
+    expect(mockGet).toHaveBeenCalledTimes(3);
+  });
+});

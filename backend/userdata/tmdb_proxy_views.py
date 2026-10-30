@@ -3,9 +3,9 @@ import logging
 import re
 from urllib.parse import urlencode
 
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from django.conf import settings
 from django.core.cache import caches
 from django.db import Error as DatabaseError
@@ -14,34 +14,31 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from .tmdb_client import TMDB_BASE, call_with_deadline
+# The backend's one TMDB session (pooled connections, transient-reset retries):
+# a detail page fires ~6 proxy calls at once, which saw sporadic connection
+# errors with a bare per-call requests.get().
+from .tmdb_client import TMDB_BASE, TMDB_TIMEOUT, _session, call_with_deadline
 
 logger = logging.getLogger(__name__)
 
-# Shared session: pools/reuses connections instead of a fresh TLS handshake
-# per call, and retries transient connection resets — movie detail pages
-# fire ~6 concurrent proxy requests, which was seeing sporadic connection
-# errors under that burst with a bare per-call requests.get().
-#
-# Time budget: gunicorn's sync workers are killed after --timeout (30s,
-# docker-entrypoint.sh), which turns into a bare nginx 502 and a lost worker.
-# Per-attempt timeouts and retries can't bound a call: urllib3 tries the
-# connect once per address DNS returns (api.tmdb.org has four), so a model of
-# attempts x timeouts said ~22s while the real worst case was ~37s. The whole
-# call runs under a wall-clock deadline instead (tmdb_client.call_with_deadline);
-# test_tmdb_proxy pins PROXY_DEADLINE_SECONDS under the gunicorn timeout. The
-# retry and per-attempt timeouts below are still what handles the transient
-# connection resets described above.
-CONNECT_TIMEOUT = 3.05
-READ_TIMEOUT = 6
-RETRY = Retry(total=2, connect=2, read=1, backoff_factor=0.5)
+# Time budget: the whole call runs under a wall-clock deadline
+# (tmdb_client.call_with_deadline), because per-attempt timeouts can't bound it
+# (urllib3 tries the connect once per address DNS returns). test_tmdb_proxy
+# pins PROXY_DEADLINE_SECONDS under gunicorn's --timeout.
 PROXY_DEADLINE_SECONDS = 20
 
-# Pool sized for concurrent request threads (gunicorn gthread), so they
-# reuse connections instead of opening and discarding extra ones.
-SESSION_POOL_SIZE = 16
-_session = requests.Session()
-_session.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=SESSION_POOL_SIZE, max_retries=RETRY))
+# The proxy's own deadline pool: a call abandoned at its deadline keeps its
+# thread until it ends, which while TMDB stalls can be well past the deadline.
+# On the shared pool those would starve rating sync, TMDB connect and Stats.
+# Sized for gunicorn's request threads (test_startup_warmup pins it).
+PROXY_POOL_SIZE = 16
+PROXY_POOL = ThreadPoolExecutor(max_workers=PROXY_POOL_SIZE, thread_name_prefix="tmdb-proxy")
+
+# Plain TMDB paths only: letters, digits, _ and - between single slashes. The
+# cache and credential checks read this string, while requests/urllib3 would
+# turn a decoded "?" into the query and collapse ".." segments, so anything
+# else could reach TMDB as something the checks never saw.
+_TMDB_PATH = re.compile(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*")
 
 # Response cache (the `tmdb` alias in settings.CACHES). TMDB data is public, so
 # one user's response can serve another. Lifetimes follow how often each kind of
@@ -68,8 +65,9 @@ def cache_ttl(tmdb_path):
 
 
 def _cache_key(tmdb_path, params):
-    """Exactly what goes upstream (minus the API key), in the order received."""
-    raw = tmdb_path + "?" + urlencode(params)
+    """What goes upstream (minus the API key), with the params sorted so the
+    same request in another order is the same entry."""
+    raw = tmdb_path + "?" + urlencode(sorted(params))
     return "tmdbproxy:" + hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -101,6 +99,8 @@ class TmdbProxyThrottle(UserRateThrottle):
 @permission_classes([AllowAny])
 @throttle_classes([TmdbProxyThrottle])
 def tmdb_proxy(request, tmdb_path):
+    if not _TMDB_PATH.fullmatch(tmdb_path):
+        return Response({"error": "Invalid TMDB path."}, status=400)
     # .dict() kept only the last value of a repeated param; forward them all, in
     # order, and never let a client-supplied api_key through.
     params = [(k, v) for k, values in request.GET.lists() if k != "api_key" for v in values]
@@ -114,17 +114,26 @@ def tmdb_proxy(request, tmdb_path):
         r = _session.get(
             f"{TMDB_BASE}/{tmdb_path}",
             params=[*params, ("api_key", settings.TMDB_API_KEY)],
-            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+            timeout=TMDB_TIMEOUT,
         )
         return r, r.json()
 
     try:
         # A deadline overrun is a requests.Timeout, so it lands in the 502 below.
-        r, data = call_with_deadline(fetch, PROXY_DEADLINE_SECONDS)
+        r, data = call_with_deadline(fetch, PROXY_DEADLINE_SECONDS, executor=PROXY_POOL)
     except (requests.RequestException, ValueError):
         logger.exception("tmdb_proxy request failed for path %s", tmdb_path)
         return Response({"error": "TMDB request failed."}, status=502)
+    if r.status_code in (401, 403):
+        # TMDB refused the server's own key: a server fault, never the client's
+        # sign-in (the frontend reads a 401 as its own token expiring).
+        logger.warning("tmdb_proxy: TMDB refused the server key (%s) for path %s", r.status_code, tmdb_path)
+        return Response({"error": "TMDB request failed."}, status=502)
+    headers = {"X-Cache": "MISS" if key else "BYPASS"}
+    retry_after = r.headers.get("Retry-After") if r.status_code == 429 else None
+    if isinstance(retry_after, str):
+        headers["Retry-After"] = retry_after  # so a client can wait out TMDB's limit
     # Only successes are kept: an error or a rate-limit answer is retried next time.
     if key and r.status_code == 200:
         _cache_set(key, data, cache_ttl(tmdb_path))
-    return Response(data, status=r.status_code, headers={"X-Cache": "MISS" if key else "BYPASS"})
+    return Response(data, status=r.status_code, headers=headers)

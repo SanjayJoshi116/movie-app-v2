@@ -3,6 +3,52 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.3] - 2026-10-30
+
+Fixes from the third module of the review sweep (F1, frontend API, auth and session: `fix-session-sweep-f1`, backlog item 52; archived, specs synced into `auth-session` and `write-feedback`), plus the code review of the B2 and F1 fixes together. Mostly frontend; the review follow-ups touch `tmdb_client.py`. No API shape, migration or dependency change.
+
+### Fixed
+- **A profile save or photo change answered after a sign-out can't switch accounts.** A password change whose response landed after A signed out and B signed in stored A's fresh tokens and user, switching that tab (and every other tab) to A. `updateProfile` now drops a response unless the session is still the one that sent it and the returned user is the tab's account (and rejects, so no "Profile updated" toast); `setUserData` ignores any other account, which covers late avatar uploads and removals. The security review rated it a privacy and correctness bug, not an exploit: it needs A to abandon a pending save.
+- **Edit Profile can't be closed while a save, photo change, TMDB disconnect or account deletion is in flight** (no close button, outside click or Escape), as the rule for dialogs with a write in flight requires.
+- **A 401 after another tab signed out no longer forces a logout carrying this tab's page.** It rejects as `SessionChangedError`, now a `SessionEndedError`, so an import refused this way ends quietly instead of counting a failed section.
+- **Followed people reload like the library:** a reload that raced a follow is run again instead of dropping it, a result from a previous session is ignored, and a rerun never goes out after a sign-out.
+- **TMDB requests carry only this tab's account token**, and after a token is refused once, later requests skip it until a new one is stored, so an expired token no longer doubles every browse request.
+- **TMDB writes on a pooled connection TMDB had closed are retried** (POST joins the read retry; every write here is safe to resend), and the shared session's pool is 32, enough for the threads that share it, so extra connections aren't discarded under load.
+
+### Internal
+- `useLocalStorage`'s setter is stable, so `UIContext`'s memo holds; `fetchTrending` is typed by media type; `currentAccessToken()` and `tabAccountChanged()` in `userApi`.
+
+### Docs
+- `CLAUDE.md` (session rules for account updates, the 401 case, the TMDB token, followed-people reloads, Edit Profile's busy hold), BUG_BACKLOG items 51–52 (verdicts, security reviews, the combined review's outcomes), `ideas.md` sweep table, README, features.txt.
+
+### Tests
+- New: `AuthContext.lateResponse.test.tsx`, `ProfileModalBusy.test.tsx`. Added to: `userApi.test.ts` (401 after another tab signed out), `tmdb.test.ts` (token once, other account's token never sent), `FollowedPeopleContext.test.tsx` (reload racing a follow), `sessionGeneration.test.tsx` (late followed list), `useLocalStorage.test.ts` (stable setter), `test_tmdb_deadline.py` (POST retried). `importSession.test.tsx` now stores the bound user, as a signed-in tab does.
+- Totals: Jest full suite pass (79 suites) before the review follow-ups, touched suites after (38); touched TS e2e 152 pass; Python `test_profile.py` 19 pass; backend touched files 104 pass.
+
+## [0.31.2] - 2026-10-30
+
+Fixes from the second module of the review sweep (B2, TMDB access: `fix-tmdb-sweep-b2`, backlog item 51; archived, specs synced into `tmdb-proxy-cache`, `endpoint-time-budgets` and `recommendation-sections`). Backend only: no API shape, migration, setting or dependency change.
+
+### Fixed
+- **Every backend TMDB call shares one pooled, retrying connection.** Only the proxy had it; recommendations fills, metadata backfills, followed-people credits, rating sync and TMDB connect paid a TLS handshake per call and failed on a single connection reset, which could trip the recommendations outage guard and its 10-minute backoff. The session now lives in `tmdb_client`, and one `_request` serves every call.
+- **A slow TMDB on the proxy can't hold up other endpoints.** Proxy calls abandoned at their deadline kept running on the deadline pool that rating sync, TMDB connect and Stats share; the proxy now has its own pool.
+- **A rejected server key no longer reads as a signed-out user.** The proxy passed TMDB's `401` through, which the frontend took for its own expired token (and retried every call without it); `401`/`403` from TMDB are now `502`. A TMDB `429` keeps its `Retry-After`, so import lookups wait the time TMDB asks for.
+- **A malformed TMDB answer is a failed call, not a crash or raw ids.** A non-object body counts as a failed call; `null` genre, cast and result lists read as empty; a genre list with nothing usable falls back to the built-in names, so recommendations never label sections with genre numbers.
+- The proxy's cache key ignores parameter order, so the same request in another order is a hit.
+
+### Security
+- **The proxy forwards only plain TMDB paths** (letters, digits, `_`, `-` between single `/`); anything else is a `400`. A decoded `?` or `..` used to be rewritten into the upstream URL behind the cache and credential checks. Hardening: the security review found no exploit (the cache key carries any smuggled session id, and the host is fixed).
+
+### Internal
+- `get_genre_ids` (unused) removed; the proxy reuses the client's timeout instead of restating it; `tmdb_budget.take()` writes only when the grant or the day changed.
+
+### Docs
+- `CLAUDE.md` TMDB section (shared session, proxy pool, path allowlist, status translation, test patch targets), BUG_BACKLOG item 51 (verdicts, security review), `ideas.md` sweep table, README, features.txt.
+
+### Tests
+- `test_tmdb_proxy.py`: non-plain paths refused before TMDB, nested paths forwarded, `401`/`403` → `502` uncached, `429` keeps `Retry-After`, reordered params hit, a full proxy pool doesn't delay other TMDB calls; the connect-hang deadline test warms the URLconf first (a cold scipy import on the first request took seconds of its 2 s window). `test_tmdb_deadline.py`: every verb through the shared session, non-object bodies, malformed genre lists, `null` lists. `test_rec_refresh_bounds.py`: a spent budget writes nothing. Tests that patched `requests.<verb>` patch `_session.request`.
+- Totals: backend pytest 644 pass + 25 skip, plus that deadline test passing after its fix; live TMDB checks 24 pass.
+
 ## [0.31.1] - 2026-10-30
 
 Fixes from the first module of the review sweep (B1, auth & account: `fix-auth-sweep-b1`, backlog item 50; archived, `account-security` spec synced with 4 added and 3 modified requirements), the review of that fix, and a CI runner pin. Backend only: no API shape, migration, setting or dependency change.

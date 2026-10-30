@@ -35,7 +35,7 @@ class StatsGenreLookupTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [g["genre"] for g in res.data["topGenres"]]
 
-    @patch("userdata.tmdb_client.requests.get", side_effect=requests.Timeout())
+    @patch("userdata.tmdb_client._session.request", side_effect=requests.Timeout())
     def test_unreachable_tmdb_uses_builtin_names_with_the_short_timeout(self, get):
         with self.assertLogs("userdata.stats_views", level="WARNING"):
             self.assertEqual(self._top_genres(), ["Drama"])

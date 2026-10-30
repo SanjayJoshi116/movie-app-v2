@@ -1,5 +1,6 @@
 import { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import { fetchMovieDetails, fetchPopularPeople, tmdbApi } from "../tmdb";
+import { bindSessionUser } from "../userApi";
 
 type Call = { url?: string; authorization?: string };
 
@@ -39,8 +40,12 @@ test("sends no token when signed out", async () => {
 });
 
 describe("a 401 (expired token on a public endpoint)", () => {
+  // A fresh token per test: a refused one is remembered for the page's life.
+  let expired = "";
+  let n = 0;
   beforeEach(() => {
-    localStorage.setItem("cinedb_access", "expired");
+    expired = `expired-${++n}`;
+    localStorage.setItem("cinedb_access", expired);
     localStorage.setItem("cinedb_refresh", "refresh-1");
     localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
   });
@@ -49,7 +54,7 @@ describe("a 401 (expired token on a public endpoint)", () => {
     statuses = [401, 200];
     const res = await fetchMovieDetails(550);
     expect(res.data).toEqual({ id: 550 });
-    expect(calls.map((c) => c.authorization)).toEqual(["Bearer expired", undefined]);
+    expect(calls.map((c) => c.authorization)).toEqual([`Bearer ${expired}`, undefined]);
   });
 
   test("a second 401 rejects without another retry", async () => {
@@ -62,7 +67,7 @@ describe("a 401 (expired token on a public endpoint)", () => {
     const path = window.location.pathname;
     statuses = [401, 401];
     await expect(fetchMovieDetails(550)).rejects.toBeTruthy();
-    expect(localStorage.getItem("cinedb_access")).toBe("expired");
+    expect(localStorage.getItem("cinedb_access")).toBe(expired);
     expect(localStorage.getItem("cinedb_refresh")).toBe("refresh-1");
     expect(localStorage.getItem("cinedb_user")).not.toBeNull();
     expect(window.location.pathname).toBe(path);
@@ -95,5 +100,37 @@ describe("identical requests in flight", () => {
     expect(calls).toHaveLength(1);
     await expect(fetchPopularPeople(1)).resolves.toMatchObject({ status: 200 });
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("fix-session-sweep-f1: only this tab's token, once per token", () => {
+  beforeEach(() => {
+    localStorage.setItem("cinedb_refresh", "refresh-1");
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
+  });
+
+  test("an expired token is sent once; later calls go without it until a new one is stored", async () => {
+    localStorage.setItem("cinedb_access", "stale-once");
+    statuses = [401, 200];
+    await fetchMovieDetails(550);
+    await fetchPopularPeople(1);
+    await fetchPopularPeople(2);
+    expect(calls.map((c) => c.authorization)).toEqual(["Bearer stale-once", undefined, undefined, undefined]);
+
+    localStorage.setItem("cinedb_access", "fresh");
+    await fetchPopularPeople(3);
+    expect(calls[calls.length - 1]?.authorization).toBe("Bearer fresh");
+  });
+
+  test("another account's token is never sent from this tab", async () => {
+    localStorage.setItem("cinedb_access", "tok-of-b");
+    localStorage.setItem("cinedb_user", JSON.stringify({ id: 2 }));
+    bindSessionUser(1); // this tab still shows account 1
+    try {
+      await fetchPopularPeople(4);
+    } finally {
+      bindSessionUser(null);
+    }
+    expect(calls[calls.length - 1]?.authorization).toBeUndefined();
   });
 });

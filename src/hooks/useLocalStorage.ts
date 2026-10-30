@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type SetValue<T> = (value: T | ((prev: T) => T)) => void;
 
@@ -50,7 +50,9 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, SetValue<T
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const setValue: SetValue<T> = (value) => {
+  // Stable: it reads only refs and `key`, so consumers' memos and effects
+  // that depend on it (UIContext's value, toggleTheme) don't change each render.
+  const setValue: SetValue<T> = useCallback((value) => {
     const next = value instanceof Function ? value(latestRef.current) : value;
     latestRef.current = next;
     setStoredValue(next);
@@ -61,7 +63,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, SetValue<T
       console.error(`useLocalStorage: failed to set "${key}"`, err);
     }
     window.dispatchEvent(new CustomEvent<SameTabDetail>(SAME_TAB_EVENT, { detail: { key, raw, source: sourceRef.current } }));
-  };
+  }, [key]);
 
   return [storedValue, setValue];
 }

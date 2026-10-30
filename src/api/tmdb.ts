@@ -17,6 +17,7 @@ import {
   NEWEST_SORT_MIN_VOTES, OLDEST_SORT_MIN_VOTES, RATING_SORT_MIN_VOTES, TITLE_SORT_MIN_VOTES,
 } from "../constants/discover";
 import { todayLocalISO } from "../utils/browseFilters";
+import { currentAccessToken } from "./userApi";
 
 // Same-origin by default (see DJANGO_BASE in userApi.ts).
 const api = axios.create({ baseURL: process.env.REACT_APP_TMDB_BASE_URL || "/api/tmdb" });
@@ -31,11 +32,16 @@ declare module "axios" {
   }
 }
 
+// A token the proxy answered 401 for (expired): later calls go out without it
+// until a refresh stores a new one, instead of each paying a 401 and a retry.
+let refusedToken: string | null = null;
+
 // Send the signed-in user's token so the proxy throttles per user, not per IP
-// (users behind one NAT shared a bucket). The proxy itself is public.
+// (users behind one NAT shared a bucket). The proxy itself is public. Only this
+// tab's account token: after another tab switched accounts it isn't ours.
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("cinedb_access");
-  if (token && !config._noAuthRetry) config.headers.Authorization = `Bearer ${token}`;
+  const token = currentAccessToken();
+  if (token && token !== refusedToken && !config._noAuthRetry) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -47,7 +53,9 @@ api.interceptors.response.use(
     // view. This is public data, so retry once without the token. Never log
     // out or refresh here: token refresh lives only in userApi's interceptor,
     // and the next userApi call refreshes the token anyway.
-    if (error.response?.status === 401 && original && !original._noAuthRetry) {
+    const sent = String(original?.headers?.Authorization ?? "").replace(/^Bearer /, "");
+    if (error.response?.status === 401 && sent && !original._noAuthRetry) {
+      refusedToken = sent;
       original._noAuthRetry = true;
       delete original.headers.Authorization;
       return api(original);
@@ -210,10 +218,14 @@ export const fetchProviderRegions = (): Promise<AxiosResponse<{
 
 // ─── Trending ─────────────────────────────────────────────────────────────────
 
-export const fetchTrending = (
-  mediaType: "movie" | "tv" | "all" = "movie",
+/** TMDB's item shape per trending media type ("all" mixes both). */
+type TrendingItem<M extends "movie" | "tv" | "all"> =
+  M extends "movie" ? TMDBMovieSummary : M extends "tv" ? TMDBTVSummary : TMDBMovieSummary | TMDBTVSummary;
+
+export const fetchTrending = <M extends "movie" | "tv" | "all" = "movie">(
+  mediaType: M = "movie" as M,
   timeWindow: "day" | "week" = "week",
-): Promise<AxiosResponse<TMDBPaginatedResponse<TMDBMovieSummary>>> =>
+): Promise<AxiosResponse<TMDBPaginatedResponse<TrendingItem<M>>>> =>
   sharedGet(`/trending/${mediaType}/${timeWindow}`);
 
 // ─── Filter helpers ────────────────────────────────────────────────────────────

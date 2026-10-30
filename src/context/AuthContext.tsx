@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from "react";
-import userApi, { bindSessionUser, clearSession, logoutSession, publicApi } from "../api/userApi";
+import userApi, {
+  bindSessionUser, clearSession, currentSessionGeneration, isCurrentSession, logoutSession, publicApi,
+  SessionEndedError,
+} from "../api/userApi";
 import type { AuthUser } from "../types/domain";
 
 export interface ProfileUpdateData {
@@ -19,7 +22,10 @@ interface AuthContextType {
   register(username: string, email: string, password: string): Promise<void>;
   logout(): void;
   updateProfile(data: ProfileUpdateData): Promise<void>;
-  setUserData(updated: AuthUser): void;
+  /** Stores the signed-in user's updated profile. Ignored (returns false) when
+   *  `updated` isn't the account this tab shows, e.g. a slow avatar upload
+   *  answered after a sign-out and someone else's sign-in. */
+  setUserData(updated: AuthUser): boolean;
   /** True after this tab went from signed in to signed out (sign-out, account
    *  deletion, or a sign-out in another tab) until the next sign-in. The route
    *  guard then doesn't carry the last page into the next sign-in, which may
@@ -120,12 +126,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setUser]);
 
   const setUserData = useCallback((updated: AuthUser) => {
+    if (updated.id !== userRef.current?.id) return false;
     localStorage.setItem("cinedb_user", JSON.stringify(updated));
     setUser(updated);
+    return true;
   }, [setUser]);
 
   const updateProfile = useCallback(async (data: ProfileUpdateData) => {
+    const gen = currentSessionGeneration();
     const { data: body } = await userApi.patch("/auth/profile/", data);
+    // Answered after a sign-out (and maybe someone else's sign-in): its tokens
+    // and user are the previous account's, so storing them would hand it over.
+    // Rejects (SessionEndedError) rather than resolving, so the caller doesn't
+    // report a save this tab threw away.
+    if (!isCurrentSession(gen) || body.id !== userRef.current?.id) throw new SessionEndedError();
     // A password change revokes every existing refresh token server-side and
     // returns a fresh pair for this session — store it, or the next refresh fails.
     const { access, refresh, ...updated } = body;
