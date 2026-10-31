@@ -179,8 +179,9 @@ class MediaIdentityMixin(serializers.Serializer):
 
 
 class WatchlistEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
-    posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
+    # Optional, as in bulk: a TMDB item can lack either; stored as None / 0.
+    posterPath = serializers.CharField(source="poster_path", allow_null=True, required=False, max_length=500)
+    voteAverage = FiniteFloatField(source="vote_average", required=False, min_value=0, max_value=10)
     addedAt = serializers.DateTimeField(source="added_at", read_only=True)
 
     class Meta:
@@ -190,8 +191,9 @@ class WatchlistEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
 
 
 class WatchedEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
-    posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
+    # Optional, as in bulk: a TMDB item can lack either; stored as None / 0.
+    posterPath = serializers.CharField(source="poster_path", allow_null=True, required=False, max_length=500)
+    voteAverage = FiniteFloatField(source="vote_average", required=False, min_value=0, max_value=10)
     watchedAt = serializers.DateTimeField(source="watched_at", read_only=True)
     watchedTz = serializers.CharField(source="watched_tz", read_only=True)
     originalLanguage = serializers.CharField(
@@ -246,8 +248,9 @@ class RatingEntrySerializer(MediaIdentityMixin, serializers.ModelSerializer):
 
 
 class UserListItemSerializer(MediaIdentityMixin, serializers.ModelSerializer):
-    posterPath = serializers.CharField(source="poster_path", allow_null=True, max_length=500)
-    voteAverage = FiniteFloatField(source="vote_average", min_value=0, max_value=10)
+    # Optional, as in bulk: a TMDB item can lack either; stored as None / 0.
+    posterPath = serializers.CharField(source="poster_path", allow_null=True, required=False, max_length=500)
+    voteAverage = FiniteFloatField(source="vote_average", required=False, min_value=0, max_value=10)
     addedAt = serializers.DateTimeField(source="added_at", read_only=True)
 
     class Meta:
@@ -312,9 +315,8 @@ class BulkWatchlistEntrySerializer(BulkMediaEntrySerializer):
 
 class BulkRatingEntrySerializer(BulkEntrySerializer):
     userRating = FiniteFloatField(min_value=0.5, max_value=10, validators=[_validate_half_step])
-    review = serializers.CharField(
-        allow_blank=True, default="", trim_whitespace=False, max_length=REVIEW_MAX_LENGTH
-    )
+    # Trimmed like a single write, so saving a restored review unchanged isn't a change.
+    review = serializers.CharField(allow_blank=True, default="", max_length=REVIEW_MAX_LENGTH)
     ratedAt = _past_timestamp()
 
 

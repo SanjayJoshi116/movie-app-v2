@@ -135,7 +135,7 @@ class FollowedPeopleBulkTests(APITestCase):
             {"personId": 7, "name": "Greta Gerwig", "profilePath": "/g.jpg", "followedAt": "2024-01-02T10:00:00Z"},
             {"personId": 287, "name": "Brad Pitt", "followedAt": "2024-05-01T10:00:00Z"},
         ])
-        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        self.assertEqual(res.data, {"added": 2, "skipped": 0, "ignored": 0, "overLimit": 0})
         listed = self.client.get("/api/followed-people/").data["results"]
         self.assertEqual([p["personId"] for p in listed], [287, 7])
         self.assertEqual(listed[1]["followedAt"].isoformat().replace("+00:00", "Z"), "2024-01-02T10:00:00Z")
@@ -144,7 +144,7 @@ class FollowedPeopleBulkTests(APITestCase):
     def test_existing_follow_is_skipped(self):
         FollowedPerson.objects.create(user=self.user, person_id=7, name="Greta Gerwig")
         res = self.bulk([{"personId": 7, "name": "Someone Else"}, {"personId": 8, "name": "New"}])
-        self.assertEqual(res.data, {"added": 1, "skipped": 1})
+        self.assertEqual(res.data, {"added": 1, "skipped": 1, "ignored": 0, "overLimit": 0})
         self.assertEqual(FollowedPerson.objects.get(user=self.user, person_id=7).name, "Greta Gerwig")
 
     def test_future_followed_time_is_rejected(self):

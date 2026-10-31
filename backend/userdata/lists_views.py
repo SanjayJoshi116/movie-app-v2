@@ -1,10 +1,11 @@
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from . import library_limits
 from .bulk_import import bulk_import, timestamp_or_now
 from .models import UserList, UserListItem
 from .pagination import DefaultPagination
@@ -22,12 +23,14 @@ def lists_list(request):
 
     serializer = UserListSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    user_list = UserList.objects.create(
-        user=request.user,
-        name=serializer.validated_data["name"],
-        description=serializer.validated_data.get("description", ""),
-        created_at=timestamp_or_now(serializer.validated_data.get("created_at")),
-    )
+    with transaction.atomic():
+        library_limits.check_room("lists", request.user.id, UserList.objects.filter(user=request.user))
+        user_list = UserList.objects.create(
+            user=request.user,
+            name=serializer.validated_data["name"],
+            description=serializer.validated_data.get("description", ""),
+            created_at=timestamp_or_now(serializer.validated_data.get("created_at")),
+        )
     return Response(UserListSerializer(user_list).data, status=status.HTTP_201_CREATED)
 
 
@@ -58,11 +61,13 @@ def list_items_create(request, list_pk):
     user_list = get_object_or_404(UserList, pk=list_pk, user=request.user)
     serializer = UserListItemSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    identity = {
+        "media_id": serializer.validated_data["media_id"],
+        "media_type": serializer.validated_data["media_type"],
+    }
     try:
-        item, created = UserListItem.objects.get_or_create(
-            user_list=user_list,
-            media_id=serializer.validated_data["media_id"],
-            media_type=serializer.validated_data["media_type"],
+        item, created = library_limits.get_or_create(
+            "list_items", request.user.id, user_list.items, identity,
             defaults={
                 "title": serializer.validated_data["title"],
                 "poster_path": serializer.validated_data.get("poster_path"),
@@ -106,6 +111,7 @@ def list_items_bulk(request, list_pk):
             entry_serializer=BulkWatchlistEntrySerializer,
             build=build,
             scope={"user_list": user_list},
+            limit="list_items",
         )
     except IntegrityError as error:
         # The list FK is deferred, so this surfaces at bulk_import's commit.

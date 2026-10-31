@@ -139,7 +139,8 @@ class BulkRatingsTests(BulkTestCase):
         res = self.post([{"mediaId": 550, "title": "FC", "userRating": 8, "review": review, "ratedAt": PAST}])
         self.assertEqual(res.data["added"], 1)
         rating = RatingEntry.objects.get(media_id=550)
-        self.assertEqual((rating.review, rating.rated_at, rating.user_rating), (review, PAST_DT, 8))
+        # Inner newlines and quotes kept; the ends trimmed, as a single write trims.
+        self.assertEqual((rating.review, rating.rated_at, rating.user_rating), (review.strip(), PAST_DT, 8))
 
     def test_off_step_rating_names_entry(self):
         res = self.post([{"mediaId": 1, "userRating": 7}, {"mediaId": 2, "userRating": 7.3}])
@@ -250,10 +251,10 @@ class BulkListItemsTests(BulkTestCase):
 
     def test_keeps_added_at_and_skips_existing(self):
         res = self.post([{"mediaId": 1, "title": "A", "addedAt": PAST}, {"mediaId": 2, "title": "B"}])
-        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        self.assertEqual(res.data, {"added": 2, "skipped": 0, "ignored": 0, "overLimit": 0})
         self.assertEqual(self.items()[0].added_at, PAST_DT)
         res = self.post([{"mediaId": 1, "title": "A"}, {"mediaId": 3, "title": "C"}])
-        self.assertEqual(res.data, {"added": 1, "skipped": 1})
+        self.assertEqual(res.data, {"added": 1, "skipped": 1, "ignored": 0, "overLimit": 0})
 
     def test_malformed_entry_writes_nothing(self):
         res = self.post([{"mediaId": 1, "title": "A"}, {"mediaId": "abc"}])
@@ -340,7 +341,7 @@ class ExactCountTests(BulkTestCase):
         data = self._race(WatchlistEntry, "/api/watchlist/bulk/",
                           {"user": self.user, "media_id": 550, "media_type": "movie", "title": "Fight Club"},
                           [{"mediaId": 550, "title": "Fight Club"}, {"mediaId": 603, "title": "The Matrix"}])
-        self.assertEqual(data, {"added": 1, "skipped": 1})
+        self.assertEqual(data, {"added": 1, "skipped": 1, "ignored": 0, "overLimit": 0})
         self.assertEqual(WatchlistEntry.objects.filter(user=self.user).count(), 2)
 
     def test_counts_are_exact_for_every_media_bulk_endpoint(self):
@@ -357,13 +358,13 @@ class ExactCountTests(BulkTestCase):
             with self.subTest(model=model.__name__):
                 entry = {"mediaId": 1, "title": "A", "userRating": 7, "review": ""}
                 data = self._race(model, url, existing, [entry, {**entry, "mediaId": 2, "title": "B"}])
-                self.assertEqual(data, {"added": 1, "skipped": 1})
+                self.assertEqual(data, {"added": 1, "skipped": 1, "ignored": 0, "overLimit": 0})
 
     def test_json_and_timestamps_round_trip_through_the_insert(self):
         self.url = "/api/watched/bulk/"
         res = self.post([{"mediaId": 7, "title": "G", "watchedAt": PAST, "watchedTz": "Asia/Kolkata",
                           "runtimeMinutes": 90, "platform": "Netflix"}])
-        self.assertEqual(res.data, {"added": 1, "skipped": 0})
+        self.assertEqual(res.data, {"added": 1, "skipped": 0, "ignored": 0, "overLimit": 0})
         entry = WatchedEntry.objects.get(user=self.user, media_id=7)
         self.assertEqual(entry.watched_at, PAST_DT)
         self.assertEqual(entry.genre_ids, [])

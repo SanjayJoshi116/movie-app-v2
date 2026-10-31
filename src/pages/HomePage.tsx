@@ -22,6 +22,7 @@ import {
 } from "../api/tmdb";
 import { genresFor, hasActiveFilters } from "../utils/browseFilters";
 import { stashReturnState } from "../utils/browseReturnState";
+import { mediaLabel } from "../utils/mediaLabel";
 import type { MediaType, TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants, POSTER_THUMB_URL } from "../constants/ui";
 import { FONT_SIZE } from "../constants/typography";
@@ -180,26 +181,29 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
             Recently Watched
           </Typography.Text>
           <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-            {recentWatched.map((item) => (
-              <div key={`${item.type}-${item.id}`} title={item.title} style={{ flexShrink: 0, width: 72 }}>
-                <CardLink
-                  to={`/${item.type}/${item.id}`}
-                  label={item.title}
-                  onNavigate={() => { stashBrowseState(); navigate(`/${item.type}/${item.id}`); }}
-                >
-                {item.posterPath ? (
-                  <img
-                    src={`${POSTER_THUMB_URL}${item.posterPath}`}
-                    alt={item.title}
-                    loading="lazy"
-                    style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
-                  />
-                ) : (
-                  <PosterPlaceholder style={{ width: 72, height: 108, borderRadius: 6 }} />
-                )}
-                </CardLink>
-              </div>
-            ))}
+            {recentWatched.map((item) => {
+              const label = mediaLabel(item.title, item.id);
+              return (
+                <div key={`${item.type}-${item.id}`} title={label} style={{ flexShrink: 0, width: 72 }}>
+                  <CardLink
+                    to={`/${item.type}/${item.id}`}
+                    label={label}
+                    onNavigate={() => { stashBrowseState(); navigate(`/${item.type}/${item.id}`); }}
+                  >
+                  {item.posterPath ? (
+                    <img
+                      src={`${POSTER_THUMB_URL}${item.posterPath}`}
+                      alt={label}
+                      loading="lazy"
+                      style={{ width: 72, height: 108, objectFit: "cover", borderRadius: 6, display: "block" }}
+                    />
+                  ) : (
+                    <PosterPlaceholder style={{ width: 72, height: 108, borderRadius: 6 }} />
+                  )}
+                  </CardLink>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

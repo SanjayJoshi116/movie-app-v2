@@ -173,10 +173,10 @@ MOCK_STATS = {
     "decadeBreakdown": [{"decade": "2010s", "count": 20}, {"decade": "2000s", "count": 15}],
     "dailyActivity": [{"date": "2024-01-15", "count": 2}, {"date": "2024-01-16", "count": 1}],
     "topRatedItems": [
-        {"title": "Fight Club", "posterPath": None, "userRating": 9, "mediaType": "movie"}
+        {"mediaId": 550, "title": "Fight Club", "posterPath": None, "userRating": 9, "mediaType": "movie"}
     ],
     "recentItems": [
-        {"title": "Fight Club", "posterPath": None, "watchedAt": "2024-01-15", "mediaType": "movie"}
+        {"mediaId": 550, "title": "Fight Club", "posterPath": None, "watchedAt": "2024-01-15", "mediaType": "movie"}
     ],
     "totalRuntimeMinutes": 5040,
     "platformBreakdown": [{"platform": "Netflix", "count": 12}],

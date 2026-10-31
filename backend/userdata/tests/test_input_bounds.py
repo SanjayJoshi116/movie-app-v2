@@ -158,7 +158,9 @@ class ListDeletedMidAddTests(APITransactionTestCase):
 
     def test_other_integrity_errors_still_raise(self):
         from django.db import IntegrityError
+        from django.db.models import QuerySet
 
-        with patch.object(UserListItem.objects, "get_or_create", side_effect=IntegrityError("boom")), \
+        # The view adds through the list's related manager, which ends in QuerySet.get_or_create.
+        with patch.object(QuerySet, "get_or_create", side_effect=IntegrityError("boom")), \
                 self.assertRaises(IntegrityError):
             self.client.post(f"/api/lists/{self.user_list.pk}/items/", _item(voteAverage=8), format="json")

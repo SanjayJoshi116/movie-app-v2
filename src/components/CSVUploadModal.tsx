@@ -2,7 +2,8 @@ import React, { useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { bulkImport, sessionGuard, SessionEndedError } from "../api/userApi";
-import { lookupImportPosters, missingPostersNote } from "../utils/importPosters";
+import { lookupImportPosters } from "../utils/importPosters";
+import { importResultToast } from "../utils/importSummary";
 import { ImportProgress } from "./ImportProgress";
 import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
@@ -102,16 +103,9 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
       guard.check();
       // The entries are saved even if this fails; only what's on screen is stale.
       const refreshed = await reloadWatched().then(() => true, () => false);
-      const summary = `${result.added} added, ${result.skipped} already watched`;
-      if (result.failed > 0) {
-        showError(`Import finished: ${summary}, ${result.failed} failed.${missingPostersNote(missing)}`);
-      } else if (missing > 0) {
-        showInfo(`Import complete: ${summary}.${missingPostersNote(missing)}`);
-        handleClose();
-      } else {
-        showSuccess(`Import complete: ${summary}.`);
-        handleClose();
-      }
+      const toast = importResultToast(result, { already: "already watched", collection: "watched", missing });
+      ({ error: showError, info: showInfo, success: showSuccess })[toast.kind](toast.text);
+      if (toast.kind !== "error") handleClose(); // an error keeps the dialog open
       if (!refreshed && result.added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
       // Signed out mid-import: drop it. Nothing more is written, and nothing

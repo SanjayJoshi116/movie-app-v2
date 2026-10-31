@@ -565,13 +565,13 @@ class RatingRefreshTests(APITestCase):
         ]}
         with self.captureOnCommitCallbacks(execute=True):
             res = self.client.post("/api/ratings/bulk/", body, format="json")
-        self.assertEqual(res.data, {"added": 2, "skipped": 0})
+        self.assertEqual(res.data, {"added": 2, "skipped": 0, "ignored": 0, "overLimit": 0})
         self.assertEqual(self.refreshes, [self.user.id])
 
         self.refreshes.clear()
         with self.captureOnCommitCallbacks(execute=True):
             res = self.client.post("/api/ratings/bulk/", body, format="json")
-        self.assertEqual(res.data, {"added": 0, "skipped": 2})
+        self.assertEqual(res.data, {"added": 0, "skipped": 2, "ignored": 0, "overLimit": 0})
         self.assertEqual(self.refreshes, [])
 
     def test_account_deletion_schedules_none(self):

@@ -4,6 +4,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from . import library_limits
 from .models import WatchlistEntry
 from .pagination import DefaultPagination
 from .bulk_import import bulk_import, timestamp_or_now
@@ -21,10 +22,13 @@ def watchlist_list(request):
 
     serializer = WatchlistEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    entry, created = WatchlistEntry.objects.get_or_create(
-        user=request.user,
-        media_id=serializer.validated_data["media_id"],
-        media_type=serializer.validated_data["media_type"],
+    identity = {
+        "media_id": serializer.validated_data["media_id"],
+        "media_type": serializer.validated_data["media_type"],
+    }
+    rows = request.user.watchlist  # a related manager: get_or_create sets user
+    entry, created = library_limits.get_or_create(
+        "watchlist", request.user.id, rows, identity,
         defaults={
             "title": serializer.validated_data["title"],
             "poster_path": serializer.validated_data.get("poster_path"),
@@ -72,4 +76,6 @@ def bulk_watchlist(request):
             added_at=timestamp_or_now(item.get("addedAt")),
         )
 
-    return bulk_import(request, model=WatchlistEntry, entry_serializer=BulkWatchlistEntrySerializer, build=build)
+    return bulk_import(
+        request, model=WatchlistEntry, entry_serializer=BulkWatchlistEntrySerializer, build=build, limit="watchlist",
+    )

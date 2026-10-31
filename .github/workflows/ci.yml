@@ -222,7 +222,7 @@ jobs:
           file: backend/Dockerfile
           push: false
           cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          cache-to: type=gha,mode=max,scope=backend,ignore-error=true,timeout=3m
       - name: Build frontend image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -232,7 +232,7 @@ jobs:
           load: true
           tags: cinedb-frontend:ci
           cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend,ignore-error=true,timeout=3m
       # nginx resolves its proxy_pass host ("backend") at startup and won't boot
       # without it; nothing here calls /api/, so it just has to resolve.
       - name: Start frontend image

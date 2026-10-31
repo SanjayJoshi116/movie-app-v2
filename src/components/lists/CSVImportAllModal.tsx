@@ -2,15 +2,17 @@ import React, { useContext, useState, useRef } from "react";
 import { Modal, Button, Typography, Alert, Tag, Space } from "antd";
 import JSZip from "jszip";
 import { useToast } from "../../hooks/useToast";
-import { IMPORT_REFRESH_ERROR } from "../../utils/apiError";
+import { getApiError, IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { useAppContext } from "../../context/useAppContext";
 import { useListsContext } from "../../context/useListsContext";
 import userApi, {
-  bulkAddListItems, bulkImport, bulkImportEpisodeProgress, bulkImportFollowed, sessionGuard, SessionEndedError,
+  addBulkResult, bulkAddListItems, bulkImport, bulkImportEpisodeProgress, bulkImportFollowed, emptyBulkResult,
+  sessionGuard, SessionEndedError,
   type BulkImportResult, type SessionGuard,
 } from "../../api/userApi";
 import { FollowedPeopleContext } from "../../context/FollowedPeopleContext";
 import { lookupImportPosters } from "../../utils/importPosters";
+import { notAddedParts, type LimitedCollection } from "../../utils/importSummary";
 import { ImportProgress } from "../ImportProgress";
 import {
   readBackupZip,
@@ -33,11 +35,15 @@ interface SectionResult extends BulkImportResult {
   label: string;
   error?: boolean;
   note?: string;
+  /** The section's library limit, if it has one. */
+  collection?: LimitedCollection;
   /** Lists that couldn't be created: a failure even when the list was empty. */
   failedLists?: number;
+  /** The server's reason for the first of them (the list limit, say). */
+  failedListsReason?: string;
 }
 
-const sectionFailed = (s: SectionResult) => !!s.error || s.failed > 0 || (s.failedLists ?? 0) > 0;
+const sectionFailed = (s: SectionResult) => !!s.error || s.failed > 0 || s.overLimit > 0 || (s.failedLists ?? 0) > 0;
 
 /** Fill in posters the backup doesn't have (v1 or hand-made files), paced to
  *  the TMDB proxy's rate limit. Returns how many titles are still missing one. */
@@ -72,9 +78,12 @@ const mediaFields = (r: BackupRow) => ({
 
 function describeResult(r: SectionResult): string {
   if (r.error) return `${r.label}: failed`;
-  const parts = [`${r.added} added`, `${r.skipped} skipped`];
+  const parts = [`${r.added} added`, `${r.skipped} skipped`, ...notAddedParts(r, r.collection)];
   if (r.failed) parts.push(`${r.failed} failed`);
-  if (r.failedLists) parts.push(`${r.failedLists} list${r.failedLists === 1 ? "" : "s"} couldn't be created`);
+  if (r.failedLists) {
+    const reason = r.failedListsReason ? ` (${r.failedListsReason})` : "";
+    parts.push(`${r.failedLists} list${r.failedLists === 1 ? "" : "s"} couldn't be created${reason}`);
+  }
   return `${r.label}: ${parts.join(", ")}${r.note ? ` (${r.note})` : ""}`;
 }
 
@@ -127,7 +136,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   };
 
   const importLists = async (lists: BackupContents["lists"], guard: SessionGuard): Promise<SectionResult> => {
-    const result: SectionResult = { label: "Lists", added: 0, skipped: 0, failed: 0 };
+    const result: SectionResult = { ...emptyBulkResult(), label: "Lists" };
     guard.check();
     // A fresh read, not the context: it may be stale, and this has to be exact
     // for re-running an import to never create a second list with the same name.
@@ -158,9 +167,10 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
           if (!made) throw new Error("not created");
           listId = made.id;
           created += 1;
-        } catch {
+        } catch (err) {
           result.failed += list.entries.length;
           result.failedLists = (result.failedLists ?? 0) + 1;
+          result.failedListsReason ??= getApiError(err, "") || undefined;
           continue;
         }
       }
@@ -174,9 +184,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         ),
         { guard },
       );
-      result.added += r.added;
-      result.skipped += r.skipped;
-      result.failed += r.failed;
+      addBulkResult(result, r);
     }
     result.note = `${created} new list${created === 1 ? "" : "s"}`;
     return result;
@@ -191,13 +199,17 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     const sections: SectionResult[] = [];
     // Each section runs on its own: one failing never stops the others. An
     // ended session isn't a failed section; it ends the whole restore.
-    const run = async (label: string, fn: () => Promise<BulkImportResult | SectionResult>, note?: string) => {
+    const run = async (
+      label: string,
+      fn: () => Promise<BulkImportResult | SectionResult>,
+      { note, collection }: { note?: string; collection?: LimitedCollection } = {},
+    ) => {
       try {
         const r = await fn();
-        sections.push({ note, ...r, label });
+        sections.push({ note, ...r, label, collection });
       } catch (err) {
         if (err instanceof SessionEndedError) throw err;
-        sections.push({ label, added: 0, skipped: 0, failed: 0, error: true });
+        sections.push({ ...emptyBulkResult(), label, error: true });
       }
     };
 
@@ -212,8 +224,10 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       setPostersMissing(postersMissing);
 
       if (contents.watchlist.length > 0) {
-        await run("Watchlist", () =>
-          bulkImport("watchlist", contents.watchlist.map((r) => ({ ...mediaFields(r), addedAt: r.addedAt })), { guard }),
+        await run(
+          "Watchlist",
+          () => bulkImport("watchlist", contents.watchlist.map((r) => ({ ...mediaFields(r), addedAt: r.addedAt })), { guard }),
+          { collection: "watchlist" },
         );
       }
       if (contents.watched.length > 0) {
@@ -229,6 +243,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
             })),
             { guard },
           ),
+          { collection: "watched" },
         );
       }
       const ratings = contents.ratings.filter((r) => r.userRating !== undefined);
@@ -248,11 +263,11 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
               })),
               { guard },
             ),
-          "restored locally, not sent to TMDB",
+          { note: "restored locally, not sent to TMDB", collection: "ratings" },
         );
       }
       if (contents.lists.length > 0) {
-        await run("Lists", () => importLists(contents.lists, guard));
+        await run("Lists", () => importLists(contents.lists, guard), { collection: "list" });
       }
       if (contents.followed.length > 0) {
         await run("Following", () =>

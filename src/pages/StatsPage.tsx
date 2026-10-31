@@ -38,6 +38,7 @@ import { LoadError } from "../components/LoadError";
 import { formatDateDMY } from "../utils/formatDate";
 import { pickKey } from "../utils/queryParams";
 import { ratingColor } from "../utils/colors";
+import { mediaLabel } from "../utils/mediaLabel";
 import { usePageTitle } from "../hooks/usePageTitle";
 
 const { Title, Text } = Typography;
@@ -711,7 +712,7 @@ function StatsPage() {
                         {(data.topRatedItems ?? []).map((item, i) => (
                           <PosterCard
                             key={i}
-                            title={item.title}
+                            title={mediaLabel(item.title, item.mediaId)}
                             posterPath={item.posterPath}
                             badge={`★ ${item.userRating}`}
                             mediaType={item.mediaType}
@@ -730,7 +731,7 @@ function StatsPage() {
                         {(data.recentItems ?? []).map((item, i) => (
                           <PosterCard
                             key={i}
-                            title={item.title}
+                            title={mediaLabel(item.title, item.mediaId)}
                             posterPath={item.posterPath}
                             // Already the watch's local day (yyyy-mm-dd) from the API; display it dd-mm-yyyy.
                             badge={formatDateDMY(item.watchedAt)}

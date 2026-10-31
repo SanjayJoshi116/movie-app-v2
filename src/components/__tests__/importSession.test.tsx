@@ -96,7 +96,7 @@ beforeEach(() => {
   localStorage.setItem("cinedb_user", JSON.stringify({ id: 1 }));
   bindSessionUser(1);
   post = jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => (
-    { data: { added: (body as { entries?: unknown[] })?.entries?.length ?? 0, skipped: 0 } } as never
+    { data: { added: (body as { entries?: unknown[] })?.entries?.length ?? 0, skipped: 0, ignored: 0, overLimit: 0 } } as never
   ));
 });
 afterEach(() => {
@@ -230,7 +230,7 @@ describe("backup restore", () => {
     const finish = await startRestore();
     post.mockImplementation(async (_url, body) => {
       bindSessionUser(2); // ends during the watchlist request
-      return { data: { added: (body as { entries: unknown[] }).entries.length, skipped: 0 } } as never;
+      return { data: { added: (body as { entries: unknown[] }).entries.length, skipped: 0, ignored: 0, overLimit: 0 } } as never;
     });
     await act(async () => finish());
 
@@ -238,17 +238,36 @@ describe("backup restore", () => {
     expect(mockToast.showSuccess).not.toHaveBeenCalled();
   });
 
+  it("reports rows past a library limit, naming the full collection, as a failure", async () => {
+    post.mockImplementation(async (url) => (
+      { data: url === "/watched/bulk/"
+        ? { added: 0, skipped: 0, ignored: 1, overLimit: 1 }
+        : { added: 1, skipped: 0, ignored: 0, overLimit: 0 } } as never
+    ));
+    const finish = await startRestore();
+    await act(async () => finish());
+
+    expect(await screen.findByText(
+      "Watched: 0 added, 0 skipped, 1 without a TMDB id, 1 not added: watched history is full", {}, SLOW,
+    )).toBeInTheDocument();
+    expect(mockToast.showError).toHaveBeenCalledWith("Import finished with some failures. See the details.");
+  });
+
   it("counts a list it couldn't create as failed, even an empty one", async () => {
     const saved = mockBackup.lists;
     mockBackup.lists = [{ name: "Empty one", entries: [] }] as unknown as BackupContents["lists"];
     const get = jest.spyOn(userApi, "get").mockResolvedValue({ data: { results: [], next: null } } as never);
-    mockLists.createList.mockRejectedValue(new Error("nope"));
+    mockLists.createList.mockRejectedValue(
+      Object.assign(new Error("400"), { isAxiosError: true, response: { status: 400, data: { detail: "You can have at most 200 lists." } } }),
+    );
     lookup.mockImplementation(async (rows) => ({ found: rows.map(() => ({ posterPath: null })), missing: rows.length }));
     try {
       render(<CSVImportAllModal open onClose={jest.fn()} />);
       await pickFile("backup.zip", "zip");
       fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
-      expect(await screen.findByText(/Lists: .*1 list couldn't be created/, {}, SLOW)).toBeInTheDocument();
+      expect(await screen.findByText(
+        /Lists: .*1 list couldn't be created \(You can have at most 200 lists\.\)/, {}, SLOW,
+      )).toBeInTheDocument();
       expect(mockToast.showError).toHaveBeenCalledWith("Import finished with some failures. See the details.");
       expect(mockToast.showSuccess).not.toHaveBeenCalled();
     } finally {

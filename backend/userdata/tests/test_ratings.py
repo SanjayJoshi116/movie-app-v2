@@ -7,11 +7,12 @@ from unittest.mock import patch
 
 import requests
 from django.contrib.auth.models import User
+from django.db import connection
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase, APITransactionTestCase
 
-from userdata import tmdb_client
+from userdata import ratings_views, tmdb_client
 from userdata.models import RatingEntry, TMDBProfile
 
 
@@ -250,6 +251,92 @@ class RatingSyncBoundsTests(APITestCase):
     def test_rating_endpoints_fit_under_gunicorn_timeout(self):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()
         timeout = int(re.search(r"gunicorn .*--timeout (\d+)", entrypoint).group(1))
-        # One bounded TMDB call per rating write.
-        self.assertLessEqual(tmdb_client.TMDB_CALL_DEADLINE, timeout - 10)
+        # One bounded TMDB call per rating write, plus, for a second write to the
+        # same title, the wait for the first one's sync under the rating lock.
+        self.assertLessEqual(2 * tmdb_client.TMDB_CALL_DEADLINE, timeout - 10)
 
+
+
+class RatingReviewTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="rev", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+
+    def _post(self, **extra):
+        return self.client.post("/api/ratings/", {
+            "mediaId": 550, "mediaType": "movie", "title": "Fight Club", **extra,
+        }, format="json")
+
+    def test_rerate_without_review_keeps_it(self):
+        self._post(userRating=7, review="Loved it")
+        res = self._post(userRating=9)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        entry = RatingEntry.objects.get()
+        self.assertEqual((entry.user_rating, entry.review), (9, "Loved it"))
+
+    def test_new_rating_without_review_starts_empty(self):
+        self.assertEqual(self._post(userRating=7).status_code, status.HTTP_201_CREATED)
+        self.assertEqual(RatingEntry.objects.get().review, "")
+
+    def test_restored_review_saved_unchanged_keeps_rated_at(self):
+        self.client.post("/api/ratings/bulk/", {"mediaType": "movie", "entries": [
+            {"mediaId": 550, "title": "FC", "userRating": 8, "review": "Great ", "ratedAt": "2024-01-01T00:00:00Z"},
+        ]}, format="json")
+        entry = RatingEntry.objects.get()
+        self.assertEqual(entry.review, "Great")
+        self.client.patch(f"/api/ratings/{entry.pk}/", {"review": "Great "}, format="json")
+        entry.refresh_from_db()
+        self.assertEqual((entry.review, entry.rated_at.year), ("Great", 2024))
+
+
+class RatingConcurrencyTests(APITransactionTestCase):
+    """ratings: same-title writes at the same moment are applied one after another."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="two", password="Xk9#mQ2vTz8p")
+        TMDBProfile.objects.create(user=self.user, session_id="sess")
+        RatingEntry.objects.create(user=self.user, media_id=550, media_type="movie", title="FC", user_rating=7)
+
+    def test_two_tabs_rating_at_once_leave_tmdb_matching_the_app(self):
+        synced = []
+        first_sync_started = threading.Event()
+
+        def post_rating(media_type, media_id, session_id, value):
+            # The first sync (the 8) is slow: the 7 arrives while it runs.
+            if not first_sync_started.is_set():
+                first_sync_started.set()
+                time.sleep(0.5)
+            synced.append(value)
+            return {}
+
+        def rate(score):
+            client = APIClient()
+            client.force_authenticate(user=self.user)
+            try:
+                client.post("/api/ratings/", {
+                    "mediaId": 550, "mediaType": "movie", "title": "FC", "userRating": score,
+                }, format="json")
+            finally:
+                connection.close()
+
+        with patch("userdata.tmdb_client.post_rating", side_effect=post_rating):
+            first = threading.Thread(target=rate, args=(8,))
+            first.start()
+            self.assertTrue(first_sync_started.wait(10))
+            second = threading.Thread(target=rate, args=(7,))
+            second.start()
+            first.join(timeout=30)
+            second.join(timeout=30)
+        # Unserialized, the 7 synced first and the slow 8 landed last at TMDB.
+        self.assertEqual(synced, [8, 7])
+        self.assertEqual(RatingEntry.objects.get().user_rating, 7)
+
+    def test_lock_is_released_when_the_write_fails(self):
+        with self.assertRaises(RuntimeError), ratings_views._rating_lock(self.user.id, "movie", 550):
+            raise RuntimeError("boom")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = %s",
+                [ratings_views.RATING_LOCK_NAMESPACE],
+            )
+            self.assertEqual(cursor.fetchone()[0], 0)

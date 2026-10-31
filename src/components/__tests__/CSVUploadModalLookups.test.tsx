@@ -35,7 +35,7 @@ beforeEach(() => {
   lookup.mockResolvedValue({ data: { poster_path: "/looked.jpg", vote_average: 5 } });
   bindSessionUser(1);
   post = jest.spyOn(userApi, "post").mockImplementation(async (_url, body) => (
-    { data: { added: (body as { entries?: unknown[] })?.entries?.length ?? 0, skipped: 0 } } as never
+    { data: { added: (body as { entries?: unknown[] })?.entries?.length ?? 0, skipped: 0, ignored: 0, overLimit: 0 } } as never
   ));
 });
 afterEach(() => {
@@ -106,4 +106,17 @@ describe("list CSV import", () => {
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(entries).toEqual([expect.objectContaining({ mediaId: 550, posterPath: "/fc.jpg", voteAverage: 0 })]);
   });
+});
+
+it("reports rows past the library limit as an error and keeps the dialog open", async () => {
+  post.mockImplementation(async () => ({ data: { added: 1, skipped: 0, ignored: 0, overLimit: 1 } }) as never);
+  const onClose = jest.fn();
+  await importCSV(
+    "title,type,tmdb_id,vote_average,poster_path\nFight Club,movie,550,8.4,/fc.jpg\nForrest Gump,movie,13,8.5,/fg.jpg\n",
+    <CSVUploadModal open onClose={onClose} />,
+  );
+  await waitFor(() => expect(mockToast.showError).toHaveBeenCalledWith(
+    "Import finished: 1 added, 0 already watched, 1 not added: watched history is full.",
+  ));
+  expect(onClose).not.toHaveBeenCalled();
 });

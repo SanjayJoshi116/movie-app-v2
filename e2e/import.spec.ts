@@ -6,7 +6,7 @@ import type { UserListDTO, WatchlistEntry, WatchedEntry, UserList, WatchlistEntr
 // data-backup spec, driven through the dialogs' real file inputs. Backups are
 // built with the app's own exporter, so the fixtures can't drift from it.
 // The server mocks keep a little state: like bulk_import(), they only create,
-// and answer {added, skipped} by whether an entry was already there.
+// and answer {added, skipped, ignored, overLimit} by whether an entry was already there.
 
 const FIGHT_CLUB: WatchlistEntry = {
   id: 550, type: "movie", title: "Fight Club", posterPath: null, voteAverage: 8.4, addedAt: "2024-01-15T10:00:00Z",
@@ -40,7 +40,7 @@ function mockImportServer(page: Page, opts: { failWatchlistBulk?: boolean; failW
     const entries: Entry[] = route.request().postDataJSON().entries;
     let added = 0;
     for (const e of entries) if (!set.has(key(e))) { set.add(key(e)); added++; }
-    return route.fulfill({ json: { added, skipped: entries.length - added } });
+    return route.fulfill({ json: { added, skipped: entries.length - added, ignored: 0, overLimit: 0 } });
   };
 
   const ready = (async () => {
@@ -276,7 +276,7 @@ async function mockSocialServer(page: Page) {
     if (route.request().method() === "POST" && route.request().url().includes("/followed-people/bulk/")) {
       const entries = route.request().postDataJSON().entries;
       bodies.followed.push(entries);
-      return route.fulfill({ json: { added: entries.length, skipped: 0 } });
+      return route.fulfill({ json: { added: entries.length, skipped: 0, ignored: 0, overLimit: 0 } });
     }
     return route.fulfill({ json: paginated([]) });
   });
@@ -284,7 +284,7 @@ async function mockSocialServer(page: Page) {
     if (route.request().method() === "POST" && route.request().url().includes("/episode-progress/bulk/")) {
       const entries = route.request().postDataJSON().entries;
       bodies.progress.push(entries);
-      return route.fulfill({ json: { added: entries.length, skipped: 0 } });
+      return route.fulfill({ json: { added: entries.length, skipped: 0, ignored: 0, overLimit: 0 } });
     }
     return route.fulfill({ json: paginated([]) });
   });

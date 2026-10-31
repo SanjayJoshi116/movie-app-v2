@@ -1,6 +1,7 @@
 import axios from "axios";
 import { fetchAllPages } from "../utils/fetchAllPages";
 import type { MediaType } from "../types";
+import type { BulkImportResponseDTO } from "../types/domain";
 import { deviceTimeZone } from "../utils/formatDate";
 
 // Same-origin by default: nginx routes /api in production, and in development
@@ -363,12 +364,6 @@ export const requestPasswordReset = (email: string) =>
 export const confirmPasswordReset = (uid: string, token: string, newPassword: string) =>
   publicApi.post<{ detail: string }>("/auth/password-reset/confirm/", { uid, token, new_password: newPassword });
 
-
-export const bulkMarkWatched = (
-  entries: { mediaId: number; title: string; posterPath?: string | null; voteAverage?: number }[],
-  mediaType: "movie" | "tv",
-) => userApi.post<{ added: number; skipped: number }>("/watched/bulk/", { entries, mediaType });
-
 /** Server-side cap per bulk request (MAX_BULK_ENTRIES in bulk_import.py). */
 export const BULK_CHUNK_SIZE = 500;
 
@@ -396,10 +391,20 @@ export interface BulkImportEntry {
   ratedAt?: string;
 }
 
-export interface BulkImportResult {
-  added: number;
-  skipped: number;
+export interface BulkImportResult extends BulkImportResponseDTO {
+  /** Entries in chunks the server refused. */
   failed: number;
+}
+
+export const emptyBulkResult = (): BulkImportResult => ({ added: 0, skipped: 0, ignored: 0, overLimit: 0, failed: 0 });
+
+/** Adds `r`'s counts into `into`; `failed` too when `r` has it. */
+export function addBulkResult(into: BulkImportResult, r: BulkImportResponseDTO & { failed?: number }): void {
+  into.added += r.added;
+  into.skipped += r.skipped;
+  into.ignored += r.ignored;
+  into.overLimit += r.overLimit;
+  into.failed += r.failed ?? 0;
 }
 
 /**
@@ -492,14 +497,13 @@ function bulkChunks<T>(entries: T[]): T[][] {
 }
 
 async function postBulkChunks<T>(url: string, entries: T[], { guard }: BulkOptions = {}): Promise<BulkImportResult> {
-  const result: BulkImportResult = { added: 0, skipped: 0, failed: 0 };
+  const result = emptyBulkResult();
   for (const chunk of bulkChunks(entries)) {
     // Outside the try: a session that ended isn't a failed chunk, it ends the import.
     guard?.check();
     try {
-      const { data } = await userApi.post<{ added: number; skipped: number }>(url, { entries: chunk });
-      result.added += data.added;
-      result.skipped += data.skipped;
+      const { data } = await userApi.post<BulkImportResponseDTO>(url, { entries: chunk });
+      addBulkResult(result, data);
     } catch {
       result.failed += chunk.length;
     }
@@ -534,8 +538,8 @@ export interface StatsData {
   languageBreakdown: { language: string; count: number }[];
   decadeBreakdown: { decade: string; count: number }[];
   dailyActivity: { date: string; count: number }[];
-  topRatedItems: { title: string; posterPath: string | null; userRating: number; mediaType: string }[];
-  recentItems: { title: string; posterPath: string | null; watchedAt: string; mediaType: string }[];
+  topRatedItems: { mediaId: number; title: string; posterPath: string | null; userRating: number; mediaType: string }[];
+  recentItems: { mediaId: number; title: string; posterPath: string | null; watchedAt: string; mediaType: string }[];
   totalRuntimeMinutes: number;
   platformBreakdown: { platform: string; count: number }[];
   ratingByGenre: { genre: string; avgRating: number }[];

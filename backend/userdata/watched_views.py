@@ -1,12 +1,14 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from . import library_limits
 from .models import WatchedEntry
 from .pagination import DefaultPagination
-from .bulk_import import MAX_BULK_ENTRIES, bulk_import, timestamp_or_now  # noqa: F401 (MAX re-exported for tests)
+from .bulk_import import bulk_import, timestamp_or_now
 from .serializers import BulkWatchedEntrySerializer, WatchedEntrySerializer
 from .signals import schedule_refresh
 from .timezones import request_tz_name, valid_tz_name
@@ -23,10 +25,13 @@ def watched_list(request):
 
     serializer = WatchedEntrySerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    entry, created = WatchedEntry.objects.get_or_create(
-        user=request.user,
-        media_id=serializer.validated_data["media_id"],
-        media_type=serializer.validated_data["media_type"],
+    identity = {
+        "media_id": serializer.validated_data["media_id"],
+        "media_type": serializer.validated_data["media_type"],
+    }
+    rows = request.user.watched  # a related manager: get_or_create sets user
+    entry, created = library_limits.get_or_create(
+        "watched", request.user.id, rows, identity,
         defaults={
             "title": serializer.validated_data["title"],
             "poster_path": serializer.validated_data.get("poster_path"),
@@ -56,7 +61,14 @@ def watched_detail(request, pk):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def watched_clear(request):
-    deleted, _ = WatchedEntry.objects.filter(user=request.user).delete()
+    # One DELETE instead of .delete()'s per-row post_delete (one refresh
+    # trigger per row): safe only because nothing references WatchedEntry, so
+    # there's no cascade to collect. test_watched pins that.
+    rows = WatchedEntry.objects.filter(user=request.user)
+    with transaction.atomic():
+        deleted = rows._raw_delete(rows.db)
+        if deleted:
+            schedule_refresh(request.user.id)
     return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
 
@@ -91,4 +103,5 @@ def bulk_watched(request):
         entry_serializer=BulkWatchedEntrySerializer,
         build=build,
         after_create=after_create,
+        limit="watched",
     )

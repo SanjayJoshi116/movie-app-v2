@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.4] - 2026-10-30
+
+Fixes from the fourth module of the review sweep (B3, library CRUD: `fix-library-sweep-b3`, backlog item 53; archived, specs synced into `data-backup`, `input-validation`, `ratings` and a new `library-limits`), the code review and `/simplify` pass of that fix, and a CI fix. No migration or dependency change. The bulk response gains two counts.
+
+### Fixed
+- **Two rating writes to one title at once can't leave TMDB with a different score from the app.** Each read-compare-write ran unlocked, so one could skip its sync on a stale "unchanged" score. Rating writes now hold a session-level lock per user and title from the read through the TMDB sync, so writes and syncs for a title run one after another.
+- **Adding a title TMDB lists without a poster or score works**: single adds accepted only a sent `posterPath`/`voteAverage` and answered 400 otherwise.
+- **Rating again without a review keeps the stored review** (it was erased), and a restored review is trimmed like a typed one, so saving it unchanged no longer counts as a change.
+- **Clearing the watched history is one delete and one recommendations refresh**, not one refresh per row.
+- **Import counts add up to the rows sent:** results also report rows without a TMDB id and rows over a library limit, and each import dialog and the backup restore shows them.
+- **An import whose account was deleted mid-run gets a 401 and stores nothing**, not a 500.
+- **A title imported without a name shows as "Untitled (#id)"** on cards, in Stats' top items and in button names, and Rate and Mark watched send that label, because single writes refuse a blank title.
+- **A backup restore that hits the list limit says so** with the server's reason, instead of a bare "couldn't be created".
+- **CI:** the `docker` job no longer fails when GitHub's cache service is unreachable; the buildx cache export gives up after 3 minutes with a warning (`ignore-error=true,timeout=3m`).
+
+### Added
+- **Library limits:** 20,000 watched, 20,000 watchlist and 20,000 ratings per account, 200 lists and 2,000 titles per list. A single add past a limit is a 400 naming it (an update to an existing entry never is); a bulk import fills up to the limit and reports the rest as `overLimit`; rows stored before the limits stay readable and removable. Checks run under an advisory lock per user and collection, so racing adds can't pass a limit together and an import into one collection doesn't hold up adds to another.
+
+### Changed
+- Bulk responses are `{added, skipped, ignored, overLimit}` (were `{added, skipped}`); `skipped` now includes repeats within one request. Stats' top-rated and recent items carry `mediaId`.
+
+### Internal
+- `views.py` (a re-export layer) removed: `urls.py` and tests import from the domain modules. Single adds share `library_limits.get_or_create()`; bulk results share `emptyBulkResult()`/`addBulkResult()`; one import result toast (`importResultToast`) and one map of "is full" wording; unused `bulkMarkWatched` removed.
+
+### Docs
+- `CLAUDE.md` (library limits, rating lock, `mediaLabel`, bulk counts, CI cache export), `docs/ARCHITECTURE.md` (rating lock, counted limits, bulk counts and the deleted-account 401), BUG_BACKLOG items 49 and 53, `ideas.md` sweep table, README, features.txt.
+
+### Tests
+- New: `test_library_limits.py` (each limit, updates allowed, racing adds, bulk fill, lowered limits, per-collection lock, counts that add up, account deleted mid-import), `mediaLabel.test.ts`, `importSummary.test.ts`. Added to: `test_ratings.py` (racing writes, lock released after a sync error, review kept, trimmed restore), `test_input_validation.py` (missing poster or score), `test_watched.py` (clear: one delete, one refresh, no reverse relations); count assertions updated across the bulk tests. `WatchlistPagination.test.tsx` (blank title), `importSession.test.tsx`, `CSVUploadModalLookups.test.tsx`, `bulkImport.test.ts`.
+- Totals: backend pytest 663 pass + 25 skip before the review follow-ups (one proxy deadline test failed under full-suite load and passes alone), touched backend files 134 pass after; Jest 585 pass; touched TS e2e pass (import, watchlist, library-filters, stats); Python e2e stats/watched/watchlist/lists 75 pass.
+
 ## [0.31.3] - 2026-10-30
 
 Fixes from the third module of the review sweep (F1, frontend API, auth and session: `fix-session-sweep-f1`, backlog item 52; archived, specs synced into `auth-session` and `write-feedback`), plus the code review of the B2 and F1 fixes together. Mostly frontend; the review follow-ups touch `tmdb_client.py`. No API shape, migration or dependency change.

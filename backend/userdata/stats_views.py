@@ -210,6 +210,7 @@ def stats(request):
         user_rating = rating_map.get((entry.media_id, entry.media_type))
         if user_rating is not None:
             top_rated.append({
+                "mediaId": entry.media_id,
                 "title": entry.title,
                 "posterPath": entry.poster_path,
                 "userRating": user_rating,
@@ -221,6 +222,7 @@ def stats(request):
     recent_sorted = sorted(watched_list, key=lambda e: e.watched_at, reverse=True)
     recent_items = [
         {
+            "mediaId": e.media_id,
             "title": e.title,
             "posterPath": e.poster_path,
             "watchedAt": entry_day(e, request).strftime("%Y-%m-%d"),

@@ -184,3 +184,42 @@ describe("watched filter while the watched history loads or reloads", () => {
     expect(screen.getAllByText(/^Title \d+$/)).toHaveLength(3);
   });
 });
+
+// data-backup spec: a title stored blank still names its card and buttons.
+it("labels a blank-titled entry by its id, on the card and its buttons", () => {
+  sessionStorage.setItem("watchlist_watched_filter", "all");
+  setWatched(true);
+  mockApp.mockReturnValue({
+    ...mockApp(),
+    watchlist: [{ id: 603, type: "movie", title: " ", posterPath: null, voteAverage: 0, addedAt: "2026-10-01T10:00:00Z" }],
+    isWatched: () => false,
+  });
+  render(
+    <MemoryRouter initialEntries={["/watchlist"]}>
+      <WatchlistPage />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText("Untitled (#603)")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open Untitled (#603)" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove from watchlist: Untitled (#603)" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Mark watched: Untitled (#603)" })).toBeInTheDocument();
+});
+
+it("sends the fallback label, not the blank stored title, when unmarking", () => {
+  sessionStorage.setItem("watchlist_watched_filter", "all");
+  setWatched(true);
+  const toggleWatched = jest.fn().mockResolvedValue(undefined);
+  mockApp.mockReturnValue({
+    ...mockApp(),
+    watchlist: [{ id: 603, type: "movie", title: "", posterPath: null, voteAverage: 0, addedAt: "2026-10-01T10:00:00Z" }],
+    isWatched: () => true,
+    toggleWatched,
+  });
+  render(
+    <MemoryRouter initialEntries={["/watchlist"]}>
+      <WatchlistPage />
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Mark unwatched: Untitled (#603)" }));
+  expect(toggleWatched).toHaveBeenCalledWith(expect.objectContaining({ id: 603, title: "Untitled (#603)" }));
+});

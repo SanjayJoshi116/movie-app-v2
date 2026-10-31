@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space, Select } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
-import { lookupImportPosters, missingPostersNote } from "../../utils/importPosters";
+import { lookupImportPosters } from "../../utils/importPosters";
+import { importResultToast } from "../../utils/importSummary";
 import { ImportProgress } from "../ImportProgress";
 import { useToast } from "../../hooks/useToast";
 import { useListsContext } from "../../context/useListsContext";
@@ -85,7 +86,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
 
       // One request per 500 rows (not one per row). No dates here, so the
       // rows go in reverse: the list then shows them in file order.
-      const { added, skipped, failed } = await bulkAddListItems(
+      const result = await bulkAddListItems(
         selectedListId,
         orderForImport(
           parsed.map((row, i) => ({
@@ -103,17 +104,10 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
 
       // The items are saved even if this fails; only what's on screen is stale.
       const refreshed = await reloadLists().then(() => true, () => false);
-      const summary = `${added} added, ${skipped} already in list`;
-      if (failed > 0) {
-        showError(`Import finished: ${summary}, ${failed} failed.${missingPostersNote(missing)}`);
-      } else if (missing > 0) {
-        showInfo(`Import complete: ${summary}.${missingPostersNote(missing)}`);
-        handleClose();
-      } else {
-        showSuccess(`Import complete: ${summary}.`);
-        handleClose();
-      }
-      if (!refreshed && added > 0) showError(IMPORT_REFRESH_ERROR);
+      const toast = importResultToast(result, { already: "already in list", collection: "list", missing });
+      ({ error: showError, info: showInfo, success: showSuccess })[toast.kind](toast.text);
+      if (toast.kind !== "error") handleClose(); // an error keeps the dialog open
+      if (!refreshed && result.added > 0) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
       // Signed out mid-import: drop it. Nothing more is written, and nothing
       // is shown or reloaded for whoever signs in next.

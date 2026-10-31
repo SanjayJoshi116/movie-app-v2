@@ -67,7 +67,7 @@ class EpisodeProgressListAndBulkTests(APITestCase):
             {"showId": 1396, "season": 2, "episode": 5},
             {"showId": 1399, "season": 1, "episode": 4},
         ]}, format="json")
-        self.assertEqual(res.data, {"added": 1, "skipped": 1})
+        self.assertEqual(res.data, {"added": 1, "skipped": 1, "ignored": 0, "overLimit": 0})
         kept = EpisodeProgress.objects.get(user=self.user, show_id=1396)
         self.assertEqual((kept.season_number, kept.episode_number), (3, 1))
         self.assertTrue(EpisodeProgress.objects.filter(user=self.user, show_id=1399, episode_number=4).exists())

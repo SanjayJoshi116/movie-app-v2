@@ -10,7 +10,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from ..models import EpisodeProgress, Profile, RatingEntry, UserList, WatchedEntry, WatchlistEntry
+from ..models import EpisodeProgress, Profile, RatingEntry, UserList, UserListItem, WatchedEntry, WatchlistEntry
 from ..serializers import UserProfileUpdateSerializer
 from .test_avatar import make_image_file
 
@@ -233,6 +233,29 @@ class ImmutableIdentityTests(AuthedTestCase):
         self.assertEqual((entry.media_id, entry.media_type, entry.title), (1, "movie", "B"))
 
 
+class OptionalPosterAndScoreTests(AuthedTestCase):
+    """input-validation: single adds accept a missing poster or score."""
+
+    def test_single_adds_without_poster_or_score(self):
+        user_list = UserList.objects.create(user=self.user, name="L")
+        for url, model in (
+            ("/api/watchlist/", WatchlistEntry),
+            ("/api/watched/", WatchedEntry),
+            (f"/api/lists/{user_list.pk}/items/", UserListItem),
+        ):
+            with self.subTest(url=url):
+                res = self.client.post(url, {"mediaId": 603, "mediaType": "movie", "title": "M"}, format="json")
+                self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+                entry = model.objects.get(media_id=603)
+                self.assertEqual((entry.poster_path, entry.vote_average), (None, 0))
+
+    def test_a_sent_bad_value_still_rejected(self):
+        res = self.client.post("/api/watchlist/", {
+            "mediaId": 603, "mediaType": "movie", "title": "M", "voteAverage": 11,
+        }, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 class BulkWatchedValidationTests(AuthedTestCase):
     def post(self, entries, media_type="movie"):
         return self.client.post("/api/watched/bulk/", {"entries": entries, "mediaType": media_type}, format="json")
@@ -269,7 +292,7 @@ class BulkWatchedValidationTests(AuthedTestCase):
     def test_string_and_int_ids_are_one_title(self):
         res = self.post([{"mediaId": 5, "title": "A"}, {"mediaId": "5", "title": "A"}])
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual((res.data["added"], res.data["skipped"]), (1, 0))
+        self.assertEqual((res.data["added"], res.data["skipped"]), (1, 1))  # the repeat counts as skipped
         self.assertEqual(WatchedEntry.objects.filter(media_id=5).count(), 1)
 
     def test_missing_media_id_still_skipped(self):

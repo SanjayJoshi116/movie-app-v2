@@ -146,3 +146,14 @@ export interface UserListDTO {
   items: UserListItemDTO[];
   createdAt: string;
 }
+
+/** Every bulk endpoint's answer; the four counts add up to the entries sent. */
+export interface BulkImportResponseDTO {
+  added: number;
+  /** Already present, or repeated earlier in the same request. */
+  skipped: number;
+  /** Sent without a TMDB id. */
+  ignored: number;
+  /** Not added because the collection reached its library limit. */
+  overLimit: number;
+}

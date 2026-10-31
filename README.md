@@ -107,8 +107,9 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
+- **Library Limits** — Up to 20,000 watched titles, 20,000 watchlist titles, 20,000 ratings, 200 lists and 2,000 titles per list. Adding past a limit says so; an import fills up to it and reports the rest; anything stored before the limits stays. A title imported without a name shows as "Untitled (#id)"
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them, and makes no TMDB lookups for rows that already carry a poster and a score; an oversized poster value is dropped for that row only; a title over 500 characters is shortened without splitting an emoji, and length limits count characters as the server does; a file that can't be read says so; watched list refreshes immediately after import
-- **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. A bad value in one backup row (poster, runtime, platform, zone, rating, time, oversized review) is dropped for that row only instead of failing its batch. Poster lookups during any import are paced under the TMDB proxy's rate limit, made once per title, skipped for rows the file already covers, and shown with progress; the result says how many titles ended up without a poster
+- **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section, plus rows without a TMDB id and rows not added because a collection is full (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. A bad value in one backup row (poster, runtime, platform, zone, rating, time, oversized review) is dropped for that row only instead of failing its batch. Poster lookups during any import are paced under the TMDB proxy's rate limit, made once per title, skipped for rows the file already covers, and shown with progress; the result says how many titles ended up without a poster
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them. Genres are matched per media type (a movie genre is never sent to TV discover), a rating change refreshes recommendations, titles you rated 4 or below never seed "Because you watched", and a group still computing after polling shows Retry
 - **Release Calendar** — The most popular releases of the next 7 days (every day of the window, not only the first), grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export of what's shown (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
@@ -195,11 +196,13 @@ backend/
 │   │                            #   LoginFailure (per-username failed-password count)
 │   ├── serializers.py           # DRF serializers (camelCase field aliases, FiniteFloatField, MediaIdentityMixin,
 │   │                            #   restated length/range bounds, small input serializers for ad-hoc endpoints)
-│   ├── bulk_import.py           # bulk_import(): shared create-only, all-or-nothing bulk endpoint helper
+│   ├── bulk_import.py           # bulk_import(): shared create-only, all-or-nothing bulk endpoint helper;
+│   │                            #   answers {added, skipped, ignored, overLimit}, which add up to the entries sent
+│   ├── library_limits.py        # Per-user library caps (20k watched/watchlist/ratings, 200 lists, 2k items/list)
+│   │                            #   checked under a per-user advisory lock
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists;
 │   │                            #   next/previous are plain page numbers, not absolute URLs
-│   ├── views.py                 # Thin re-export barrel — import from domain modules below
 │   ├── auth_views.py            # register, login, profile, avatar upload/delete, password reset + throttle classes,
 │   │                            #   SafeTokenRefreshView (guards against a since-deleted token owner),
 │   │                            #   revoke-all-sessions on password change/reset
@@ -247,7 +250,7 @@ src/
 │   └── userApi.ts               # Axios instance with Bearer token + auto 401 refresh;
 │                                #   exports fetchStats, episode-progress helpers,
 │                                #   followed-people helpers, requestPasswordReset,
-│                                #   confirmPasswordReset, bulkMarkWatched
+│                                #   confirmPasswordReset
 ├── components/
 │   ├── AuthStage.tsx            # Account pages' stage: beam, Wordmark (h1), tagline, card; adapts to height and
 │   │                            #   sets interactive-widget=resizes-content while mounted (Android keyboard)
@@ -367,6 +370,7 @@ src/
 │   ├── goBack.ts                # Detail/person Back: `from`, else history only if an in-app entry, else section
 │   ├── pacedLookup.ts           # Paced TMDB lookups (90/min, 4 in flight, waits out 429 Retry-After)
 │   ├── importPosters.ts         # Import poster/score lookups through pacedLookup: once per title, file values win, reports misses
+│   ├── importSummary.ts         # notAddedParts(): import result text for rows without an id or past a library limit
 │   ├── safeUrl.ts               # safeHttpUrl(): third-party URL → link target only if http(s)
 │   ├── ics.ts                   # Calendar .ics builder (DTSTAMP, text escaping, 75-octet folding)
 │   ├── tmdbPages.ts             # Caps TMDB total_pages at its 500-page limit
@@ -374,6 +378,7 @@ src/
 │   │                            #   queue behind, runExclusive() for clears, group() per list
 │   ├── guardedReload.ts         # Library reload rerun if a write settled while it was in flight
 │   ├── personLabel.ts           # Followed person's name, "Person <id>" when blank
+│   ├── mediaLabel.ts            # Stored library title, "Untitled (#<id>)" when blank
 │   ├── queryParams.ts           # parseIntParam()/pickKey(): address values with safe fallbacks
 │   ├── region.ts                # deviceRegion(), regionName(), pickRegion(): region data with a labelled US fallback
 │   ├── initials.ts              # getInitials(): fallback avatar text (sidebar, bottom nav, profile)
@@ -848,14 +853,18 @@ backend/userdata/tests/
 ├── test_watchlist.py               # Pagination shape + cross-user isolation
 ├── test_watched.py                 # Pagination shape + bulk_watched (dedup, batch cap, transaction)
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings/list items: create-only, timestamps,
-│                                   #   all-or-nothing; list createdAt on create only
+│                                   #   all-or-nothing; list createdAt on create only; counts add up;
+│                                   #   account deleted mid-import → 401
+├── test_library_limits.py          # Per-collection caps: single adds refused, updates allowed, racing adds,
+│                                   #   bulk fills to the cap, rows already over it stay readable
 ├── test_input_bounds.py            # voteAverage 0–10 (Stats ignores stored outliers), episode progress needs
 │                                   #   season + episode (no PATCH), list deleted mid-add → 404
 ├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled;
 │                                   #   one shared session, non-object bodies and malformed genre lists handled
 ├── test_input_validation.py        # NaN/length/range/enum/body-shape rejections, immutable PATCH identity,
 │                                   #   review (5000) and list description (200) caps
-├── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id
+├── test_ratings.py                 # Pagination shape, rating writes, TMDB sync logging without the session id;
+│                                   #   per-title rating lock keeps TMDB's score equal to the stored one
 └── test_tmdb_live.py               # Live TMDB shape checks (opt-in, see below); its frontend-param drift
                                     #   checks run every time, no network
 ```

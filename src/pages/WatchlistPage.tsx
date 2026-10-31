@@ -19,6 +19,7 @@ import FilterBar from "../components/FilterBar";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
+import { mediaLabel } from "../utils/mediaLabel";
 import { pageVariants, RATING_GOLD, WATCHED_GREEN } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
@@ -264,10 +265,13 @@ function WatchlistPage() {
             renderCard={(item) => {
               const rating = getRating(item.id, item.type);
               const watched = isWatched(item.id, item.type);
+              // Shown and sent: the single-item endpoints refuse the blank
+              // title a bulk import can store.
+              const label = mediaLabel(item.title, item.id);
               return (
                 <LibraryItemCard
                   posterPath={item.posterPath}
-                  title={item.title}
+                  title={label}
                   to={`/${item.type}/${item.id}`}
                   onOpen={() => {
                     const scrollY = window.scrollY;
@@ -297,16 +301,16 @@ function WatchlistPage() {
                             e.stopPropagation();
                             if (watched) {
                               try {
-                                await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                                await toggleWatched({ id: item.id, type: item.type, title: label, posterPath: item.posterPath, voteAverage: item.voteAverage });
                                 showSuccess("Removed from watched");
                               } catch (err) {
                                 showError(getApiError(err, "Failed to update watched status."));
                               }
                             } else {
-                              setPendingWatch({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                              setPendingWatch({ id: item.id, type: item.type, title: label, posterPath: item.posterPath, voteAverage: item.voteAverage });
                             }
                           }}
-                          aria-label={`${watched ? "Mark unwatched" : "Mark watched"}: ${item.title}`}
+                          aria-label={`${watched ? "Mark unwatched" : "Mark watched"}: ${label}`}
                         />
                       </Tooltip>
                       <Tooltip title={rating ? "Edit rating" : "Rate"}>
@@ -316,9 +320,9 @@ function WatchlistPage() {
                           icon={<EditOutlined />}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setRatingTarget({ id: item.id, type: item.type, title: item.title });
+                            setRatingTarget({ id: item.id, type: item.type, title: label });
                           }}
-                          aria-label={`${rating ? "Edit rating" : "Rate"}: ${item.title}`}
+                          aria-label={`${rating ? "Edit rating" : "Rate"}: ${label}`}
                         />
                       </Tooltip>
                       <ConfirmIconButton
@@ -335,7 +339,7 @@ function WatchlistPage() {
                         tooltip="Remove"
                         icon={<DeleteOutlined />}
                         danger
-                        ariaLabel={`Remove from watchlist: ${item.title}`}
+                        ariaLabel={`Remove from watchlist: ${label}`}
                       />
                     </>
                   }

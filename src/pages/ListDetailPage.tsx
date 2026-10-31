@@ -12,6 +12,7 @@ import { useToast } from "../hooks/useToast";
 import { useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
+import { mediaLabel } from "../utils/mediaLabel";
 import LibraryItemCard from "../components/LibraryItemCard";
 import { LoadError } from "../components/LoadError";
 import { ConfirmIconButton } from "../components/ConfirmIconButton";
@@ -224,43 +225,46 @@ function ListDetailPage() {
             items={filteredItems}
             colSpan={{ md: 4 }}
             keyFn={(item) => `${item.type}-${item.id}`}
-            renderCard={(item) => (
-              <LibraryItemCard
-                posterPath={item.posterPath}
-                title={item.title}
-                to={`/${item.type}/${item.id}`}
-                onOpen={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: `/lists/${list.id}` } })}
-                tags={
-                  <>
-                    <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                      {item.type === "movie" ? "Movie" : "TV"}
-                    </Tag>
-                    {item.voteAverage != null && (
-                      <Tag color="gold" style={{ margin: 0 }}>
-                        <StarFilled /> {item.voteAverage.toFixed(1)}
+            renderCard={(item) => {
+              const label = mediaLabel(item.title, item.id);
+              return (
+                <LibraryItemCard
+                  posterPath={item.posterPath}
+                  title={label}
+                  to={`/${item.type}/${item.id}`}
+                  onOpen={() => navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: `/lists/${list.id}` } })}
+                  tags={
+                    <>
+                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                        {item.type === "movie" ? "Movie" : "TV"}
                       </Tag>
-                    )}
-                  </>
-                }
-                actionButtons={
-                  <ConfirmIconButton
-                    title="Remove from list?"
-                    onConfirm={async () => {
-                      try {
-                        await removeFromList(list.id, item.id, item.type);
-                      } catch (err) {
-                        showError(getApiError(err, "Failed to remove from list."));
-                      }
-                    }}
-                    okText="Remove"
-                    tooltip="Remove"
-                    icon={<DeleteOutlined />}
-                    danger
-                    ariaLabel={`Remove from list: ${item.title}`}
-                  />
-                }
-              />
-            )}
+                      {item.voteAverage != null && (
+                        <Tag color="gold" style={{ margin: 0 }}>
+                          <StarFilled /> {item.voteAverage.toFixed(1)}
+                        </Tag>
+                      )}
+                    </>
+                  }
+                  actionButtons={
+                    <ConfirmIconButton
+                      title="Remove from list?"
+                      onConfirm={async () => {
+                        try {
+                          await removeFromList(list.id, item.id, item.type);
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to remove from list."));
+                        }
+                      }}
+                      okText="Remove"
+                      tooltip="Remove"
+                      icon={<DeleteOutlined />}
+                      danger
+                      ariaLabel={`Remove from list: ${label}`}
+                    />
+                  }
+                />
+              );
+            }}
           />
         )}
       </div>

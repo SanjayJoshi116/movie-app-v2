@@ -10,6 +10,7 @@ import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
+import { mediaLabel } from "../utils/mediaLabel";
 import { formatWatchedDate } from "../utils/formatDate";
 import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
@@ -208,49 +209,52 @@ function WatchedPage() {
           <MediaGrid
             items={paginated}
             keyFn={(item) => `${item.type}-${item.id}`}
-            renderCard={(item) => (
-              <LibraryItemCard
-                posterPath={item.posterPath}
-                title={item.title}
-                to={`/${item.type}/${item.id}`}
-                onOpen={() =>
-                  navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
-                }
-                tags={
-                  <>
-                    <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
-                      {item.type === "movie" ? "Movie" : "TV"}
-                    </Tag>
-                    {item.voteAverage != null && (
-                      <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
-                    )}
-                  </>
-                }
-                actionButtons={
-                  <ConfirmIconButton
-                    title="Mark as unwatched?"
-                    onConfirm={async () => {
-                      try {
-                        await removeFromWatched(item.id, item.type);
-                        showSuccess("Marked as unwatched");
-                      } catch (err) {
-                        showError(getApiError(err, "Failed to mark as unwatched."));
-                      }
-                    }}
-                    okText="Mark Unwatched"
-                    tooltip="Mark unwatched"
-                    icon={<EyeFilled />}
-                    style={{ color: WATCHED_GREEN }}
-                    ariaLabel={`Mark as unwatched: ${item.title}`}
-                  />
-                }
-                footer={
-                  <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
-                    {formatWatchedDate(item.watchedAt, item.watchedTz)}
-                  </Typography.Text>
-                }
-              />
-            )}
+            renderCard={(item) => {
+              const label = mediaLabel(item.title, item.id);
+              return (
+                <LibraryItemCard
+                  posterPath={item.posterPath}
+                  title={label}
+                  to={`/${item.type}/${item.id}`}
+                  onOpen={() =>
+                    navigate(item.type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`, { state: { from: buildFromUrl() } })
+                  }
+                  tags={
+                    <>
+                      <Tag color={item.type === "movie" ? "blue" : "purple"} style={{ margin: 0 }}>
+                        {item.type === "movie" ? "Movie" : "TV"}
+                      </Tag>
+                      {item.voteAverage != null && (
+                        <Tag color="gold" style={{ margin: 0 }}><StarFilled /> {item.voteAverage.toFixed(1)}</Tag>
+                      )}
+                    </>
+                  }
+                  actionButtons={
+                    <ConfirmIconButton
+                      title="Mark as unwatched?"
+                      onConfirm={async () => {
+                        try {
+                          await removeFromWatched(item.id, item.type);
+                          showSuccess("Marked as unwatched");
+                        } catch (err) {
+                          showError(getApiError(err, "Failed to mark as unwatched."));
+                        }
+                      }}
+                      okText="Mark Unwatched"
+                      tooltip="Mark unwatched"
+                      icon={<EyeFilled />}
+                      style={{ color: WATCHED_GREEN }}
+                      ariaLabel={`Mark as unwatched: ${label}`}
+                    />
+                  }
+                  footer={
+                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption, display: "block", marginTop: 6 }}>
+                      {formatWatchedDate(item.watchedAt, item.watchedTz)}
+                    </Typography.Text>
+                  }
+                />
+              );
+            }}
           />
 
           {filtered.length > pageSize && (
