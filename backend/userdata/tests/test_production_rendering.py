@@ -8,7 +8,9 @@ from unittest import TestCase
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROD = {
-    "SECRET_KEY": "test-only-not-the-default-key",
+    # Passes the W009 strength rule settings enforce with DEBUG off.
+    "SECRET_KEY": "test-only-not-the-default-key-" + "0123456789abcdefghij",
+    "TMDB_API_KEY": "test-only-tmdb-key",
     "ALLOWED_HOSTS": "testserver",
     "EMAIL_BACKEND": "django.core.mail.backends.locmem.EmailBackend",
     "FRONTEND_URL": "https://cinedb.example.com",

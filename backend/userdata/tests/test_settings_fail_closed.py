@@ -3,11 +3,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest import TestCase
+from unittest import TestCase, mock
+
+from django.core.exceptions import ImproperlyConfigured
+
+from cinedb import settings as loaded_settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROD = {
-    "SECRET_KEY": "test-only-not-the-default-key",
+    # Passes the W009 strength rule (50+ characters, 5+ distinct, no prefix).
+    "SECRET_KEY": "test-only-not-the-default-key-" + "0123456789abcdefghij",
+    "TMDB_API_KEY": "test-only-tmdb-key",
     "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
     "FRONTEND_URL": "https://cinedb.example.com",
     # A valid Fernet key generated for these tests only (32 bytes, urlsafe base64).
@@ -15,7 +21,10 @@ PROD = {
 }
 # Every variable a case sets or deliberately leaves unset; the probe's env drops
 # the developer's own values for all of them.
-CONTROLLED = ("DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "FRONTEND_URL", "TMDB_SESSION_KEYS")
+CONTROLLED = (
+    "DEBUG", "ALLOWED_HOSTS", "EMAIL_BACKEND", "FRONTEND_URL", "TMDB_SESSION_KEYS",
+    "TMDB_API_KEY", "JWT_SIGNING_KEY", "EMAIL_USE_TLS",
+)
 # dotenv is disabled before settings import: load_dotenv() never overrides
 # variables that are set, but it *fills in* ones we deliberately left unset —
 # so a developer's backend/.env with DEBUG=True (the documented local setup)
@@ -26,13 +35,14 @@ PROBE = (
 )
 
 
-def _import_settings(**env):
-    """Import settings in a fresh interpreter whose environment is exactly
-    os.environ minus CONTROLLED, plus `env` (backend/.env ignored)."""
-    full_env = {k: v for k, v in os.environ.items() if k not in CONTROLLED}
+def _import_settings(probe=PROBE, unset=(), **env):
+    """Run `probe` (settings imported) in a fresh interpreter whose environment
+    is exactly os.environ minus CONTROLLED and `unset`, plus `env`
+    (backend/.env ignored)."""
+    full_env = {k: v for k, v in os.environ.items() if k not in (*CONTROLLED, *unset)}
     full_env.update(env)
     return subprocess.run(
-        [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=full_env,
+        [sys.executable, "-c", probe], cwd=BACKEND_DIR, env=full_env,
         capture_output=True, text=True, timeout=60,
     )
 
@@ -85,18 +95,91 @@ class FailClosedSettingsTests(TestCase):
 
     def test_default_secret_key_refused_without_debug(self):
         # SECRET_KEY unset → the built-in development default, which signs JWTs.
-        env = {k: v for k, v in os.environ.items() if k not in (*CONTROLLED, "SECRET_KEY")}
-        env.update(
-            EMAIL_BACKEND=PROD["EMAIL_BACKEND"], FRONTEND_URL=PROD["FRONTEND_URL"],
-            TMDB_SESSION_KEYS=PROD["TMDB_SESSION_KEYS"], ALLOWED_HOSTS="localhost",
-        )
-        res = subprocess.run(
-            [sys.executable, "-c", PROBE], cwd=BACKEND_DIR, env=env,
-            capture_output=True, text=True, timeout=60,
-        )
+        env = {k: v for k, v in PROD.items() if k != "SECRET_KEY"}
+        res = _import_settings(unset=("SECRET_KEY",), **env, ALLOWED_HOSTS="localhost")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("ImproperlyConfigured", res.stderr)
         self.assertIn("SECRET_KEY", res.stderr)
+
+    def test_weak_secret_key_refused_without_debug(self):
+        for key in (
+            "your-secret-key-here-change-in-production",  # backend/.env.example
+            "short-but-random-Zx9",
+            "a" * 30 + "b" * 30,  # long, two distinct characters
+            "django-insecure-" + "q8Zr2mXv7LpT4wNc0sYb5KdHf3GjA6eU",
+        ):
+            with self.subTest(key=key):
+                res = _import_settings(**{**PROD, "SECRET_KEY": key}, ALLOWED_HOSTS="localhost")
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("ImproperlyConfigured", res.stderr)
+                self.assertIn("SECRET_KEY", res.stderr)
+                self.assertNotIn(key, res.stderr)
+
+    def test_weak_secret_key_allowed_under_debug(self):
+        res = _import_settings(SECRET_KEY="changeme", DEBUG="True")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_weak_jwt_signing_key_refused_without_debug(self):
+        res = _import_settings(**PROD, JWT_SIGNING_KEY="changeme", ALLOWED_HOSTS="localhost")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("JWT_SIGNING_KEY", res.stderr)
+        self.assertNotIn("changeme", res.stderr)
+
+    def test_blank_jwt_signing_key_falls_back_to_secret_key(self):
+        probe = PROBE.replace(
+            "print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.SIMPLE_JWT['SIGNING_KEY'] == s.SECRET_KEY)"
+        )
+        for debug in ("True", "False"):
+            with self.subTest(debug=debug):
+                res = _import_settings(probe, **PROD, DEBUG=debug, ALLOWED_HOSTS="localhost", JWT_SIGNING_KEY="")
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertEqual(res.stdout.strip(), "True")
+
+    def test_missing_tmdb_api_key_refused_without_debug(self):
+        env = {k: v for k, v in PROD.items() if k != "TMDB_API_KEY"}
+        for extra in ({}, {"TMDB_API_KEY": ""}, {"TMDB_API_KEY": "  "}):
+            with self.subTest(extra=extra):
+                res = _import_settings(**env, **extra, ALLOWED_HOSTS="localhost")
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("ImproperlyConfigured", res.stderr)
+                self.assertIn("TMDB_API_KEY", res.stderr)
+
+    def test_missing_tmdb_api_key_allowed_under_debug(self):
+        res = _import_settings(DEBUG="True")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_boolean_spellings(self):
+        # The parser itself, in-process; the import-time cases below cover wiring.
+        for raw, expected in (
+            ("true", True), (" YES ", True), ("1", True), ("On", True),
+            ("false", False), ("no", False), ("0", False), ("OFF", False),
+        ):
+            with self.subTest(raw=raw), mock.patch.dict(os.environ, {"CINEDB_TEST_BOOL": raw}):
+                self.assertIs(loaded_settings._env_bool("CINEDB_TEST_BOOL", not expected), expected)
+        with mock.patch.dict(os.environ, {"CINEDB_TEST_BOOL": "maybe"}), self.assertRaises(ImproperlyConfigured):
+            loaded_settings._env_bool("CINEDB_TEST_BOOL", False)
+        os.environ.pop("CINEDB_TEST_BOOL", None)
+        self.assertIs(loaded_settings._env_bool("CINEDB_TEST_BOOL", True), True)
+        # Blank (`DEBUG=` in an env file) is unset, not an error.
+        for blank in ("", "  "):
+            with self.subTest(raw=blank), mock.patch.dict(os.environ, {"CINEDB_TEST_BOOL": blank}):
+                self.assertIs(loaded_settings._env_bool("CINEDB_TEST_BOOL", True), True)
+                self.assertIs(loaded_settings._env_bool("CINEDB_TEST_BOOL", False), False)
+
+    def test_lower_case_booleans_reach_settings(self):
+        probe = PROBE.replace("print(s.DEBUG, s.ALLOWED_HOSTS)", "print(s.DEBUG, s.EMAIL_USE_TLS)")
+        res = _import_settings(probe, DEBUG="true", EMAIL_USE_TLS="true")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "True True")
+
+    def test_unrecognised_boolean_refused(self):
+        cases = (({"DEBUG": "maybe"}, "DEBUG"), ({"DEBUG": "True", "EMAIL_USE_TLS": "ture"}, "EMAIL_USE_TLS"))
+        for extra, name in cases:
+            with self.subTest(extra=extra):
+                res = _import_settings(**extra)
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("ImproperlyConfigured", res.stderr)
+                self.assertIn(name, res.stderr)
 
     def test_debug_keeps_lan_wildcard(self):
         res = _import_settings(DEBUG="True")

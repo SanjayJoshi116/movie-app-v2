@@ -3,6 +3,57 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.6] - 2026-10-31
+
+Fixes from the sixth module of the review sweep (B7, config & startup: `fix-config-sweep-b7`, backlog item 55; archived, specs synced into `api-hardening`, `service-health` and `recommendation-refresh`), plus the `/simplify` pass and step 7 code review over the combined I1 + B7 diff, fixed directly. No migration, API or dependency change. **Deploy note:** with `DEBUG` off the backend now refuses to start on a weak `SECRET_KEY` or `JWT_SIGNING_KEY`, without `TMDB_API_KEY`, or on an unrecognised boolean value; check `.env.docker` before upgrading.
+
+### Fixed
+- **Production refuses weak signing keys.** With `DEBUG` off, a `SECRET_KEY` (or a set `JWT_SIGNING_KEY`) under 50 characters, with under 5 distinct characters, or with the `django-insecure-` prefix stops startup (Django's own W009 rule), so the `.env.example` placeholder can't sign tokens in production. A blank `JWT_SIGNING_KEY` means `SECRET_KEY`; the error never prints the value.
+- **Production refuses to start without `TMDB_API_KEY`**, instead of serving every TMDB page as an error.
+- **Boolean settings can't silently read as off.** `DEBUG` and `EMAIL_USE_TLS` take `true/1/yes/on` or `false/0/no/off` in any case; blank means the default; anything else stops startup (`EMAIL_USE_TLS=true` used to turn STARTTLS off, since only `True` matched).
+- **`npm run dev` serves right away.** `start.py` starts `runserver` after `createcachetable` and runs the token flush, cache prune and recommendation warm-up beside it, as Docker does. It stops warming once Django exits, and an error or Ctrl+C in the launcher terminates the server instead of leaving it on :8000.
+- **Each dev device gets its own anon rate limit.** `start.py` defaults `TRUSTED_PROXY_COUNT` to 1 (CRA's proxy), so login and register limits are no longer shared by every device through `127.0.0.1`. The settings default stays 0.
+- **The startup warm-up backs off like a background refresh.** `save_recommendations()` sets the failure backoff itself on a kept-outage result (after its transaction), and the warm-up skips users already backing off or with a refresh running.
+- **Trailers play after leaving a password-reset or TMDB-callback page in-app** (0.31.5 regression): the page's `no-referrer` policy outlived the navigation and YouTube refused the embed (Error 153); the iframe now sets its own `referrerPolicy`.
+- **The Docker background startup block always exits 0**, because gunicorn reaps it like a worker and halts on exit code 3 or 4.
+
+### Changed
+- CI's backend image check passes a `TMDB_API_KEY` placeholder.
+- `backend/.env.example` documents the key rule and generator, key rotation signing users out unless `JWT_SIGNING_KEY` is set, the boolean spellings and the dev proxy count.
+
+### Docs
+- `CLAUDE.md` (startup order, fail-closed list, `_env_bool` rule, warm-up backoff), `docs/ARCHITECTURE.md` (fail-closed settings, dev throttle identity, trailer referrer), README (env samples, startup, `DEBUG` spellings), BUG_BACKLOG items 54 and 55, `ideas.md` sweep table, features.txt.
+
+### Tests
+- `test_settings_fail_closed.py`: weak keys refused (value not printed) and allowed under `DEBUG`, blank JWT key falls back, missing TMDB key, boolean spellings incl. blank and an unrecognised value. `test_startup_warmup.py`: server starts before the best-effort steps, steps stop once it exits, `finally` terminates it, dev proxy hop, entrypoint block ends `exit 0`. `test_rec_refresh_bounds.py`: warm-up runs the real command and sets the backoff only on a refused result, skips backed-off and refreshing users, sets the marker outside the save transaction. `TrailerEmbed.test.tsx`: player's referrer policy. `test_production_rendering.py`'s prod env gets the stronger key and TMDB key.
+- Totals: backend pytest 693 pass + 25 skip; 2 failed under the full suite's load and pass alone (the known proxy deadline test, and `test_metadata_backfill`'s successive-runs test, whose code and test this release doesn't touch; its file passes 22/22); ruff, typecheck and lint clean; TrailerEmbed Jest pass. No e2e covers trailers, so none was rerun.
+
+## [0.31.5] - 2026-10-31
+
+Fixes from the fifth module of the review sweep (I1, deploy & CI: `fix-deploy-sweep-i1`, backlog item 54; archived, specs synced into `ci-pipeline`, `container-deployment` and `service-health`), including the three hardening notes from that module's `/security-review`, which found nothing exploitable. Deployment and CI only: no app code, API, migration or dependency change. Docker and nginx behaviour is checked here only statically; CI's `docker` job and the next deploy are the real check.
+
+### Fixed
+- **A slow boot can't leave the Docker stack down.** The entrypoint ran the token flush, title-cache prune and recommendation warm-up (up to ~150 s together) before gunicorn, past the backend healthcheck's ~100 s window; an unhealthy backend left the frontend, which waits for it, never started. gunicorn now starts right after `migrate` and `createcachetable`, the three bounded steps run in the background beside it, and `start_period` is 300 s (the first passing check still ends it).
+- **Recreating only the backend container no longer 502s the API.** nginx resolved `backend` once at startup; it now resolves it per request through Docker's DNS (`resolver 127.0.0.11`, variable `proxy_pass`), and boots even when `backend` doesn't resolve.
+- **Password-reset and TMDB-callback tokens can't reach nginx's error log.** Only the access log was redacted, and the error log records `referrer:` verbatim on an upstream error. Those two pages are now served with `Referrer-Policy: no-referrer`, so their API calls carry no referer; every other page keeps `strict-origin-when-cross-origin`.
+
+### Changed
+- `X-Forwarded-Proto` reaches Django only as `https` or `http`, never another client value (Django doesn't read it today; a comment warns against trusting it).
+- CI pins what still floated: the backend job's Postgres service uses compose's tag + digest, and Node `22.23.2` / Python `3.12.14` match the production images exactly.
+- CI's `docker` job runs `manage.py check --deploy` inside the built backend image with `DEBUG` off and placeholder settings, and starts the frontend image without `--add-host`. The smoke script checks the no-referrer header on the token pages.
+- The `frontend` and `backend` CI jobs are capped at 20 minutes (they had GitHub's 6-hour default).
+- The frontend image copies `.npmrc` and runs a plain `npm ci` instead of restating `--legacy-peer-deps`.
+
+### Internal
+- The backend CI job's three copies of its `env:` block are one job-level block.
+
+### Docs
+- `CLAUDE.md` (background startup steps, token-page referrer map, per-request backend resolution, forwarded scheme, backend image check, CI version pins), `docs/ARCHITECTURE.md` (background steps and healthcheck, no-referrer token pages, per-request resolution), BUG_BACKLOG item 54, `ideas.md` sweep table, README, features.txt.
+
+### Tests
+- `test_startup_warmup.py`: both startup paths run the same best-effort steps with the same bounds; in Docker they sit in the background block after the required steps, and gunicorn is the last line. `test_nginx_conf.py`: resolver and variable `proxy_pass`, the referrer-policy map, the normalized forwarded scheme. `test_compose_config.py`: healthcheck window, digest on CI's service image, CI Node/Python equal to the images', `.npmrc` copied.
+- Totals: backend pytest 676 pass + 25 skip (the load-sensitive proxy deadline test failed under the full suite and passes alone); ruff and `makemigrations --check` clean. `check --deploy` with the CI step's settings exits 0 locally (four expected `--deploy` warnings). No frontend code changed, so Jest and e2e weren't rerun.
+
 ## [0.31.4] - 2026-10-30
 
 Fixes from the fourth module of the review sweep (B3, library CRUD: `fix-library-sweep-b3`, backlog item 53; archived, specs synced into `data-backup`, `input-validation`, `ratings` and a new `library-limits`), the code review and `/simplify` pass of that fix, and a CI fix. No migration or dependency change. The bulk response gains two counts.

@@ -18,15 +18,27 @@ The health endpoint (`GET /api/health/`) SHALL respond `200` with `{"status": "o
 - **THEN** the second endpoint's throttle allowance is unaffected by the health calls
 
 ### Requirement: Best-effort pre-warm work cannot block startup
-In every supported startup path (local `start.py` and the Docker entrypoint), the recommendation cache warm-up step SHALL be bounded to at most 30 seconds. If it fails, errors, or exceeds that bound, startup SHALL continue to the application server without failing.
+In every supported startup path (local `start.py` and the Docker entrypoint), the recommendation cache warm-up step SHALL be bounded to at most 30 seconds. If it fails, errors, or exceeds that bound, startup SHALL continue to the application server without failing. In both startup paths, the best-effort steps (expired-session cleanup, title-cache cleanup, recommendation warm-up) SHALL NOT delay the application server: it starts once the required steps (migrations, cache table) are done, and the best-effort steps run alongside it with the same bounds. Both startup paths SHALL run the same best-effort steps with the same bounds.
 
 #### Scenario: TMDB hangs during container start
 - **WHEN** the container starts and the recommendation warm-up does not finish within 30 seconds
-- **THEN** the warm-up is stopped, a message saying it was skipped is logged, and the application server starts and begins accepting requests
+- **THEN** the warm-up is stopped, a message saying it was skipped is logged, and the application server accepts requests throughout
 
 #### Scenario: Warm-up errors out
 - **WHEN** the recommendation warm-up exits with a non-zero status
 - **THEN** the application server still starts
+
+#### Scenario: Slow cleanup at container start
+- **WHEN** the expired-session or title-cache cleanup takes its full bound
+- **THEN** the application server is already accepting requests while it runs
+
+#### Scenario: Slow cleanup in local development
+- **WHEN** a developer runs `npm run dev` and the expired-session cleanup takes its full bound
+- **THEN** the development server is already accepting requests while it runs
+
+#### Scenario: A step added to one startup path
+- **WHEN** a best-effort step or its bound is changed in one startup path but not the other
+- **THEN** the backend test suite fails
 
 ### Requirement: Unhandled server errors are logged in production
 With debug mode off, an unhandled exception while serving a request SHALL produce a server log entry that includes the request path and the exception traceback. Routine client-error responses (4xx) SHALL NOT produce log entries.
@@ -82,3 +94,14 @@ Every backend start, in the Docker entrypoint and in the local `start.py`, SHALL
 #### Scenario: Cleanup fails
 - **WHEN** the cleanup step errors or exceeds its time bound
 - **THEN** a message says it was skipped and the application server starts as usual
+
+### Requirement: The backend healthcheck allows for a slow first start
+The deployment's backend healthcheck SHALL NOT mark the backend unhealthy while it is still running its required startup steps, including a long migration of up to five minutes. Once the server answers, it SHALL be reported healthy at the next check.
+
+#### Scenario: Long migration on deploy
+- **WHEN** a deploy's migrations take three minutes before the application server starts
+- **THEN** the backend becomes healthy once the server answers, and the frontend starts after it
+
+#### Scenario: Normal start
+- **WHEN** the backend starts in a few seconds
+- **THEN** it is reported healthy within one check interval of the server answering

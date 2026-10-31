@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks the built frontend image's real nginx (container-deployment spec):
-# security headers, a revalidated entry page, 404 for a missing chunk, and a
-# gzip'd, immutably cached hashed bundle, and HSTS only over HTTPS.
+# security headers, a revalidated entry page, 404 for a missing chunk, a
+# gzip'd, immutably cached hashed bundle, HSTS only over HTTPS, and no
+# referrer on the one-time-token pages.
 # Usage: smoke-frontend.sh [base-url] [container-name]
 set -uo pipefail
 
@@ -57,6 +58,16 @@ else
   has "$h" "Cache-Control" "public, max-age=31536000, immutable" "$bundle"
   security_headers "$h" "$bundle"
 fi
+
+# Pages carrying a one-time token in their URL send no Referer (their API calls
+# would otherwise put it in an error-log line); security_headers above checks
+# every other page keeps strict-origin-when-cross-origin.
+for path in "/reset-password/x/y/" "/tmdb-callback?request_token=x&approved=true"; do
+  h="$(headers "$path")"
+  [ "$(status_of "$h")" = "200" ] || fail "$path: status $(status_of "$h"), expected 200"
+  has "$h" "Referrer-Policy" "no-referrer$" "$path"
+  has "$h" "Content-Security-Policy" "default-src 'self'" "$path"
+done
 
 # HSTS only when the TLS terminator in front says the request came over HTTPS.
 h="$(headers / -H "X-Forwarded-Proto: https")"

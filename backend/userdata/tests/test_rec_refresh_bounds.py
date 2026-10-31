@@ -1,6 +1,7 @@
 """bound-rec-refresh: failure backoff, the per-run fill cap, the per-user daily
 title budget, warm-up order, and the per-process refresh limit."""
 import threading
+from io import StringIO
 from datetime import date, timedelta
 from unittest.mock import patch
 
@@ -12,6 +13,8 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from userdata import metadata_backfill, recommendations, tmdb_budget
+from django.core.management import call_command
+
 from userdata.management.commands.compute_recommendations import users_to_warm
 from userdata.models import TMDBMediaCache, TmdbTitleBudget, UserRecommendationCache, WatchedEntry
 
@@ -228,6 +231,67 @@ class WarmupOrderTests(APITestCase):
         order = list(users_to_warm())
         self.assertEqual(order, [missing, stale_oldest, stale_newer])
         self.assertNotIn(fresh, order)
+
+
+class WarmupBackoffTests(APITestCase):
+    """fix-config-sweep-b7: the warm-up runs in its own process, so it backs off
+    through the shared marker the same way a background refresh does."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="warm", password="Xk9#mQ2vTz8p")
+        WatchedEntry.objects.create(user=self.user, media_id=1, media_type="movie", title="A")
+        _stale_row(self.user)
+        self.addCleanup(cache.delete, recommendations._backoff_key(self.user.id))
+
+    def _warm(self, tmdb_fails=False):
+        """Run the real command and save; only the computes are stubbed (empty
+        result, the shared FetchHealth marked failed when TMDB is down)."""
+        def compute(user, health):
+            if tmdb_fails:
+                health.mark_failed()
+            return []
+        command = "userdata.management.commands.compute_recommendations"
+        with patch(f"{command}._compute_for_you", side_effect=compute) as for_you, \
+                patch(f"{command}._compute_personalized", side_effect=compute):
+            call_command("compute_recommendations", stdout=StringIO(), stderr=StringIO())
+        return for_you
+
+    def test_refused_result_sets_the_backoff(self):
+        self._warm(tmdb_fails=True)
+        self.assertTrue(recommendations.in_failure_backoff(self.user.id))
+
+    def test_saved_result_sets_none(self):
+        self._warm()
+        self.assertFalse(recommendations.in_failure_backoff(self.user.id))
+
+    def test_superseded_result_sets_none(self):
+        UserRecommendationCache.objects.filter(user=self.user).update(
+            source_started_at=timezone.now() + timedelta(hours=1),
+        )
+        self._warm()
+        self.assertFalse(recommendations.in_failure_backoff(self.user.id))
+
+    def test_user_in_backoff_is_skipped(self):
+        cache.set(recommendations._backoff_key(self.user.id), 1, recommendations.REFRESH_FAILURE_BACKOFF)
+        self._warm().assert_not_called()
+
+    def test_user_being_refreshed_is_skipped(self):
+        # The server runs beside the warm-up, so a request may already have
+        # started this user's refresh.
+        UserRecommendationCache.objects.filter(user=self.user).update(refreshing_since=timezone.now())
+        self._warm().assert_not_called()
+
+    def test_backoff_is_set_after_the_save_transaction(self):
+        depth = []
+        real_set = recommendations.cache.set
+
+        def record(*args, **kwargs):
+            depth.append(len(connection.atomic_blocks))
+            return real_set(*args, **kwargs)
+        baseline = len(connection.atomic_blocks)  # the test case's own transaction
+        with patch.object(recommendations.cache, "set", side_effect=record):
+            self._warm(tmdb_fails=True)
+        self.assertEqual(depth, [baseline])
 
 
 class RefreshConcurrencyTests(APITestCase):

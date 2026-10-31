@@ -5,14 +5,16 @@ from django.core.management.base import BaseCommand
 from django.db.models import F, Q
 from django.utils import timezone
 
-from userdata.models import WatchedEntry
+from userdata.models import UserRecommendationCache, WatchedEntry
 from userdata.recommendations import (
     KEPT_OUTAGE,
     RECOMMENDATIONS_TTL_HOURS,
+    REFRESH_STATUS_WINDOW,
     SAVED,
     FetchHealth,
     _compute_for_you,
     _compute_personalized,
+    in_failure_backoff,
     save_recommendations,
 )
 
@@ -45,6 +47,21 @@ class Command(BaseCommand):
         self.stdout.write(f"Computing recommendations for {total} user(s)...")
 
         for i, user in enumerate(users, 1):
+            # A user backing off from a TMDB outage (set by any process) waits
+            # it out here too, like their recommendation polls do. Checked per
+            # user reached, since the 30 s cap usually ends the run early.
+            # Under DEBUG the marker lives in each process's own LocMem cache,
+            # so there this only sees this command's own outcomes.
+            if in_failure_backoff(user.id):
+                self.stdout.write(f"  [{i}/{total}] {user.username} — skipped (backing off after a TMDB failure)")
+                continue
+            # The server is already up, so a request may have started this
+            # user's refresh: don't compute the same result twice.
+            if UserRecommendationCache.objects.filter(
+                user=user, refreshing_since__gt=timezone.now() - REFRESH_STATUS_WINDOW,
+            ).exists():
+                self.stdout.write(f"  [{i}/{total}] {user.username} — skipped (a refresh is already running)")
+                continue
             try:
                 started = timezone.now()
                 health = FetchHealth()
@@ -53,7 +70,7 @@ class Command(BaseCommand):
                 result = save_recommendations(user, for_you, personalized, health, started=started)
                 outcome = {
                     SAVED: "done",
-                    KEPT_OUTAGE: "kept previous (TMDB failed)",
+                    KEPT_OUTAGE: "kept previous (TMDB failed), backing off",
                 }.get(result, "skipped (a newer compute already saved)")
                 self.stdout.write(f"  [{i}/{total}] {user.username} — {outcome}")
             except Exception as e:

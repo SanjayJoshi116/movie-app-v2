@@ -18,3 +18,13 @@ test("activating it loads the player, autoplaying", () => {
   );
   expect(screen.queryByRole("button", { name: /play trailer/i })).toBeNull();
 });
+
+test("the player sends a referrer even under a no-referrer document policy", () => {
+  // nginx serves the reset and TMDB callback pages with no-referrer, which an
+  // in-app navigation keeps; YouTube refuses an embed with no Referer.
+  render(<TrailerEmbed videoKey="abc123" name="Official Trailer" />);
+  fireEvent.click(screen.getByRole("button", { name: /play trailer/i }));
+  expect(screen.getByTitle("Official Trailer")).toHaveAttribute(
+    "referrerpolicy", "strict-origin-when-cross-origin",
+  );
+});

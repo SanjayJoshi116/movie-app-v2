@@ -719,38 +719,50 @@ def save_recommendations(user, for_you, personalized, health, started=None):
 
     When a TMDB call failed and the result has fewer non-empty sections than
     the stored row, or none at all, the stored row stays untouched (with no
-    row, nothing is written) and a later refresh retries: KEPT_OUTAGE.
+    row, nothing is written) and a later refresh retries: KEPT_OUTAGE, which
+    also starts the user's failure backoff, so every compute path (background
+    refresh, startup warm-up) backs off alike.
     With `started` (when this compute began), a stored row from a compute that
     began later is kept (SUPERSEDED, not a failure): two processes can each
     refresh one user. A clean, current compute writes: SAVED.
     """
     with transaction.atomic():
-        # Serializes this user's saves even before a row exists to lock (a
-        # first compute): row locks alone let two first saves both pass. Both
-        # checks below read the row under it, so a save landing in between
-        # can't be overwritten by an outage result.
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [SAVE_LOCK_NAMESPACE, user.id])
-        stored = UserRecommendationCache.objects.select_for_update().filter(user=user).first()
-        if health.failed:
-            new_count = _non_empty_sections(for_you, personalized)
-            old_count = _non_empty_sections(stored.for_you_json, stored.personalized_json) if stored else 0
-            if new_count == 0 or new_count < old_count:
-                logger.warning(
-                    "Rec cache refresh for user %s kept the previous result: TMDB failed (%s -> %s sections)",
-                    user.id, old_count, new_count,
-                )
-                return KEPT_OUTAGE
-        if (
-            started is not None and stored is not None
-            and stored.source_started_at is not None and stored.source_started_at > started
-        ):
-            logger.info("Rec cache refresh for user %s superseded by a newer compute", user.id)
-            return SUPERSEDED
-        defaults = {"for_you_json": for_you, "personalized_json": personalized}
-        if started is not None:
-            defaults["source_started_at"] = started
-        UserRecommendationCache.objects.update_or_create(user=user, defaults=defaults)
+        outcome = _save_locked(user, for_you, personalized, health, started)
+    if outcome == KEPT_OUTAGE:
+        # Only an outage backs off; being superseded isn't a failure. Set
+        # after the transaction, so the marker's DB-backed cache write
+        # (production) isn't part of it, and the lock is already released.
+        cache.set(_backoff_key(user.id), 1, REFRESH_FAILURE_BACKOFF)
+    return outcome
+
+
+def _save_locked(user, for_you, personalized, health, started):
+    # Serializes this user's saves even before a row exists to lock (a
+    # first compute): row locks alone let two first saves both pass. Both
+    # checks below read the row under it, so a save landing in between
+    # can't be overwritten by an outage result.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [SAVE_LOCK_NAMESPACE, user.id])
+    stored = UserRecommendationCache.objects.select_for_update().filter(user=user).first()
+    if health.failed:
+        new_count = _non_empty_sections(for_you, personalized)
+        old_count = _non_empty_sections(stored.for_you_json, stored.personalized_json) if stored else 0
+        if new_count == 0 or new_count < old_count:
+            logger.warning(
+                "Rec cache refresh for user %s kept the previous result: TMDB failed (%s -> %s sections)",
+                user.id, old_count, new_count,
+            )
+            return KEPT_OUTAGE
+    if (
+        started is not None and stored is not None
+        and stored.source_started_at is not None and stored.source_started_at > started
+    ):
+        logger.info("Rec cache refresh for user %s superseded by a newer compute", user.id)
+        return SUPERSEDED
+    defaults = {"for_you_json": for_you, "personalized_json": personalized}
+    if started is not None:
+        defaults["source_started_at"] = started
+    UserRecommendationCache.objects.update_or_create(user=user, defaults=defaults)
     return SAVED
 
 
@@ -764,9 +776,6 @@ def _refresh_cache(user):
         outcome = save_recommendations(user, for_you, personalized, health, started=started)
         if outcome == SAVED:
             logger.info("Recommendation cache refreshed for user %s", user.id)
-        elif outcome == KEPT_OUTAGE:
-            # Only an outage backs off; being superseded isn't a failure.
-            cache.set(_backoff_key(user.id), 1, REFRESH_FAILURE_BACKOFF)
     except Exception as e:
         # Broad on purpose: this spans TMDB I/O, numpy/sklearn computation,
         # and a DB write in one background thread with no caller to report

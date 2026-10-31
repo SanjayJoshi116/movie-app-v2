@@ -2,7 +2,8 @@
 
 start.py (local) goes through warmup.run_warmup; docker-entrypoint.sh has its
 own `timeout 30 ... || echo ...` line, checked statically everywhere and run
-for real on POSIX (CI) with the command swapped for a stub.
+for real on POSIX (CI) with the command swapped for a stub. In the entrypoint
+the best-effort steps run in a background block beside gunicorn.
 """
 import os
 import re
@@ -17,7 +18,16 @@ from warmup import run_warmup
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 ENTRYPOINT = (BACKEND_DIR / "docker-entrypoint.sh").read_text(encoding="utf-8")
-WARMUP_LINE = next(line for line in ENTRYPOINT.splitlines() if "compute_recommendations" in line)
+START_PY = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
+# Stripped: the best-effort lines are indented inside the background block.
+ENTRYPOINT_LINES = [line.strip() for line in ENTRYPOINT.splitlines() if not line.strip().startswith("#")]
+
+
+def _entrypoint_line(needle):
+    return next(line for line in ENTRYPOINT_LINES if needle in line)
+
+
+WARMUP_LINE = _entrypoint_line("compute_recommendations")
 
 
 class RunWarmupTests(TestCase):
@@ -34,8 +44,7 @@ class RunWarmupTests(TestCase):
         self.assertTrue(run_warmup([sys.executable, "-c", "pass"], timeout=30))
 
     def test_start_py_uses_it_with_the_30s_bound(self):
-        start = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
-        self.assertRegex(start, r'run_warmup\(\[sys\.executable, manage, "compute_recommendations"\], timeout=30\)')
+        self.assertRegex(START_PY, r'run_warmup\(\[sys\.executable, manage, "compute_recommendations"\], timeout=30\)')
 
 
 class EntrypointWarmupTests(TestCase):
@@ -59,9 +68,9 @@ class EntrypointWarmupTests(TestCase):
                 self.assertTrue(res.stdout.rstrip().endswith("started"))
 
 
-FLUSH_LINE = next(line for line in ENTRYPOINT.splitlines() if "flushexpiredtokens" in line and not line.startswith("#"))
-PRUNE_LINE = next(line for line in ENTRYPOINT.splitlines() if "prune_media_cache" in line and not line.startswith("#"))
-GUNICORN_LINE = next(line for line in ENTRYPOINT.splitlines() if line.startswith("exec gunicorn"))
+FLUSH_LINE = _entrypoint_line("flushexpiredtokens")
+PRUNE_LINE = _entrypoint_line("prune_media_cache")
+GUNICORN_LINE = _entrypoint_line("exec gunicorn")
 
 
 class ExpiredTokenFlushTests(TestCase):
@@ -73,9 +82,8 @@ class ExpiredTokenFlushTests(TestCase):
         self.assertLess(ENTRYPOINT.index(FLUSH_LINE), ENTRYPOINT.index("exec gunicorn"))
 
     def test_start_py_runs_it_through_the_bounded_helper(self):
-        start = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
-        self.assertRegex(start, r'run_warmup\(\[sys\.executable, manage, "flushexpiredtokens"\], timeout=\d+')
-        self.assertLess(start.index("flushexpiredtokens"), start.index('"runserver"'))
+        self.assertRegex(START_PY, r'run_warmup\(\[sys\.executable, manage, "flushexpiredtokens"\], timeout=\d+')
+        self.assertLess(START_PY.index('"runserver"'), START_PY.index('"flushexpiredtokens"'))
 
     def test_messages_name_the_step(self):
         from io import StringIO
@@ -96,10 +104,51 @@ class MediaCachePruneStepTests(TestCase):
         self.assertLess(ENTRYPOINT.index(PRUNE_LINE), ENTRYPOINT.index("exec gunicorn"))
 
     def test_start_py_runs_it_through_the_bounded_helper(self):
-        start = (BACKEND_DIR / "start.py").read_text(encoding="utf-8")
-        self.assertRegex(start, r'run_warmup\(\[sys\.executable, manage, "prune_media_cache"\], timeout=\d+')
-        self.assertLess(start.index('"flushexpiredtokens"'), start.index('"prune_media_cache"'))
-        self.assertLess(start.index('"prune_media_cache"'), start.index('"runserver"'))
+        self.assertRegex(START_PY, r'run_warmup\(\[sys\.executable, manage, "prune_media_cache"\], timeout=\d+')
+        self.assertLess(START_PY.index('"flushexpiredtokens"'), START_PY.index('"prune_media_cache"'))
+
+
+class StartupPathsTests(TestCase):
+    """fix-deploy-sweep-i1: both startup paths run the same best-effort steps,
+    and in Docker they run beside the server instead of before it."""
+
+    def test_both_paths_run_the_same_steps_with_the_same_bounds(self):
+        entrypoint = [(name, int(secs)) for secs, name in re.findall(
+            r"^\s*timeout (\d+) python manage\.py (\w+) \|\| echo ", ENTRYPOINT, re.M)]
+        start = [(name, int(secs)) for name, secs in re.findall(
+            r'run_warmup\(\[sys\.executable, manage, "(\w+)"\], timeout=(\d+)', START_PY)]
+        self.assertEqual(len(entrypoint), 3)
+        self.assertEqual(entrypoint, start)
+
+    def test_best_effort_steps_run_in_the_background_after_the_required_ones(self):
+        opening, closing = ENTRYPOINT_LINES.index("("), ENTRYPOINT_LINES.index(") &")
+        block = ENTRYPOINT_LINES[opening:closing]
+        for line in (FLUSH_LINE, PRUNE_LINE, WARMUP_LINE):
+            self.assertIn(line, block)
+        self.assertLess(ENTRYPOINT_LINES.index("python manage.py migrate --noinput"), opening)
+        self.assertLess(ENTRYPOINT_LINES.index("python manage.py createcachetable"), opening)
+        self.assertEqual([line for line in ENTRYPOINT_LINES if line][-1], GUNICORN_LINE)
+        # gunicorn reaps the block as a child and halts on exit code 3 or 4.
+        self.assertEqual([line for line in block if line and not line.startswith("#")][-1], "exit 0")
+
+    def test_start_py_starts_the_server_before_the_best_effort_steps(self):
+        # fix-config-sweep-b7: same as the entrypoint, without a shell.
+        server = START_PY.index('subprocess.Popen([sys.executable, manage, "runserver"')
+        self.assertLess(START_PY.index('"createcachetable"'), server)
+        first_step = START_PY.index("run_warmup([")
+        self.assertLess(server, first_step)
+        # Django's exit status is passed on once the steps are done.
+        self.assertGreater(START_PY.index("sys.exit(server.wait())"), START_PY.rindex("run_warmup(["))
+
+    def test_start_py_stops_warming_once_the_server_exits_and_never_orphans_it(self):
+        loop = START_PY.index("for step in steps:")
+        self.assertIn("if server.poll() is not None:\n            break", START_PY[loop:])
+        self.assertRegex(
+            START_PY, r"finally:\n(?:    #.*\n)*    if server\.poll\(\) is None:\n        server\.terminate\(\)",
+        )
+
+    def test_start_py_trusts_the_dev_proxy_hop(self):
+        self.assertIn('os.environ.setdefault("TRUSTED_PROXY_COUNT", "1")', START_PY)
 
 
 class ThreadedServerTests(TestCase):

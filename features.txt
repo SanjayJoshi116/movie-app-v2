@@ -1,4 +1,4 @@
-CINE DB — Feature List (v0.31.4)
+CINE DB — Feature List (v0.31.6)
 
 DISCOVERY
 - Browse Discover/Now Playing/Top Rated/Upcoming/Popular for movies, TV, anime
@@ -92,7 +92,8 @@ UI/UX
 
 SECURITY & OPERATIONS
 - Production Docker stack runs the backend as an unprivileged user from the image only (no host-mounted code or migrations)
-- Content-Security-Policy, HSTS (behind HTTPS) and other security headers on every response
+- Content-Security-Policy, HSTS (behind HTTPS) and other security headers on every response; password-reset and TMDB-callback pages send no referrer, so their one-time tokens never reach a server log
+- Docker stack starts serving right after migrations (cleanup and cache warm-up run alongside), and a redeployed backend is found again without restarting the web server
 - The TMDB API key, TMDB session ids (guest sessions included) and request tokens are redacted from every server log line, and unexpected server errors are logged with a traceback in production
 - Password-reset links and TMDB callback tokens never appear in the web server's access log; production refuses to start without a configured email backend (so reset links are never printed to the log) or without the app's real address (so reset links never point at localhost)
 - Imports of unknown titles can't flood TMDB: missing title details are filled at most 100 at a time (recommendations at most 200 per refresh), every account's background title lookups are capped at 1,000 a day, and titles TMDB doesn't know are remembered permanently
@@ -109,7 +110,10 @@ SECURITY & OPERATIONS
 - Library pages stay fast however long a history gets: each list is read straight from a per-user index in its display order; cached title details nobody has watched are pruned at startup
 - A password reset applies completely or not at all, and a deleted or renamed account's failed sign-in count never carries over to whoever registers that username next
 - The backend serves requests on threads (3 processes × 8 threads), so a few requests waiting on a slow TMDB never block sign-in or the rest of the app; background title-detail lookups run at most 2 at a time per process; expired sign-in records are cleaned up at every start, without ever holding startup up
+- Production refuses to start with a weak or default secret key (sign-in tokens included), without a TMDB key, or with a misspelled on/off setting (true/false, 1/0, yes/no, on/off accepted)
+- Local development starts serving right away too (cleanup and warm-up run beside it), and each device gets its own sign-in rate limit
+- Trailers play after following a link from a password-reset or TMDB-connect page
 - No Django admin site: the only login is the app's own, with its rate limits
 - TMDB browsing limits apply per signed-in user, so people sharing one network don't share a limit; a malformed time zone never causes an error
 - A streaming-provider link from TMDB is used only if it's a real http(s) address
-- Node 22 and the Python linter are pinned, so local, CI and Docker builds use the same versions; a fresh clone runs `npm run dev` with any Python environment (set DJANGO_PYTHON), and the example env files list every setting; CI never retries a failed test, lints the e2e specs, and builds and checks both Docker images
+- Node 22 and the Python linter are pinned, so local, CI and Docker builds use the same versions; a fresh clone runs `npm run dev` with any Python environment (set DJANGO_PYTHON), and the example env files list every setting; CI never retries a failed test, lints the e2e specs, builds and checks both Docker images (the backend one with production settings), and caps every job's run time

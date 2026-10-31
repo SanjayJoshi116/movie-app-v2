@@ -36,15 +36,15 @@ Order: B1 → F1 → B3 → B2 → I1 → B7 → B4 → F2 → F3 → B6 → B5 
 | B4 | Social & notifications | `backend/userdata/social_views.py notifications_views.py` | ~490 | med |
 | B5 | Recommendations & stats | `backend/userdata/recommendations.py metadata_backfill.py genre_families.py stats_views.py signals.py` | ~1,400 | low |
 | B6 | Data layer | `backend/userdata/models.py backend/userdata/migrations backend/userdata/management` | ~1,340 | med |
-| B7 | Config & startup | `backend/cinedb backend/start.py backend/warmup.py backend/docker-entrypoint.sh` | ~480 | **high** |
+| B7 ✅ | Config & startup | `backend/cinedb backend/start.py backend/warmup.py backend/docker-entrypoint.sh` | ~480 | **high** |
 | F1 ✅ | API, auth & session | `src/api src/context` | ~1,410 | **high** |
 | F2 | Hooks & utils | `src/hooks src/utils` | ~3,110 | med |
 | F3 | Pages (split account vs library/browse if shallow) | `src/pages` | ~4,900 | med |
 | F4 | Components (split detail/media vs rest if shallow) | `src/components` | ~4,800 | low |
 | F5 | Shell & theme | `src/App.tsx src/index.tsx src/*.css src/constants src/theme src/types` | ~1,900 | low |
-| I1 | Deploy & CI | `nginx.conf Dockerfile.frontend backend/Dockerfile docker-compose.yml .github/workflows scripts` | ~550 | **high** |
+| I1 ✅ | Deploy & CI | `nginx.conf Dockerfile.frontend backend/Dockerfile docker-compose.yml .github/workflows scripts` | ~550 | **high** |
 
-Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4). Next: I1. Next feature after the sweep: item 2, rating queue.
+Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4), I1 (item 54, `fix-deploy-sweep-i1`, 0.31.5), B7 (item 55, `fix-config-sweep-b7`, 0.31.6). Next: B4. Next feature after the sweep: item 2, rating queue.
 
 ## Tier 1: quick wins
 

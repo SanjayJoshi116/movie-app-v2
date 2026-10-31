@@ -14,6 +14,11 @@ load_dotenv(base / ".env")
 # settings.py defaults DEBUG off (fail closed); this is the local-dev launcher,
 # so turn it on here for every manage.py subprocess unless .env/env says otherwise.
 os.environ.setdefault("DEBUG", "True")
+# Dev traffic reaches Django through CRA's proxy (package.json "proxy"), which
+# connects from loopback and appends the browser's address to X-Forwarded-For.
+# Trusting that one hop gives each device its own throttle bucket. The settings
+# default stays 0 for any deploy without a proxy in front.
+os.environ.setdefault("TRUSTED_PROXY_COUNT", "1")
 
 db_name     = os.environ.get("DB_NAME", "cinedb")
 db_user     = os.environ.get("DB_USER", "postgres")
@@ -42,14 +47,28 @@ subprocess.run([sys.executable, manage, "migrate", "--run-syncdb"], check=True)
 # Idempotent; only used when DEBUG is off (DatabaseCache), harmless otherwise.
 subprocess.run([sys.executable, manage, "createcachetable"], check=True)
 
-# Step 3: Drop expired session-token rows (best-effort, bounded)
-run_warmup([sys.executable, manage, "flushexpiredtokens"], timeout=60, label="flushexpiredtokens")
-# Stale title-cache rows no watched entry uses (best-effort, bounded)
-run_warmup([sys.executable, manage, "prune_media_cache"], timeout=60, label="prune_media_cache")
+# Step 3: Start the server now; the best-effort steps below run beside it, as
+# docker-entrypoint.sh does, so a slow one never keeps Django from listening.
+server = subprocess.Popen([sys.executable, manage, "runserver", "0.0.0.0:8000"])
 
-# Step 4: Pre-compute recommendation cache (best-effort — failure or a hung
-# TMDB call won't block startup)
-run_warmup([sys.executable, manage, "compute_recommendations"], timeout=30)
-
-# Step 5: Start server
-subprocess.run([sys.executable, manage, "runserver", "0.0.0.0:8000"], check=True)
+try:
+    # Each step is skipped once Django has exited: nothing is left to warm.
+    steps = (
+        # Step 4: Drop expired session-token rows (best-effort, bounded)
+        lambda: run_warmup([sys.executable, manage, "flushexpiredtokens"], timeout=60, label="flushexpiredtokens"),
+        # Stale title-cache rows no watched entry uses (best-effort, bounded)
+        lambda: run_warmup([sys.executable, manage, "prune_media_cache"], timeout=60, label="prune_media_cache"),
+        # Pre-compute recommendation cache (best-effort: failure or a hung
+        # TMDB call won't stop the server)
+        lambda: run_warmup([sys.executable, manage, "compute_recommendations"], timeout=30),
+    )
+    for step in steps:
+        if server.poll() is not None:
+            break
+        step()
+    # Django's exit status is the launcher's (scripts/run-django.js passes it on).
+    sys.exit(server.wait())
+finally:
+    # An error or Ctrl+C in this script must not leave runserver on :8000.
+    if server.poll() is None:
+        server.terminate()

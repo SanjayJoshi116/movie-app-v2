@@ -225,7 +225,8 @@ backend/
 │   ├── management/
 │   │   └── commands/
 │   │       ├── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
-│   │       │                               #   run at container startup via docker-entrypoint.sh
+│   │       │                               #   run at startup by both paths; skips users backing off
+│   │       │                               #   after a TMDB failure or already refreshing
 │   │       ├── prune_media_cache.py        # Deletes TMDBMediaCache rows past CACHE_TTL_DAYS that no watched
 │   │       │                               #   entry uses (startup step, both paths)
 │   │       └── rotate_tmdb_sessions.py     # Re-encrypts stored TMDB sessions under the first TMDB_SESSION_KEYS key
@@ -234,11 +235,11 @@ backend/
 │   │                            #   discover calls convert back to each type's own ids
 │   ├── tmdb_client.py           # Server-side TMDB API client: the one pooled, retrying session every TMDB call uses
 │   └── tests/                   # pytest suite (see ## Testing)
-├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable → flushexpiredtokens
-│                                #   and prune_media_cache (each capped at 60s) → compute_recommendations
-│                                #   (capped at 30s) → gunicorn
-│                                #   (threaded: 3 workers × 8 threads)
-├── warmup.py                  # Time-boxed best-effort startup steps (token flush, media-cache prune, recommendations warm-up) used by start.py
+├── docker-entrypoint.sh         # Prod container entrypoint: migrate → createcachetable → gunicorn
+│                                #   (threaded: 3 workers × 8 threads), with flushexpiredtokens and
+│                                #   prune_media_cache (each capped at 60s) → compute_recommendations
+│                                #   (capped at 30s) running in the background beside it
+├── warmup.py                  # Time-boxed best-effort startup steps (token flush, media-cache prune, recommendations warm-up) used by start.py, which starts runserver first and runs them beside it
 ├── pytest_dev_env.py            # pytest plugin (-p in pytest.ini): defaults DEBUG=True before settings load
 └── manage.py
 
@@ -464,7 +465,7 @@ python backend/manage.py migrate
 python backend/manage.py compute_recommendations
 ```
 
-> This runs automatically at backend startup. Run manually to warm the cache before first use.
+> This runs automatically at backend startup, beside the already-running server. Run manually to warm the cache before first use.
 
 6. Start the React dev server and Django together:
 
@@ -502,6 +503,8 @@ Local development only. `DJANGO_PYTHON` names the Python that `npm run dev`/`npm
 ### `backend/.env` — Django
 
 ```
+# With DEBUG off: 50+ characters, 5+ distinct, no django-insecure- prefix
+# (python -c "import secrets; print(secrets.token_urlsafe(50))")
 SECRET_KEY=your-django-secret-key
 TMDB_API_KEY=your_tmdb_api_key_here
 DB_NAME=cinedb
@@ -530,7 +533,8 @@ FRONTEND_URL=http://localhost:3000
 
 # Required when DEBUG is off (empty or `*` is refused at startup)
 # ALLOWED_HOSTS=yourdomain.com
-# Reverse proxies in front of Django (rate-limit client identity); 0 = none
+# Reverse proxies in front of Django (rate-limit client identity); 0 = none.
+# `npm run dev` defaults it to 1 (CRA's proxy), docker-compose.yml to 1 (nginx)
 # TRUSTED_PROXY_COUNT=0
 # Only with DEBUG off, and only for a frontend on another origin (unset = none)
 # CORS_ALLOWED_ORIGINS=https://app.example.com
@@ -637,9 +641,9 @@ Find the host LAN IP:
 | ---------- | ---------------------- | --------------- |
 | `frontend` | nginx + React build    | 80 (public)     |
 | `backend`  | Python/Django          | 8000 (internal) |
-| `db`       | postgres:15-alpine     | 5432 (internal) |
+| `db`       | postgres:15.19-alpine  | 5432 (internal) |
 
-Nginx proxies `/api/*` straight to the `backend` service (which itself proxies TMDB requests, keeping the API key server-side, and serves Django API calls directly) and `/media/*` to `backend` for uploaded avatars. PostgreSQL data persists in the `pgdata` Docker volume; uploaded avatars persist in the `media_data` volume.
+Nginx proxies `/api/*` straight to the `backend` service (which itself proxies TMDB requests, keeping the API key server-side, and serves Django API calls directly) and `/media/*` to `backend` for uploaded avatars. It looks the backend's address up while running (Docker's DNS), so recreating only the backend container needs no frontend restart. The backend reports healthy as soon as gunicorn answers, which happens right after migrations; the backend healthcheck allows up to 5 minutes for a long migration before counting failures. PostgreSQL data persists in the `pgdata` Docker volume; uploaded avatars persist in the `media_data` volume.
 
 ---
 
@@ -647,7 +651,7 @@ Nginx proxies `/api/*` straight to the `backend` service (which itself proxies T
 
 The Docker Compose setup above is a complete production stack (nginx + React build, Django/Gunicorn, PostgreSQL) — no separate deploy config needed. Any Docker-capable host works: a platform that builds from `docker-compose.yml` directly (Render, Railway, Fly.io), or a plain VPS running `docker compose up --build -d` behind a domain/TLS terminator of your choice.
 
-> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set to `True`, and with it off the backend refuses to start on the built-in dev `SECRET_KEY`, an empty/wildcard `ALLOWED_HOSTS`, or no `EMAIL_BACKEND`. Set a real `SECRET_KEY` and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` defaults `TRUSTED_PROXY_COUNT` to 1 for the bundled nginx. If you put another proxy/TLS terminator in front, raise it to match: `TRUSTED_PROXY_COUNT=2 docker compose up -d`, or set it in the root `.env` (compose reads that file for `${...}` values).
+> **Note:** `backend/cinedb/settings.py` fails closed: `DEBUG` is off unless set (`true`, `1`, `yes` or `on`), and with it off the backend refuses to start on a weak `SECRET_KEY` (under 50 characters, under 5 distinct, or the built-in `django-insecure-` default; same for a set `JWT_SIGNING_KEY`), no `TMDB_API_KEY`, an empty/wildcard `ALLOWED_HOSTS`, or no `EMAIL_BACKEND`. Boolean settings take `true`/`false` (also `1`/`0`, `yes`/`no`, `on`/`off`); any other value stops startup. Set a real `SECRET_KEY` (`python -c "import secrets; print(secrets.token_urlsafe(50))"`; changing it later signs everyone out unless `JWT_SIGNING_KEY` is set) and your domain in `ALLOWED_HOSTS` in `.env.docker` (see [Environment Variables](#environment-variables)). `docker-compose.yml` defaults `TRUSTED_PROXY_COUNT` to 1 for the bundled nginx. If you put another proxy/TLS terminator in front, raise it to match: `TRUSTED_PROXY_COUNT=2 docker compose up -d`, or set it in the root `.env` (compose reads that file for `${...}` values).
 
 > **HTTPS and security headers:** nginx sends a Content-Security-Policy on every response, and sends `Strict-Transport-Security` only when the request carries `X-Forwarded-Proto: https`. Make sure your TLS terminator sets that header (most do by default); a plain-HTTP LAN deployment never gets HSTS. If you add a new external origin to the app (an image host, an embed, a font), add it to the CSP in `nginx.conf` too, or browsers will block it.
 
@@ -800,7 +804,9 @@ backend/userdata/tests/
 ├── test_app_config.py              # No Django admin; backend/.env.example lists every variable settings.py reads
 ├── test_nginx_conf.py              # No add_header in a location, /static/ 404s, index.html no-cache,
 │                                   #   immutable /static/ cache (not on 404s), gzip off for /api/ and /media/,
-│                                   #   access log redacts reset links and TMDB callback tokens, server_tokens off
+│                                   #   access log redacts reset links and TMDB callback tokens, server_tokens off,
+│                                   #   no-referrer on token pages, backend resolved per request, X-Forwarded-Proto
+│                                   #   normalized
 ├── test_production_rendering.py   # Production API is JSON-only (no browsable API), STATIC_ROOT set
 ├── test_local_dates.py            # X-Timezone parsing/fallback (incl. tzdata directory names), CORS preflight,
 │                                  #   watched_tz storage, local stats/notification days
@@ -841,11 +847,13 @@ backend/userdata/tests/
 ├── test_email_uniqueness.py        # Email re-checked under an advisory lock; two racing changes, one wins
 ├── test_genre_families.py          # Movie/TV genre id families and per-type discover params
 ├── test_recommendation_genres.py   # Family-based counts, no movie genre sent to TV discover, low ratings don't seed
-├── test_startup_warmup.py          # Warm-up and token flush can't block startup; threaded gunicorn, TMDB pools
-│                                   #   sized for its threads
+├── test_startup_warmup.py          # Warm-up and token flush can't block startup; Docker runs them beside gunicorn;
+│                                   #   start.py and the entrypoint list the same steps; threaded gunicorn, TMDB
+│                                   #   pools sized for its threads
 ├── test_token_flush.py             # flushexpiredtokens drops expired session rows, keeps live ones
 ├── test_compose_config.py          # db reads only .env.db, backend/.dockerignore excludes env copies,
-│                                   #   tests and dev-only files; every FROM/image: pinned by digest
+│                                   #   tests and dev-only files; every FROM/image: (CI's too) pinned by digest;
+│                                   #   CI Node/Python equal the images'; healthcheck window; image copies .npmrc
 ├── test_dependency_versions.py     # Installed Django major.minor and ruff match their pins; pip
 │                                   #   playwright equals @playwright/test
 ├── test_e2e_mock_shapes.py         # Python e2e mock records and the TS DTO types (src/types/domain.ts)
@@ -956,11 +964,11 @@ pytest
 
 ### CI
 
-GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on a pinned `ubuntu-24.04` runner with Node 22 / Python 3.12: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects, split across 3 runners with `--shard`) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded artifact (the TS report, or the Python job's `test-results` traces, uploaded only on failure). A newer push to a pull request cancels that PR's older run.
+GitHub Actions runs five jobs on every push and pull request to `main` (see `.github/workflows/ci.yml`), all on a pinned `ubuntu-24.04` runner with the exact Node and Python versions of the production images: **frontend** (`tsc` for app + e2e specs, `eslint --max-warnings=0` over `src` and `e2e`, Jest (fails if it finds no tests), build), **backend** (`ruff check`, `makemigrations --check --dry-run`, Django `pytest`, deps installed with `-c constraints.txt`), **e2e-python** (pytest-playwright), **e2e-ts** (`npx playwright test`, both projects, split across 3 runners with `--shard`) and **docker** (builds both images, starts the frontend image and checks its nginx with `.github/scripts/smoke-frontend.sh`: security headers, a revalidated entry page, 404 for a missing chunk, gzip and long-lived cache on a hashed bundle, no referrer on the password-reset and TMDB-callback pages; and runs `manage.py check --deploy` inside the backend image with `DEBUG` off). Both e2e jobs run only the CRA dev server, since every API call is mocked, and cache their Playwright browsers. No test is retried: one that fails once fails the run, and its trace is in the uploaded artifact (the TS report, or the Python job's `test-results` traces, uploaded only on failure). A newer push to a pull request cancels that PR's older run.
 
-Everything CI runs is pinned: actions by commit SHA (version in a comment), the workflow token is read-only (`permissions: contents: read`), npm tools (including `wait-on`) through the lockfile, the Python e2e environment through `e2e/python/constraints.txt`, and base images by exact version and digest. Bumping any of them is a deliberate edit; see CLAUDE.md for how.
+Everything CI runs is pinned: actions by commit SHA (version in a comment), the workflow token is read-only (`permissions: contents: read`), npm tools (including `wait-on`) through the lockfile, the Python e2e environment through `e2e/python/constraints.txt`, base images and CI's Postgres service by exact version and digest, and Node/Python by the images' exact versions (a test fails when they differ). Bumping any of them is a deliberate edit; see CLAUDE.md for how.
 
-Both e2e jobs are capped at `timeout-minutes: 15`, and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
+Every job has a `timeout-minutes` cap (e2e 15, the others 20), and `e2e/python/pytest.ini` uses pytest-timeout's `thread` method rather than the default `signal` — a hung Playwright call blocks in a background thread that `signal`-mode can't interrupt, which previously let a single stuck test ride GitHub's 6h default job timeout instead of failing cleanly.
 
 ---
 

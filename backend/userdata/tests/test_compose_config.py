@@ -44,6 +44,14 @@ class DatabaseServiceSecretsTests(SimpleTestCase):
                 self.assertTrue(key.startswith("POSTGRES_"), key)
 
 
+class BackendHealthcheckTests(SimpleTestCase):
+    def test_start_period_covers_a_long_migration(self):
+        compose = _strip_comments((REPO / "docker-compose.yml").read_text(encoding="utf-8"))
+        backend = _service_block(compose, "backend")
+        seconds = int(re.search(r"^      start_period: (\d+)s$", backend, re.M).group(1))
+        self.assertGreaterEqual(seconds, 300)
+
+
 class BackendDockerignoreTests(SimpleTestCase):
     """fnmatch approximates Docker's matcher; the names here avoid its edge cases."""
 
@@ -82,6 +90,10 @@ class BackendDockerignoreTests(SimpleTestCase):
                 self.assertFalse(self._excluded(name))
 
 
+# An image named by exact version and digest.
+PINNED_IMAGE = r"^[\w./-]+:\d[\w.-]*@sha256:[0-9a-f]{64}$"
+
+
 class PinnedBaseImageTests(SimpleTestCase):
     """Every base image is named by exact version and digest."""
 
@@ -93,4 +105,47 @@ class PinnedBaseImageTests(SimpleTestCase):
         self.assertGreaterEqual(len(refs), 5)
         for ref in refs:
             with self.subTest(image=ref):
-                self.assertRegex(ref, r"^[\w./-]+:\d[\w.-]*@sha256:[0-9a-f]{64}$")
+                self.assertRegex(ref, PINNED_IMAGE)
+
+
+class CiPinnedLikeTheImagesTests(SimpleTestCase):
+    """ci-pipeline: CI's service images are pinned, and its runtimes are the
+    versions the production images use."""
+
+    def setUp(self):
+        self.ci = _strip_comments((REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+    def _image_version(self, dockerfile, name):
+        text = (REPO / dockerfile).read_text(encoding="utf-8")
+        return re.search(rf"^FROM\s+{name}:(\d+\.\d+\.\d+)", text, re.M).group(1)
+
+    def test_every_service_image_has_a_digest(self):
+        refs = re.findall(r"^\s+image:\s+(\S+)", self.ci, re.M)
+        self.assertGreaterEqual(len(refs), 1)
+        for ref in refs:
+            with self.subTest(image=ref):
+                self.assertRegex(ref, PINNED_IMAGE)
+
+    def test_runtimes_match_the_images(self):
+        for key, dockerfile, name in (
+            ("node-version", "Dockerfile.frontend", "node"),
+            ("python-version", "backend/Dockerfile", "python"),
+        ):
+            expected = self._image_version(dockerfile, name)
+            found = re.findall(rf"^\s+{key}:\s+\"?([^\"\s]+)\"?$", self.ci, re.M)
+            self.assertTrue(found, key)
+            for version in found:
+                with self.subTest(key=key, version=version):
+                    self.assertEqual(version, expected, f"ci.yml {key} {version} != {dockerfile} {expected}")
+
+
+class FrontendImageNpmConfigTests(SimpleTestCase):
+    """container-deployment: the image installs with the repository's .npmrc."""
+
+    def test_image_copies_npmrc_and_restates_no_option(self):
+        dockerfile = _strip_comments((REPO / "Dockerfile.frontend").read_text(encoding="utf-8"))
+        self.assertRegex(dockerfile, r"(?m)^COPY\s+[^\n]*\.npmrc[^\n]*\./$")
+        self.assertRegex(dockerfile, r"(?m)^RUN npm ci$")
+        self.assertNotIn("--legacy-peer-deps", dockerfile)
+        ignored = (REPO / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        self.assertNotIn(".npmrc", [line.strip() for line in ignored])

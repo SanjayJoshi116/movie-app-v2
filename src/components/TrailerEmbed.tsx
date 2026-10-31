@@ -26,6 +26,10 @@ export function TrailerEmbed({ videoKey, name }: TrailerEmbedProps) {
         className="embed-frame"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
+        // Explicit: after an in-app navigation from a no-referrer page (reset
+        // link, TMDB callback) the document keeps nginx's no-referrer policy,
+        // and YouTube refuses to play an embed with no Referer (Error 153).
+        referrerPolicy="strict-origin-when-cross-origin"
       />
     );
   }

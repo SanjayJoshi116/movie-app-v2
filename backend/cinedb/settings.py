@@ -7,18 +7,50 @@ from urllib.parse import urlsplit
 
 from corsheaders.defaults import default_headers
 from cryptography.fernet import Fernet
+from django.core.checks.security.base import (
+    SECRET_KEY_INSECURE_PREFIX,
+    SECRET_KEY_MIN_LENGTH,
+    SECRET_KEY_MIN_UNIQUE_CHARACTERS,
+)
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+_TRUE = ("true", "1", "yes", "on")
+_FALSE = ("false", "0", "no", "off")
+
+
+def _env_bool(name, default):
+    """A boolean env var. A value outside _TRUE/_FALSE (any case) is refused
+    rather than read as off: `EMAIL_USE_TLS=ture` used to turn STARTTLS off.
+    Unset or blank (`DEBUG=` in an env file) means the default."""
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+    if value in _TRUE:
+        return True
+    if value in _FALSE:
+        return False
+    raise ImproperlyConfigured(f"{name} must be one of {', '.join(_TRUE + _FALSE)} (any case).")
+
+
+def _is_weak_secret(value):
+    """Django's `check --deploy` W009 rule (its own constants), made fatal with DEBUG off."""
+    return (
+        len(value) < SECRET_KEY_MIN_LENGTH
+        or len(set(value)) < SECRET_KEY_MIN_UNIQUE_CHARACTERS
+        or value.startswith(SECRET_KEY_INSECURE_PREFIX)
+    )
+
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-change-in-production")
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "")
 
 # Fail closed: debug is off unless explicitly enabled. `npm run dev` (start.py)
 # and CI set DEBUG=True themselves; a bare `manage.py` on a server stays safe.
-DEBUG = os.environ.get("DEBUG", "False") == "True"
+DEBUG = _env_bool("DEBUG", False)
 
 # An unset ALLOWED_HOSTS env var means no hosts are allowed in production. In
 # DEBUG, wildcard so LAN devices (e.g. phone at 192.168.x.x) hitting the dev
@@ -34,8 +66,20 @@ elif not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
         "empty or '*' is refused."
     )
 
-if not DEBUG and SECRET_KEY == "django-insecure-dev-key-change-in-production":
-    raise ImproperlyConfigured("Set SECRET_KEY env var before running in production.")
+# The JWT key defaults to SECRET_KEY, so a guessable one makes tokens forgeable.
+# Blank JWT_SIGNING_KEY counts as unset, never as an empty signing key.
+JWT_SIGNING_KEY = os.environ.get("JWT_SIGNING_KEY") or SECRET_KEY
+if not DEBUG:
+    # Never put a key value in an error message.
+    for _name, _value in (("SECRET_KEY", SECRET_KEY), ("JWT_SIGNING_KEY", JWT_SIGNING_KEY)):
+        if _is_weak_secret(_value):
+            raise ImproperlyConfigured(
+                f"{_name} must be a random value with at least {SECRET_KEY_MIN_LENGTH} characters, "
+                f"{SECRET_KEY_MIN_UNIQUE_CHARACTERS} distinct ones, and no '{SECRET_KEY_INSECURE_PREFIX}' "
+                "prefix when DEBUG is off."
+            )
+    if not TMDB_API_KEY.strip():
+        raise ImproperlyConfigured("Set TMDB_API_KEY when DEBUG is off; every TMDB call fails without it.")
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -179,9 +223,10 @@ REST_FRAMEWORK = {
     # How many reverse proxies sit in front of Django. DRF then takes the
     # client address from that position in X-Forwarded-For (counting from the
     # right, i.e. the entry our own proxy appended). 0 = ignore XFF entirely and
-    # use REMOTE_ADDR — right for `npm run dev`; leaving it unset used to make
-    # the whole client-supplied XFF string the throttle key, so any made-up
-    # header value got a fresh rate-limit bucket.
+    # use REMOTE_ADDR, the safe default for a deploy with no proxy. `npm run dev`
+    # gets 1 from start.py (CRA's proxy adds one hop), and compose sets 1 too.
+    # Leaving it unset used to make the whole client-supplied XFF string the
+    # throttle key, so any made-up header value got a fresh rate-limit bucket.
     "NUM_PROXIES": int(os.environ.get("TRUSTED_PROXY_COUNT", "0")),
     "DEFAULT_PAGINATION_CLASS": "userdata.pagination.DefaultPagination",
     "PAGE_SIZE": 100,
@@ -254,7 +299,7 @@ SIMPLE_JWT = {
     # stale one on access; SafeTokenRefreshSerializer does the same on refresh,
     # which closes a refresh racing _revoke_all_refresh_tokens' snapshot.
     "CHECK_REVOKE_TOKEN": True,
-    "SIGNING_KEY": os.environ.get("JWT_SIGNING_KEY", SECRET_KEY),
+    "SIGNING_KEY": JWT_SIGNING_KEY,
     "ALGORITHM": "HS256",
 }
 
@@ -270,7 +315,7 @@ if not EMAIL_BACKEND:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", True)
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@cinedb.app")
@@ -317,7 +362,7 @@ except ValueError:
 # email builds its "expires in" sentence from this value.
 PASSWORD_RESET_TIMEOUT = 3600
 
-# Per-username login failures (across all IPs and workers, in the shared cache)
+# Per-username login failures (across all IPs and workers, in the LoginFailure table)
 # before that username gets 429 until the window, counted from the first
 # failure, passes. On top of the per-IP `login` throttle.
 LOGIN_FAILURE_LIMIT = 20

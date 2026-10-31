@@ -168,3 +168,55 @@ class ContentSecurityPolicyTests(SimpleTestCase):
         self.assertEqual(self.directives["script-src"], ["'self'"])
         self.assertEqual(self.directives["frame-src"], ["https://www.youtube-nocookie.com"])
         self.assertEqual(self.directives["object-src"], ["'none'"])
+
+
+class BackendResolutionTests(SimpleTestCase):
+    """container-deployment: a recreated backend container is found again."""
+
+    def setUp(self):
+        self.conf = _strip_comments(NGINX_CONF.read_text())
+
+    def test_resolves_through_dockers_dns(self):
+        self.assertRegex(self.conf, r"(?m)^\s*resolver\s+127\.0\.0\.11\b[^;]*\bvalid=\d+s")
+
+    def test_every_proxy_pass_goes_through_a_variable(self):
+        targets = re.findall(r"proxy_pass\s+([^;]+);", self.conf)
+        self.assertEqual(len(targets), 2)
+        for target in targets:
+            with self.subTest(target=target):
+                self.assertEqual(target.strip(), "$backend_upstream")
+        self.assertRegex(self.conf, r"set\s+\$backend_upstream\s+http://backend:8000\s*;")
+
+
+class TokenPageReferrerTests(SimpleTestCase):
+    """container-deployment: the reset and TMDB-callback pages send no referer."""
+
+    def setUp(self):
+        self.conf = _strip_comments(NGINX_CONF.read_text())
+        self.policy_map = _blocks(self.conf, "map")["$request_uri $referrer_policy"]
+
+    def test_token_pages_get_no_referrer(self):
+        for path in ("reset-password/", "tmdb-callback"):
+            with self.subTest(path=path):
+                self.assertRegex(self.policy_map, rf'~\^/{path}\s+"no-referrer"\s*;')
+
+    def test_other_pages_keep_the_normal_policy(self):
+        self.assertRegex(self.policy_map, r'default\s+"strict-origin-when-cross-origin"\s*;')
+        self.assertRegex(self.conf, r"add_header\s+Referrer-Policy\s+\$referrer_policy\s+always\s*;")
+        self.assertEqual(self.conf.count("add_header Referrer-Policy"), 1)
+
+
+class ForwardedProtoTests(SimpleTestCase):
+    """container-deployment: only "https" or "http" reaches the backend."""
+
+    def setUp(self):
+        self.conf = _strip_comments(NGINX_CONF.read_text())
+
+    def test_map_passes_only_https_and_defaults_to_http(self):
+        proto_map = _blocks(self.conf, "map")["$http_x_forwarded_proto $forwarded_proto"]
+        entries = re.findall(r"^\s*(\S+)\s+(\S+)\s*;", proto_map, re.M)
+        self.assertEqual(sorted(entries), [("default", "http"), ("https", "https")])
+
+    def test_both_proxies_send_the_normalized_value(self):
+        values = re.findall(r"proxy_set_header\s+X-Forwarded-Proto\s+(\S+)\s*;", self.conf)
+        self.assertEqual(values, ["$forwarded_proto", "$forwarded_proto"])

@@ -41,7 +41,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-      start_period: 40s
+      # Failures before gunicorn listens don't count for this long, and the
+      # first success ends it, so a normal boot is healthy within one
+      # interval. Covers a long migration on deploy.
+      start_period: 300s
     restart: unless-stopped
 
   frontend:
