@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, lazy } from "react";
+import { useState, Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { ConfigProvider, App as AntApp } from "antd";
@@ -11,7 +11,7 @@ import { useUIContext } from "./context/UIContext";
 import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
-import { browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
+import { animeModeOf, browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
 import { AUTH_ONLY_PATHS, postLoginPath, loginRedirectState } from "./utils/postLoginPath";
 import "./App.css";
 
@@ -41,14 +41,27 @@ function AppInner() {
   const location = useLocation();
   // UI context only: useAppContext() also subscribes to the watched/watchlist/
   // ratings contexts, which re-rendered the whole route tree on every change.
-  const { theme, clearGenres } = useUIContext();
+  const { theme } = useUIContext();
   const { isAuthenticated, isLoading, signedOutInThisTab } = useAuth();
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [activeFilters, setActiveFilters] = useState<FilterValues | null>(null);
   const [activeSortBy, setActiveSortBy] = useState<SortOption>(DEFAULT_SORT);
+  const [activeGenres, setActiveGenres] = useState<number[]>([]);
   const [animeMediaType, setAnimeMediaType] = useState<"tv" | "movies">("tv");
 
-  // Applied filters belong to one browse media type. Off browse pages the
+  // A Back-restore of an Anime grid carries its mode in the saved category.
+  // Adopt it during render, once per history entry, so the scope (and its
+  // filter reset) matches the restored grid's first request, instead of
+  // AnimePage's mount effect correcting it after a request in the other mode.
+  const restore = location.state as { isReturn?: boolean; activeCategory?: string } | null;
+  const [animeSyncedKey, setAnimeSyncedKey] = useState<string | null>(null);
+  if (location.pathname === "/anime" && restore?.isReturn && restore.activeCategory && location.key !== animeSyncedKey) {
+    setAnimeSyncedKey(location.key);
+    const restoredMode = animeModeOf(restore.activeCategory);
+    if (restoredMode !== animeMediaType) setAnimeMediaType(restoredMode);
+  }
+
+  // Applied filters (genres included) belong to one browse media type. Off browse pages the
   // scope is null and nothing resets, so Movies → detail → Movies keeps them;
   // entering a different scope drops them. The reset happens during render
   // (not in an effect) so the newly mounted page never fetches with the
@@ -59,20 +72,18 @@ function AppInner() {
     setAppliedScope(filterScope);
     setActiveFilters(null);
     setActiveSortBy(DEFAULT_SORT);
+    setActiveGenres([]);
   }
-  // Genres live in UIContext (a parent provider), which can't be updated
-  // during this render; pages also run selected ids through genresFor().
-  useEffect(() => {
-    if (appliedScope !== null) clearGenres();
-  }, [appliedScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Applied filters and sort end with the session, like UIContext's settings.
+  // Applied filters, sort and the Anime mode end with the session, like UIContext's settings.
   const [filtersForSignedIn, setFiltersForSignedIn] = useState(isAuthenticated);
   if (filtersForSignedIn !== isAuthenticated) {
     setFiltersForSignedIn(isAuthenticated);
     if (!isAuthenticated) {
       setActiveFilters(null);
       setActiveSortBy(DEFAULT_SORT);
+      setActiveGenres([]);
+      setAnimeMediaType("tv");
     }
   }
 
@@ -92,15 +103,17 @@ function AppInner() {
   const isBrowsePage = filterScope !== null;
   const isMovieForFilter = filterScope === "movie" || filterScope === "anime-movies";
 
-  const handleApplyFilters = (filters: FilterValues, sortBy: SortOption) => {
+  const handleApplyFilters = (filters: FilterValues, sortBy: SortOption, genres: number[]) => {
     setActiveFilters(filters);
     setActiveSortBy(sortBy);
+    setActiveGenres(genres);
     setShowFilterPanel(false);
   };
 
   const handleResetFilters = () => {
     setActiveFilters(null);
     setActiveSortBy(DEFAULT_SORT);
+    setActiveGenres([]);
   };
 
   return (
@@ -125,6 +138,7 @@ function AppInner() {
               isMovie={isMovieForFilter}
               appliedFilters={activeFilters}
               appliedSortBy={activeSortBy}
+              appliedGenres={activeGenres}
               onApply={handleApplyFilters}
               onReset={handleResetFilters}
             />
@@ -141,7 +155,7 @@ function AppInner() {
                 path="/movies"
                 element={
                   <ErrorBoundary>
-                    <HomePage tab="movies" externalFilters={activeFilters} externalSortBy={activeSortBy} />
+                    <HomePage tab="movies" externalFilters={activeFilters} externalSortBy={activeSortBy} externalGenres={activeGenres} />
                   </ErrorBoundary>
                 }
               />
@@ -149,7 +163,7 @@ function AppInner() {
                 path="/tv"
                 element={
                   <ErrorBoundary>
-                    <HomePage tab="tv" externalFilters={activeFilters} externalSortBy={activeSortBy} />
+                    <HomePage tab="tv" externalFilters={activeFilters} externalSortBy={activeSortBy} externalGenres={activeGenres} />
                   </ErrorBoundary>
                 }
               />
@@ -160,6 +174,8 @@ function AppInner() {
                     <AnimePage
                       externalFilters={activeFilters}
                       externalSortBy={activeSortBy}
+                      externalGenres={activeGenres}
+                      initialMode={animeMediaType}
                       onMediaTypeChange={setAnimeMediaType}
                     />
                   </ErrorBoundary>

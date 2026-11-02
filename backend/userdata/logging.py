@@ -11,6 +11,17 @@ _CREDENTIAL_PARAM = re.compile(r"(?<![A-Za-z0-9])((?:guest_)?session_id|request_
 _CREDENTIAL_JSON = re.compile(r'("(?:(?:guest_)?session_id|request_token)"\s*:\s*)"[^"]*"')
 
 
+def redact(text):
+    """`text` with the TMDB API key and TMDB session ids / request tokens
+    replaced by `***`. For output that doesn't go through a logger handler
+    (a management command's stdout/stderr); RedactingFormatter uses it too."""
+    key = getattr(settings, "TMDB_API_KEY", "")
+    if key:
+        text = text.replace(key, "***")
+    text = _CREDENTIAL_PARAM.sub(r"\1=***", text)
+    return _CREDENTIAL_JSON.sub(r'\1"***"', text)
+
+
 class RedactingFormatter(logging.Formatter):
     """Strips the TMDB API key and TMDB session ids / request tokens from
     formatted records, tracebacks included.
@@ -21,9 +32,4 @@ class RedactingFormatter(logging.Formatter):
     """
 
     def format(self, record):
-        text = super().format(record)
-        key = getattr(settings, "TMDB_API_KEY", "")
-        if key:
-            text = text.replace(key, "***")
-        text = _CREDENTIAL_PARAM.sub(r"\1=***", text)
-        return _CREDENTIAL_JSON.sub(r'\1"***"', text)
+        return redact(super().format(record))

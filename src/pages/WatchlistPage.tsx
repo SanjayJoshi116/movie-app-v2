@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button, Tag, Typography, Empty, Space, Popconfirm, Pagination, Select, Tooltip, theme } from "antd";
@@ -26,11 +26,12 @@ import { FONT_SIZE } from "../constants/typography";
 import type { MediaType, WatchlistEntry } from "../types";
 import { usePageTitle } from "../hooks/usePageTitle";
 import { useScrollBehavior } from "../hooks/useScrollBehavior";
-import { parseIntParam } from "../utils/queryParams";
+import { parseIntParam, pickKey } from "../utils/queryParams";
 
 const SS_WATCHED_FILTER = "watchlist_watched_filter";
 
-type WatchedFilter = "all" | "watched" | "unwatched";
+const WATCHED_FILTERS = ["all", "watched", "unwatched"] as const;
+type WatchedFilter = (typeof WATCHED_FILTERS)[number];
 
 // Same page sizes and URL params as the Watched page.
 const PAGE_SIZES = [12, 24, 48, 96] as const;
@@ -62,17 +63,19 @@ function WatchlistPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const {
-    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched,
+    watchlist, removeFromWatchlist, clearAllWatchlist, getRating, setRating, removeRating, isWatched,
   } = useAppContext();
   const idleIconColor = useActionIconColor();
-  const { isLoading, error: loadError, reload } = useWatchlistContext();
+  const { isLoading, hasLoaded, error: loadError, reload } = useWatchlistContext();
   const {
     hasLoaded: watchedLoaded, isLoading: watchedLoading, error: watchedError, reload: reloadWatched,
+    // Explicit add/remove, never toggle: a stale render can't run the opposite.
+    add: addWatched, remove: removeWatched, watchedList,
   } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [ratingTarget, setRatingTarget] = useState<RatingTarget | null>(null);
   const [pendingWatch, setPendingWatch] = useState<PendingWatch | null>(null);
-  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>(() => (sessionStorage.getItem(SS_WATCHED_FILTER) as WatchedFilter) ?? "all");
+  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>(() => pickKey(sessionStorage.getItem(SS_WATCHED_FILTER), WATCHED_FILTERS, "all"));
   const didRestoreScroll = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -95,6 +98,16 @@ function WatchlistPage() {
 
   useEffect(() => { sessionStorage.setItem(SS_WATCHED_FILTER, watchedFilter); }, [watchedFilter]);
 
+  // Memoized, so the filter-and-sort pipeline doesn't rerun on every render.
+  // Keyed on watchedList too: isWatched is stable (it reads a ref), so without
+  // it a title marked watched would stay under "Unwatched".
+  const extraFilter = useMemo(
+    () => watchedFilter === "all"
+      ? undefined
+      : (i: WatchlistEntry) => isWatched(i.id, i.type) === (watchedFilter === "watched"),
+    [watchedFilter, isWatched, watchedList], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const { search, setSearch, sortKey, setSortKey, typeFilter, setTypeFilter, filtered, isDefault, resetFilters } =
     useLibraryFilters<WatchlistEntry>({
       keyPrefix: "watchlist",
@@ -102,10 +115,7 @@ function WatchlistPage() {
       sortFns: SORT_FNS,
       defaultSort: "added-desc",
       getType: mediaTypeOf,
-      extraFilter:
-        watchedFilter === "all"
-          ? undefined
-          : (i) => (watchedFilter === "watched" ? isWatched(i.id, i.type) : !isWatched(i.id, i.type)),
+      extraFilter,
     });
 
   // A hand-edited ?page=-2 or ?pageSize=1.5 falls back instead of slicing oddly.
@@ -128,12 +138,13 @@ function WatchlistPage() {
   // loaded too (it can arrive after the watchlist; a failed reload after that
   // keeps the loaded history, so the clamp still runs), and not while it
   // reloads (an import may be adding the titles this page is waiting for).
+  // Likewise a failed watchlist reload that kept the list still clamps.
   const lastPage = Math.max(1, Math.ceil(filtered.length / pageSize));
   const filterReady = watchedFilter === "all" || watchedLoaded;
   const filterSettled = watchedFilter === "all" || (watchedLoaded && !watchedLoading);
   useEffect(() => {
-    if (!isLoading && !loadError && filterSettled && page > lastPage) setPageState(lastPage, pageSize);
-  }, [isLoading, loadError, filterSettled, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isLoading && hasLoaded && filterSettled && page > lastPage) setPageState(lastPage, pageSize);
+  }, [isLoading, hasLoaded, filterSettled, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFromUrl = () => {
     const p = new URLSearchParams();
@@ -302,7 +313,7 @@ function WatchlistPage() {
                             e.stopPropagation();
                             if (watched) {
                               try {
-                                await toggleWatched({ id: item.id, type: item.type, title: label, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                                await removeWatched(item.id, item.type);
                                 showSuccess("Removed from watched");
                               } catch (err) {
                                 showError(getApiError(err, "Failed to update watched status."));
@@ -410,7 +421,7 @@ function WatchlistPage() {
           const target = pendingWatch;
           if (!target) return;
           try {
-            await toggleWatched({ ...target, ...details });
+            await addWatched({ ...target, ...details });
             showSuccess("Marked as watched");
           } catch (err) {
             showError(getApiError(err, "Failed to mark as watched."));

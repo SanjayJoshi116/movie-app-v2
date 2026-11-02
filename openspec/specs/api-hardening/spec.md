@@ -132,7 +132,7 @@ The TMDB proxy SHALL forward every query parameter value the client sends, inclu
 - **THEN** the upstream request carries only the server's API key
 
 ### Requirement: No server log output contains the TMDB API key
-Every log line the backend writes SHALL have the TMDB API key, and the value of any `session_id`, `guest_session_id` or `request_token` parameter or JSON field, replaced with a placeholder. This covers the application's own loggers and also the framework, HTTP-client and any other third-party loggers, in both debug and production modes, including exception tracebacks.
+Every log line the backend writes SHALL have the TMDB API key, and the value of any `session_id`, `guest_session_id` or `request_token` parameter or JSON field, replaced with a placeholder. This covers the application's own loggers and also the framework, HTTP-client and any other third-party loggers, in both debug and production modes, including exception tracebacks, and the output of the backend's management commands that run at startup.
 
 #### Scenario: HTTP client retry warning
 - **WHEN** a TMDB request is retried and the HTTP client logs a warning whose text contains the request URL with `api_key=<key>`
@@ -153,6 +153,10 @@ Every log line the backend writes SHALL have the TMDB API key, and the value of 
 #### Scenario: Proxy request carries a guest session id
 - **WHEN** a TMDB proxy request with a `guest_session_id` query parameter, or a JSON body with a `"guest_session_id"` field, is logged
 - **THEN** the logged text shows the placeholder, not the guest session id
+
+#### Scenario: Startup warm-up fails for a user
+- **WHEN** the startup recommendation warm-up fails for a user with an error whose message contains the request URL with `api_key=<key>`
+- **THEN** the line it writes shows the placeholder, not the key
 
 ### Requirement: TMDB proxy limits apply per user
 TMDB proxy requests from a signed-in user SHALL be identified as that user for rate limiting, so users who share a public IP address don't share one limit. Signed-out requests SHALL keep being limited per IP address.

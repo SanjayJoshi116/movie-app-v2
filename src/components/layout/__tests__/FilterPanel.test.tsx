@@ -3,14 +3,10 @@ import { FilterPanel } from "../FilterPanel";
 
 // browse-filters: the panel's genre picks are only ever the browsed type's.
 
-const mockSetGenres = jest.fn();
 const mockSetIncludeAdult = jest.fn();
-let mockSelectedGenres: number[] = [];
+let appliedGenres: number[] = [];
 jest.mock("../../../context/useAppContext", () => ({
   useAppContext: () => ({
-    selectedGenres: mockSelectedGenres,
-    setGenres: mockSetGenres,
-    clearGenres: () => undefined,
     includeAdult: false,
     setIncludeAdult: mockSetIncludeAdult,
   }),
@@ -37,6 +33,7 @@ function renderPanel(isMovie: boolean, onApply: (...args: unknown[]) => void = (
       isMovie={isMovie}
       appliedFilters={null}
       appliedSortBy="popularity.desc"
+      appliedGenres={appliedGenres}
       onApply={onApply}
       onReset={() => undefined}
     />
@@ -46,22 +43,24 @@ function renderPanel(isMovie: boolean, onApply: (...args: unknown[]) => void = (
 }
 
 it("opening for TV with a movie-only genre applied seeds no genre, and Apply sends none", async () => {
-  mockSelectedGenres = [ACTION_MOVIE_ONLY];
-  renderPanel(false);
+  appliedGenres = [ACTION_MOVIE_ONLY];
+  const onApply = jest.fn();
+  renderPanel(false, onApply);
   fireEvent.click(await screen.findByRole("button", { name: /apply/i }));
-  expect(mockSetGenres).toHaveBeenCalledWith([]);
+  expect(onApply.mock.calls[0][2]).toEqual([]);
 });
 
 it("keeps a genre both types share", async () => {
-  mockSelectedGenres = [ACTION_MOVIE_ONLY, COMEDY_BOTH];
-  renderPanel(false);
+  appliedGenres = [ACTION_MOVIE_ONLY, COMEDY_BOTH];
+  const onApply = jest.fn();
+  renderPanel(false, onApply);
   await screen.findByText("Comedy");
   fireEvent.click(screen.getByRole("button", { name: /apply/i }));
-  expect(mockSetGenres).toHaveBeenCalledWith([COMEDY_BOTH]);
+  expect(onApply.mock.calls[0][2]).toEqual([COMEDY_BOTH]);
 });
 
 it("the adult switch is a draft: closing without Apply changes nothing", async () => {
-  mockSelectedGenres = [];
+  appliedGenres = [];
   const { setOpen } = renderPanel(true);
   const sw = await screen.findByRole("switch", { name: "Include Adult Content" });
   fireEvent.click(sw);
@@ -73,7 +72,7 @@ it("the adult switch is a draft: closing without Apply changes nothing", async (
 });
 
 it("Apply sends the adult setting together with the other filters", async () => {
-  mockSelectedGenres = [];
+  appliedGenres = [];
   const onApply = jest.fn();
   renderPanel(true, onApply);
   fireEvent.click(await screen.findByRole("switch", { name: "Include Adult Content" }));
@@ -85,7 +84,7 @@ it("Apply sends the adult setting together with the other filters", async () => 
 });
 
 it("labels every field and swaps a backwards year range on Apply", async () => {
-  mockSelectedGenres = [];
+  appliedGenres = [];
   const onApply = jest.fn();
   renderPanel(true, onApply);
   for (const label of ["From", "To", "Min TMDB Rating (0–10)", "Language", "Min", "Max", "Sort By"]) {

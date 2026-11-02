@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import {
   fetchFollowedPeopleRecommendations,
@@ -17,8 +17,15 @@ jest.mock("../../api/userApi", () => ({
   saveSessionCache: jest.fn(),
 }));
 jest.mock("../../context/useAppContext", () => ({ useAppContext: jest.fn() }));
-jest.mock("../../context/WatchlistContext", () => ({ useWatchlistContext: () => ({ isIn: () => false, toggle: jest.fn() }) }));
-jest.mock("../../context/WatchedContext", () => ({ useWatchedContext: () => ({ isWatched: () => false, toggle: jest.fn() }) }));
+const mockWatchlist = { isIn: jest.fn(() => false), add: jest.fn(), remove: jest.fn(), toggle: jest.fn() };
+const mockWatched = { isWatched: jest.fn(() => false), add: jest.fn(), remove: jest.fn(), toggle: jest.fn() };
+jest.mock("../../context/WatchlistContext", () => ({ useWatchlistContext: () => mockWatchlist }));
+jest.mock("../../context/WatchedContext", () => ({ useWatchedContext: () => mockWatched }));
+// The real dialog fetches TMDB details; this stand-in only confirms.
+jest.mock("../../components/MarkWatchedModal", () => ({
+  MarkWatchedModal: ({ open, onConfirm }: { open: boolean; onConfirm: (d: object) => Promise<void> }) =>
+    open ? <button onClick={() => { onConfirm({ runtimeMinutes: 120 }).catch(() => {}); }}>Confirm watched</button> : null,
+}));
 jest.mock("../../hooks/useActionIconColor", () => ({ useActionIconColor: () => "black" }));
 jest.mock("../../hooks/useToast", () => {
   const toast = { showSuccess: jest.fn(), showError: jest.fn() };
@@ -48,6 +55,10 @@ beforeAll(() => {
 beforeEach(() => {
   sessionStorage.clear();
   jest.clearAllMocks();
+  mockWatchlist.isIn.mockReturnValue(false);
+  mockWatched.isWatched.mockReturnValue(false);
+  mockWatchlist.add.mockResolvedValue(undefined);
+  mockWatched.add.mockResolvedValue(undefined);
 });
 
 const renderPage = () => render(<MemoryRouter><RecommendationsPage /></MemoryRouter>);
@@ -93,4 +104,33 @@ it("shows an error, not the empty state, when the watched history failed to load
   expect(screen.queryByText(/No watched titles yet/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
   expect(state.reloadWatched).toHaveBeenCalled();
+});
+
+// write-feedback: card buttons run the action they show, never a toggle.
+describe("card writes", () => {
+  const readyWith = (title: string) => {
+    mockApp.mockReturnValue(appState());
+    mockForYou.mockResolvedValue({ data: { status: "ready", sections: [section("a", title)] } });
+    mockPersonalized.mockResolvedValue({ data: { status: "ready", sections: [] } });
+    mockFollowed.mockResolvedValue({ data: [] });
+  };
+
+  it("Add to watchlist adds, never toggles", async () => {
+    readyWith("Se7en");
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Add to watchlist: Se7en" }));
+    await waitFor(() => expect(mockWatchlist.add).toHaveBeenCalledTimes(1));
+    expect(mockWatchlist.remove).not.toHaveBeenCalled();
+    expect(mockWatchlist.toggle).not.toHaveBeenCalled();
+  });
+
+  it("confirming Mark as watched adds, never unmarks", async () => {
+    readyWith("Se7en");
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as watched: Se7en" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm watched" }));
+    await waitFor(() => expect(mockWatched.add).toHaveBeenCalledWith(expect.objectContaining({ id: 1, runtimeMinutes: 120 })));
+    expect(mockWatched.remove).not.toHaveBeenCalled();
+    expect(mockWatched.toggle).not.toHaveBeenCalled();
+  });
 });

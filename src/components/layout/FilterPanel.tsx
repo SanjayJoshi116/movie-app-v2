@@ -68,21 +68,20 @@ interface Props {
   /** Seeds the draft, so the panel matches the grid after a detail-page round trip. */
   appliedFilters: FilterValues | null;
   appliedSortBy: SortOption;
-  onApply: (filters: FilterValues, sortBy: SortOption) => void;
+  appliedGenres: number[];
+  onApply: (filters: FilterValues, sortBy: SortOption, genres: number[]) => void;
   onReset: () => void;
 }
 
-export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, onApply, onReset }: Props) {
-  const { selectedGenres, setGenres, clearGenres, includeAdult, setIncludeAdult } = useAppContext();
+export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, appliedGenres, onApply, onReset }: Props) {
+  const { includeAdult, setIncludeAdult } = useAppContext();
   const { token } = theme.useToken();
   // Everything here is a draft until Apply, genre picks included: a chip that
   // applied on its own refetched the grid, then Apply fetched it again.
   const [filters, setFilters] = useState<FilterValues>(() => ({ ...DEFAULT_FILTERS, ...appliedFilters }));
   const [sortBy, setSortBy] = useState<SortOption>(appliedSortBy);
-  // Only this media type's genres: if the panel (re)mounts open as the scope
-  // changes, its seed runs before App's genre reset and would carry the
-  // previous scope's genres into Apply.
-  const seedGenres = () => genresFor(isMovie ? "movie" : "tv", selectedGenres);
+  // Only this media type's genres, as the grid sends them.
+  const seedGenres = () => genresFor(isMovie ? "movie" : "tv", appliedGenres);
   const [draftGenres, setDraftGenres] = useState<number[]>(seedGenres);
   const [draftAdult, setDraftAdult] = useState(includeAdult);
 
@@ -108,9 +107,8 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
     // A range typed backwards (2020 → 1990) means 1990–2020.
     const { yearFrom, yearTo } = filters;
     const swapYears = yearFrom !== "" && yearTo !== "" && Number(yearFrom) > Number(yearTo);
-    setGenres(draftGenres);
     setIncludeAdult(draftAdult);
-    onApply({ ...filters, ...(swapYears && { yearFrom: yearTo, yearTo: yearFrom }), includeAdult: draftAdult }, sortBy);
+    onApply({ ...filters, ...(swapYears && { yearFrom: yearTo, yearTo: yearFrom }), includeAdult: draftAdult }, sortBy, draftGenres);
   };
 
   const handleReset = () => {
@@ -118,7 +116,6 @@ export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSor
     setSortBy("popularity.desc");
     setDraftGenres([]);
     setDraftAdult(false);
-    clearGenres();
     setIncludeAdult(false);
     onReset();
   };

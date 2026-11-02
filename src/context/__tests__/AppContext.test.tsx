@@ -93,29 +93,6 @@ describe("AppContext", () => {
     expect(result.current.searchTerm).toBe("");
   });
 
-  it("toggleGenre adds then removes same id", async () => {
-    const { result } = renderHook(() => useAppContext(), { wrapper });
-    await waitFor(() => expect(result.current.isDataLoading).toBe(false));
-
-    act(() => { result.current.toggleGenre(28); });
-    expect(result.current.selectedGenres).toContain(28);
-    act(() => { result.current.toggleGenre(28); });
-    expect(result.current.selectedGenres).not.toContain(28);
-  });
-
-  it("clearGenres empties the array", async () => {
-    const { result } = renderHook(() => useAppContext(), { wrapper });
-    await waitFor(() => expect(result.current.isDataLoading).toBe(false));
-
-    act(() => {
-      result.current.toggleGenre(28);
-      result.current.toggleGenre(12);
-    });
-    expect(result.current.selectedGenres).toHaveLength(2);
-    act(() => { result.current.clearGenres(); });
-    expect(result.current.selectedGenres).toHaveLength(0);
-  });
-
   it("watchlist round-trip: add, isIn, remove", async () => {
     const { result } = renderHook(() => useAppContext(), { wrapper });
     await waitFor(() => expect(result.current.isDataLoading).toBe(false));

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useReducedMotion } from "framer-motion";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useAppContext } from "../../context/useAppContext";
@@ -15,16 +15,25 @@ jest.mock("../../context/useAppContext", () => ({ useAppContext: jest.fn() }));
 jest.mock("../../context/WatchlistContext", () => ({ useWatchlistContext: jest.fn() }));
 jest.mock("../../context/WatchedContext", () => ({ useWatchedContext: jest.fn() }));
 jest.mock("../../hooks/useActionIconColor", () => ({ useActionIconColor: () => "#000000" }));
-jest.mock("../../components/MarkWatchedModal", () => ({ MarkWatchedModal: () => null }));
+jest.mock("../../components/MarkWatchedModal", () => ({
+  MarkWatchedModal: ({ open, onConfirm }: { open: boolean; onConfirm: (d: object) => Promise<void> }) =>
+    open ? <button onClick={() => { onConfirm({ runtimeMinutes: 90 }).catch(() => {}); }}>Confirm watched</button> : null,
+}));
 jest.mock("../../components/SkeletonCard", () => ({ __esModule: true, default: () => <div data-testid="skeleton" /> }));
 jest.mock("../../hooks/useToast", () => {
   const toast = { showSuccess: jest.fn(), showError: jest.fn(), showInfo: jest.fn(), showWarning: jest.fn() };
   return { useToast: () => toast };
 });
 
+// The dialog tests render antd's Modal, whose first render can pass 5 s on a busy machine.
+jest.setTimeout(20_000);
+
 const mockApp = useAppContext as jest.Mock;
 const mockWatchlist = useWatchlistContext as jest.Mock;
 const mockWatched = useWatchedContext as jest.Mock;
+
+const addWatched = jest.fn().mockResolvedValue(undefined);
+const removeWatched = jest.fn().mockResolvedValue(undefined);
 
 const entries: WatchlistEntry[] = Array.from({ length: 30 }, (_, i) => ({
   id: i + 1, type: "movie", title: `Title ${i + 1}`, posterPath: null, voteAverage: 7, addedAt: "2026-10-01T10:00:00Z",
@@ -35,10 +44,10 @@ function setWatched(loaded: boolean) {
     watchlist: entries,
     removeFromWatchlist: jest.fn(), clearAllWatchlist: jest.fn(),
     getRating: () => undefined, setRating: jest.fn(), removeRating: jest.fn(),
-    isWatched: () => loaded, toggleWatched: jest.fn(),
+    isWatched: () => loaded,
   });
-  mockWatchlist.mockReturnValue({ isLoading: false, error: null, reload: jest.fn() });
-  mockWatched.mockReturnValue({ isLoading: !loaded, hasLoaded: loaded, error: null });
+  mockWatchlist.mockReturnValue({ isLoading: false, hasLoaded: true, error: null, reload: jest.fn() });
+  mockWatched.mockReturnValue({ isLoading: !loaded, hasLoaded: loaded, error: null, add: addWatched, remove: removeWatched });
 }
 
 function Probe() {
@@ -62,7 +71,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => sessionStorage.setItem("watchlist_watched_filter", "watched"));
-afterEach(() => sessionStorage.clear());
+afterEach(() => { sessionStorage.clear(); addWatched.mockClear(); removeWatched.mockClear(); });
 
 it("keeps a deep-linked page while the watched history loads", () => {
   setWatched(false);
@@ -205,15 +214,14 @@ it("labels a blank-titled entry by its id, on the card and its buttons", () => {
   expect(screen.getByRole("button", { name: "Mark watched: Untitled (#603)" })).toBeInTheDocument();
 });
 
-it("sends the fallback label, not the blank stored title, when unmarking", () => {
+// write-feedback spec: the watched buttons run the action they show, never a toggle.
+it("Unmark removes the title, never toggles", () => {
   sessionStorage.setItem("watchlist_watched_filter", "all");
   setWatched(true);
-  const toggleWatched = jest.fn().mockResolvedValue(undefined);
   mockApp.mockReturnValue({
     ...mockApp(),
     watchlist: [{ id: 603, type: "movie", title: "", posterPath: null, voteAverage: 0, addedAt: "2026-10-01T10:00:00Z" }],
     isWatched: () => true,
-    toggleWatched,
   });
   render(
     <MemoryRouter initialEntries={["/watchlist"]}>
@@ -221,5 +229,76 @@ it("sends the fallback label, not the blank stored title, when unmarking", () =>
     </MemoryRouter>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Mark unwatched: Untitled (#603)" }));
-  expect(toggleWatched).toHaveBeenCalledWith(expect.objectContaining({ id: 603, title: "Untitled (#603)" }));
+  expect(removeWatched).toHaveBeenCalledWith(603, "movie");
+  expect(addWatched).not.toHaveBeenCalled();
+});
+
+it("confirming Mark watched adds with the fallback label, never unmarks", async () => {
+  sessionStorage.setItem("watchlist_watched_filter", "all");
+  setWatched(true);
+  mockApp.mockReturnValue({
+    ...mockApp(),
+    watchlist: [{ id: 603, type: "movie", title: "", posterPath: null, voteAverage: 0, addedAt: "2026-10-01T10:00:00Z" }],
+    isWatched: () => false,
+  });
+  render(
+    <MemoryRouter initialEntries={["/watchlist"]}>
+      <WatchlistPage />
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Mark watched: Untitled (#603)" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm watched" }));
+  await waitFor(() => expect(addWatched).toHaveBeenCalledWith(expect.objectContaining({ id: 603, title: "Untitled (#603)", runtimeMinutes: 90 })));
+  expect(removeWatched).not.toHaveBeenCalled();
+});
+
+// library-filters: a failed watchlist reload that kept the list still clamps.
+it("moves off an empty page after a failed reload that kept the list", () => {
+  sessionStorage.setItem("watchlist_watched_filter", "all");
+  setWatched(true);
+  mockWatchlist.mockReturnValue({ isLoading: false, hasLoaded: true, error: new Error("502"), reload: jest.fn() });
+  render(
+    <MemoryRouter initialEntries={["/watchlist?page=5&pageSize=12"]}>
+      <Routes>
+        <Route path="/watchlist" element={<><WatchlistPage /><Probe /></>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  expect(screen.getByTestId("search")).toHaveTextContent("page=3");
+});
+
+// library-filters: an unknown saved watched filter reads as "All".
+it("ignores an unknown saved watched filter", () => {
+  sessionStorage.setItem("watchlist_watched_filter", "bogus");
+  setWatched(true);
+  mockApp.mockReturnValue({ ...mockApp(), isWatched: () => false });
+  render(
+    <MemoryRouter initialEntries={["/watchlist?pageSize=48"]}>
+      <WatchlistPage />
+    </MemoryRouter>,
+  );
+  expect(screen.getAllByText(/^Title \d+$/)).toHaveLength(30);
+});
+
+// The "Unwatched" filter follows the watched history even though isWatched
+// keeps one identity (the real one reads a ref).
+it("drops a title from Unwatched once it becomes watched", () => {
+  sessionStorage.setItem("watchlist_watched_filter", "unwatched");
+  const watchedIds = new Set<number>();
+  const isWatched = (id: number) => watchedIds.has(id);
+  setWatched(true);
+  mockApp.mockReturnValue({ ...mockApp(), isWatched });
+  const view = (list: object[]) => {
+    mockWatched.mockReturnValue({ isLoading: false, hasLoaded: true, error: null, add: addWatched, remove: removeWatched, watchedList: list });
+    return (
+      <MemoryRouter initialEntries={["/watchlist?pageSize=48"]}>
+        <WatchlistPage />
+      </MemoryRouter>
+    );
+  };
+  const { rerender } = render(view([]));
+  expect(screen.getAllByText(/^Title \d+$/)).toHaveLength(30);
+  watchedIds.add(1);
+  rerender(view([{ id: 1, type: "movie" }]));
+  expect(screen.getAllByText(/^Title \d+$/)).toHaveLength(29);
 });

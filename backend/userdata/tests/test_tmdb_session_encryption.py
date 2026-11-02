@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -87,6 +88,20 @@ class StoredEncryptedTests(TestCase):
         self.assertIn("Re-encrypted 1", out.getvalue())
         self.assertIn("1 unreadable", out.getvalue())
         self.assertEqual(Fernet(NEW_KEY).decrypt(stored(self.user).encode()).decode(), SESSION)
+
+    def test_rotate_command_locks_the_rows_it_rewrites(self):
+        """account-security: a disconnect during the run waits on the row lock
+        instead of being overwritten with the session read before it."""
+        with override_settings(TMDB_SESSION_KEYS=[OLD_KEY]):
+            TMDBProfile.objects.create(user=self.user, session_id=SESSION)
+        with override_settings(TMDB_SESSION_KEYS=[NEW_KEY, OLD_KEY]), CaptureQueriesContext(connection) as ctx:
+            call_command("rotate_tmdb_sessions", stdout=StringIO())
+        sql = [q["sql"] for q in ctx.captured_queries]
+        read = next(i for i, q in enumerate(sql) if "FROM \"userdata_tmdbprofile\"" in q and q.startswith("SELECT"))
+        write = next(i for i, q in enumerate(sql) if q.startswith("UPDATE \"userdata_tmdbprofile\""))
+        self.assertIn("FOR UPDATE", sql[read])
+        # Read and write inside one transaction: no COMMIT/RELEASE between them.
+        self.assertFalse(any(q.startswith(("COMMIT", "RELEASE SAVEPOINT")) for q in sql[read:write]))
 
 
 class DataMigrationTests(TestCase):

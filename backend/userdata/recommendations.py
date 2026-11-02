@@ -10,6 +10,7 @@ import requests
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
+from django.db.models import Q
 from django.db import Error as DBError
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -766,14 +767,54 @@ def _save_locked(user, for_you, personalized, health, started):
     return SAVED
 
 
+def compute_and_save(user):
+    """Compute both recommendation types and store them through
+    save_recommendations. Returns its outcome; raises like the computes do.
+    Shared by the background refresh and the startup warm-up, so the two
+    can't drift apart."""
+    started = timezone.now()
+    health = FetchHealth()
+    for_you = _compute_for_you(user, health)
+    personalized = _compute_personalized(user, health)
+    return save_recommendations(user, for_you, personalized, health, started=started)
+
+
+def claim_stale_refresh(user_id, live_for=REFRESH_STATUS_WINDOW):
+    """Atomically mark user_id's stored result as refreshing, only while it's
+    stale and no refresh holds a live stamp (any process). Returns the stamp
+    to pass to release_refresh_claim, or None when there is no row, the row is
+    fresh, a refresh is running, or the DB write failed (best-effort, like
+    _set_refreshing_since). For a caller outside the request path (the startup
+    warm-up), which can't see request_refresh's per-process coalescing.
+
+    `live_for` bounds how long the claim reads as running if the caller dies
+    without releasing it: the stamp is back-dated so it ages out of
+    REFRESH_STATUS_WINDOW after that long."""
+    now = timezone.now()
+    stamp = now - REFRESH_STATUS_WINDOW + live_for
+    try:
+        claimed = (
+            UserRecommendationCache.objects
+            .filter(user_id=user_id, computed_at__lt=stale_before(now))
+            .filter(Q(refreshing_since__isnull=True) | Q(refreshing_since__lte=_stamp_live_after(now)))
+            .update(refreshing_since=stamp)
+        )
+    except DBError as e:
+        logger.warning("Could not claim a refresh for user %s: %s", user_id, e)
+        return None
+    return stamp if claimed else None
+
+
+def release_refresh_claim(user_id, stamp):
+    """Clear claim_stale_refresh's stamp, unless another refresh has since
+    written its own."""
+    _set_refreshing_since(user_id, None, only_if=stamp)
+
+
 def _refresh_cache(user):
     """Recompute both recommendation types and save to DB. Safe to run in background thread."""
     try:
-        started = timezone.now()
-        health = FetchHealth()
-        for_you = _compute_for_you(user, health)
-        personalized = _compute_personalized(user, health)
-        outcome = save_recommendations(user, for_you, personalized, health, started=started)
+        outcome = compute_and_save(user)
         if outcome == SAVED:
             logger.info("Recommendation cache refreshed for user %s", user.id)
     except Exception as e:
@@ -787,8 +828,18 @@ def _refresh_cache(user):
         _finish_refresh(user.id)
 
 
+def stale_before(now):
+    """A stored result computed before this is stale."""
+    return now - timedelta(hours=RECOMMENDATIONS_TTL_HOURS)
+
+
+def _stamp_live_after(now):
+    """A refreshing stamp newer than this marks a refresh still running."""
+    return now - REFRESH_STATUS_WINDOW
+
+
 def _is_stale(cache) -> bool:
-    return (timezone.now() - cache.computed_at).total_seconds() > RECOMMENDATIONS_TTL_HOURS * 3600
+    return cache.computed_at < stale_before(timezone.now())
 
 
 def _is_refreshing(user_id, cache) -> bool:
@@ -796,7 +847,7 @@ def _is_refreshing(user_id, cache) -> bool:
     if user_id in _computing_users:
         return True
     since = cache.refreshing_since
-    return since is not None and timezone.now() - since < REFRESH_STATUS_WINDOW
+    return since is not None and since > _stamp_live_after(timezone.now())
 
 
 def _recommendations_response(user, sections_of):
@@ -804,9 +855,14 @@ def _recommendations_response(user, sections_of):
     one was refused (failure backoff): then the stored result is served as is."""
     cache_row = UserRecommendationCache.objects.filter(user=user).first()
     if cache_row:
-        if _is_stale(cache_row) and not in_failure_backoff(user.id):
-            _start_refresh_if_needed(user)
+        # Not while a refresh is marked running on any process: request_refresh
+        # coalesces only within this one (two workers, or the startup warm-up,
+        # would otherwise compute the same result twice). A stamp left by a
+        # killed process ages out after REFRESH_STATUS_WINDOW.
         computing = _is_refreshing(user.id, cache_row)
+        if _is_stale(cache_row) and not in_failure_backoff(user.id) and not computing:
+            _start_refresh_if_needed(user)
+            computing = user.id in _computing_users  # false if the thread couldn't start
         return Response({"status": "pending" if computing else "ready", "sections": sections_of(cache_row)})
     if not in_failure_backoff(user.id):
         _start_refresh_if_needed(user)

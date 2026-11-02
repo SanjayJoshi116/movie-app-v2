@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Form, Input, Button, Typography, App } from "antd";
 import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/userApi";
@@ -11,8 +11,12 @@ export default function ForgotPasswordPage() {
   const { message } = App.useApp();
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  // A second Enter submits the form again before `loading` re-renders the button.
+  const submitting = useRef(false);
 
   const onFinish = async (values: { email: string }) => {
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     try {
       await requestPasswordReset(values.email.trim());
@@ -20,6 +24,7 @@ export default function ForgotPasswordPage() {
     } catch (err: unknown) {
       message.error(getApiError(err, "Something went wrong. Please try again."));
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };

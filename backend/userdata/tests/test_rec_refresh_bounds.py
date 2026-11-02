@@ -8,7 +8,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db import connection
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -250,9 +250,8 @@ class WarmupBackoffTests(APITestCase):
             if tmdb_fails:
                 health.mark_failed()
             return []
-        command = "userdata.management.commands.compute_recommendations"
-        with patch(f"{command}._compute_for_you", side_effect=compute) as for_you, \
-                patch(f"{command}._compute_personalized", side_effect=compute):
+        with patch.object(recommendations, "_compute_for_you", side_effect=compute) as for_you, \
+                patch.object(recommendations, "_compute_personalized", side_effect=compute):
             call_command("compute_recommendations", stdout=StringIO(), stderr=StringIO())
         return for_you
 
@@ -280,6 +279,89 @@ class WarmupBackoffTests(APITestCase):
         # started this user's refresh.
         UserRecommendationCache.objects.filter(user=self.user).update(refreshing_since=timezone.now())
         self._warm().assert_not_called()
+
+    def test_user_refreshed_since_the_list_was_read_is_skipped(self):
+        # A request saved a fresh result after users_to_warm() ran.
+        UserRecommendationCache.objects.filter(user=self.user).update(computed_at=timezone.now())
+        self._warm().assert_not_called()
+
+    def test_claims_the_user_while_computing_and_clears_after(self):
+        """fix-data-sweep-b6: the warm-up marks the row refreshing, so a poll
+        on any process reports pending and starts nothing meanwhile."""
+        seen = []
+
+        def compute(user, health):
+            seen.append(UserRecommendationCache.objects.get(user=user).refreshing_since)
+            return []
+        with patch.object(recommendations, "_compute_for_you", side_effect=compute), \
+                patch.object(recommendations, "_compute_personalized", return_value=[]):
+            call_command("compute_recommendations", stdout=StringIO(), stderr=StringIO())
+        self.assertIsNotNone(seen[0])
+        self.assertIsNone(UserRecommendationCache.objects.get(user=self.user).refreshing_since)
+
+    def test_failed_compute_clears_only_its_own_stamp(self):
+        newer = timezone.now() + timedelta(seconds=5)
+
+        def compute(user, health):
+            raise RuntimeError("boom")
+        with patch.object(recommendations, "_compute_for_you", side_effect=compute):
+            call_command("compute_recommendations", stdout=StringIO(), stderr=StringIO())
+        self.assertIsNone(UserRecommendationCache.objects.get(user=self.user).refreshing_since)
+
+        def compute_then_restamp(user, health):
+            UserRecommendationCache.objects.filter(user=user).update(refreshing_since=newer)
+            raise RuntimeError("boom")
+        UserRecommendationCache.objects.filter(user=self.user).update(refreshing_since=None)
+        with patch.object(recommendations, "_compute_for_you", side_effect=compute_then_restamp):
+            call_command("compute_recommendations", stdout=StringIO(), stderr=StringIO())
+        self.assertEqual(UserRecommendationCache.objects.get(user=self.user).refreshing_since, newer)
+
+    def test_claim_left_by_a_killed_run_ages_out_quickly(self):
+        """The 30 s cap kills the command without `finally`: its claim must
+        not block the user's polls for the whole REFRESH_STATUS_WINDOW."""
+        from userdata.management.commands.compute_recommendations import WARMUP_CLAIM_TTL
+        stamp = recommendations.claim_stale_refresh(self.user.id, live_for=WARMUP_CLAIM_TTL)
+        row = UserRecommendationCache.objects.get(user=self.user)
+        self.assertEqual(row.refreshing_since, stamp)
+        self.assertTrue(recommendations._is_refreshing(self.user.id, row))
+        later = timezone.now() + WARMUP_CLAIM_TTL + timedelta(seconds=1)
+        with patch.object(recommendations.timezone, "now", return_value=later):
+            self.assertFalse(recommendations._is_refreshing(self.user.id, row))
+
+    def test_claim_db_error_skips_the_user_without_aborting(self):
+        other = User.objects.create_user(username="warm2", password="Xk9#mQ2vTz8p")
+        WatchedEntry.objects.create(user=other, media_id=2, media_type="movie", title="B")
+        _stale_row(other)
+        real = recommendations.claim_stale_refresh
+        calls = []
+
+        def flaky(user_id, **kw):
+            calls.append(user_id)
+            if user_id == self.user.id:
+                with patch.object(recommendations.UserRecommendationCache.objects, "filter",
+                                  side_effect=recommendations.DBError("reset")), \
+                        self.assertLogs("userdata.recommendations", "WARNING"):
+                    return real(user_id, **kw)
+            return real(user_id, **kw)
+        command = "userdata.management.commands.compute_recommendations"
+        with patch(f"{command}.claim_stale_refresh", side_effect=flaky):
+            for_you = self._warm()
+        self.assertEqual(sorted(calls), sorted([self.user.id, other.id]))
+        self.assertEqual(for_you.call_count, 1)  # only the other user computed
+
+    def test_user_without_a_stored_result_is_computed(self):
+        UserRecommendationCache.objects.filter(user=self.user).delete()
+        self._warm().assert_called_once()
+
+    @override_settings(TMDB_API_KEY="k3y-s3cret-value")
+    def test_failure_line_is_redacted(self):
+        url = "https://api.themoviedb.org/3/discover/movie?api_key=k3y-s3cret-value&session_id=abc123"
+        err = StringIO()
+        with patch.object(recommendations, "_compute_for_you", side_effect=RuntimeError(f"401 for url: {url}")):
+            call_command("compute_recommendations", stdout=StringIO(), stderr=err)
+        self.assertIn("failed:", err.getvalue())
+        self.assertNotIn("k3y-s3cret-value", err.getvalue())
+        self.assertNotIn("abc123", err.getvalue())
 
     def test_backoff_is_set_after_the_save_transaction(self):
         depth = []

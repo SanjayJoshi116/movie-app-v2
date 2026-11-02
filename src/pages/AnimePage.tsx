@@ -16,7 +16,7 @@ import {
   discoverTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
-import { genresFor, hasActiveFilters } from "../utils/browseFilters";
+import { animeModeOf, genresFor, hasActiveFilters } from "../utils/browseFilters";
 import { localISODate } from "../utils/formatDate";
 import { stashReturnState } from "../utils/browseReturnState";
 import type { MediaType, TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
@@ -60,12 +60,16 @@ function categoryParams(category: string): Record<string, string | number> {
 interface Props {
   externalFilters: FilterValues | null;
   externalSortBy: SortOption;
+  /** Applied genre ids; App resets them with the filters when the mode changes. */
+  externalGenres: number[];
+  /** The mode last used this session (App's), so a visit's first request matches the kept filters. */
+  initialMode: "tv" | "movies";
   onMediaTypeChange: (type: "tv" | "movies") => void;
 }
 
-function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props) {
+function AnimePage({ externalFilters, externalSortBy, externalGenres, initialMode, onMediaTypeChange }: Props) {
   usePageTitle("Anime");
-  const { selectedGenres, clearGenres, isWatched } = useAppContext();
+  const { isWatched } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -76,21 +80,14 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   const savedActiveCategory = locationState?.activeCategory;
 
   // Derive animeTab from saved activeCategory so we don't need a separate state field
-  const restoredTab: "tv" | "movies" =
-    savedActiveCategory?.startsWith("anime-movies-") ? "movies" : "tv";
+  const restoredTab = savedActiveCategory ? animeModeOf(savedActiveCategory) : "tv";
 
   const [animeTab, setAnimeTab] = useState<"tv" | "movies">(
-    isReturning && savedActiveCategory ? restoredTab : "tv"
+    isReturning && savedActiveCategory ? restoredTab : initialMode
   );
   const [activeCategory, setActiveCategory] = useState(
-    isReturning && savedActiveCategory ? savedActiveCategory : "anime-tv-popular"
+    isReturning && savedActiveCategory ? savedActiveCategory : defaultAnimeCategory(initialMode)
   );
-
-  useEffect(() => {
-    if (!isReturning) {
-      clearGenres();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reports the initial mode (a restore included); the toggle reports changes itself.
   useEffect(() => {
@@ -98,7 +95,7 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scopeMediaType = animeTab === "tv" ? "tv" : "movie";
-  const validGenres = genresFor(scopeMediaType, selectedGenres);
+  const validGenres = genresFor(scopeMediaType, externalGenres);
   const genreString = validGenres.join(",");
   const hasFilters = hasActiveFilters(externalFilters, externalSortBy, validGenres);
 
@@ -172,11 +169,10 @@ function AnimePage({ externalFilters, externalSortBy, onMediaTypeChange }: Props
       <Radio.Group
         value={animeTab}
         onChange={(e) => {
-          // One batched render: App resets the applied filters for the new
-          // scope and the genre picks are gone before the grid refetches.
-          // (Via the effect below alone, one request went out with them.)
+          // One batched render: App resets the applied filters and genres for
+          // the new scope before the grid refetches. (Via the mount effect
+          // alone, one request went out with them.)
           const tab: "tv" | "movies" = e.target.value;
-          clearGenres();
           onMediaTypeChange(tab);
           setAnimeTab(tab);
           // The new mode's category in the same render, or the first request

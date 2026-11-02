@@ -25,6 +25,16 @@ function recordDiscover(page: Page) {
   return urls;
 }
 
+/** Opens the filter drawer, picks Drama (and a start year), and applies. */
+async function applyDrama(page: Page, { yearFrom }: { yearFrom?: string } = {}) {
+  await page.getByRole("button", { name: "Toggle filters" }).click();
+  const drawer = page.locator(".ant-drawer-content").filter({ hasText: "Filter & Sort" });
+  if (yearFrom) await drawer.getByPlaceholder("e.g. 2010").fill(yearFrom);
+  await drawer.getByText("Drama", { exact: true }).click();
+  await drawer.getByRole("button", { name: "Apply Filters" }).click();
+  await expect(drawer).toBeHidden();
+}
+
 test.describe("Anime Airing Today", () => {
   // 20:00 UTC on 10 March is already 01:30 on 11 March in India.
   test.use({ timezoneId: "Asia/Kolkata" });
@@ -44,14 +54,6 @@ test.describe("Anime Airing Today", () => {
 });
 
 test.describe("Anime media-type switch", () => {
-  async function pickDrama(page: Page) {
-    await page.getByRole("button", { name: "Toggle filters" }).click();
-    const drawer = page.locator(".ant-drawer-content").filter({ hasText: "Filter & Sort" });
-    await drawer.getByText("Drama", { exact: true }).click();
-    await drawer.getByRole("button", { name: "Apply Filters" }).click();
-    await expect(drawer).toBeHidden();
-  }
-
   test("TV → Movies drops the genre pick", async ({ page }) => {
     await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([animeTv]) }));
     await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([animeMovie]) }));
@@ -60,7 +62,7 @@ test.describe("Anime media-type switch", () => {
     await expect(page.getByText("Grid Anime Show").first()).toBeVisible();
 
     const withGenre = page.waitForRequest((r) => r.url().includes("/api/tmdb/discover/tv") && r.url().includes("with_genres=18"));
-    await pickDrama(page);
+    await applyDrama(page);
     await withGenre;
 
     await page.getByText("Anime Movies", { exact: true }).click();
@@ -78,7 +80,7 @@ test.describe("Anime media-type switch", () => {
     await expect(page.getByText("Grid Anime Movie").first()).toBeVisible();
 
     const withGenre = page.waitForRequest((r) => r.url().includes("/api/tmdb/discover/movie") && r.url().includes("with_genres=18"));
-    await pickDrama(page);
+    await applyDrama(page);
     await withGenre;
 
     const tvBefore = urls.tv.length;
@@ -314,6 +316,113 @@ test.describe("Filter drawer is a draft", () => {
     await expect(page.getByText("Grid Movie").first()).toBeVisible();
     await page.waitForLoadState("networkidle");
     expect(urls.movie.filter((u) => u.searchParams.get("with_genres") === "28")).toHaveLength(1);
+  });
+});
+
+test.describe("Applied genres follow the browse scope", () => {
+  const popular = { id: 9, title: "Grid Movie", poster_path: null, backdrop_path: null, release_date: "2020-01-01", vote_average: 7, genre_ids: [18], overview: "" };
+  const tvShow = { id: 19, name: "Grid Show", poster_path: null, backdrop_path: null, first_air_date: "2020-01-01", vote_average: 7, genre_ids: [18], overview: "" };
+
+  /** An in-app visit (no Back state), so App's applied filters survive it. */
+  async function visit(page: Page, path: string) {
+    await page.evaluate((p) => {
+      window.history.pushState({}, "", p);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, path);
+  }
+
+  const grid = (urls: URL[]) => urls.filter((u) => u.searchParams.has("page"));
+
+  test("a same-scope visit keeps genres and filters in one request", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([popular]) }));
+    const urls = recordDiscover(page);
+    await page.goto("/movies");
+    await expect(page.getByText("Grid Movie").first()).toBeVisible();
+    await applyDrama(page, { yearFrom: "2010" });
+    await expect.poll(() => grid(urls.movie).filter((u) => u.searchParams.get("with_genres") === "18").length).toBe(1);
+
+    await visit(page, "/watchlist");
+    await expect(page.getByText("Grid Movie")).toHaveCount(0);
+    const before = urls.movie.length;
+    await visit(page, "/movies");
+    await expect(page.getByText("Grid Movie").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const after = grid(urls.movie.slice(before));
+    expect(after.map((u) => u.href)).toHaveLength(1);
+    expect(after[0]?.searchParams.get("with_genres")).toBe("18");
+    expect(after[0]?.href).toContain("2010");
+  });
+
+  test("a scope change sends no stale genre", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([popular]) }));
+    await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([tvShow]) }));
+    await page.route("**/api/tmdb/tv/popular**", (route) => route.fulfill({ json: tmdbPage([tvShow]) }));
+    const urls = recordDiscover(page);
+    await page.goto("/movies");
+    await expect(page.getByText("Grid Movie").first()).toBeVisible();
+    await applyDrama(page, { yearFrom: "2010" });
+    await expect.poll(() => grid(urls.movie).filter((u) => u.searchParams.get("with_genres") === "18").length).toBe(1);
+
+    await visit(page, "/tv");
+    await expect(page.getByText("Grid Show").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    for (const url of urls.tv) expect(url.searchParams.has("with_genres"), url.href).toBe(false);
+  });
+
+  test("Anime reopens in the last mode with its filters, in one request", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([animeTv]) }));
+    await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([animeMovie]) }));
+    const urls = recordDiscover(page);
+    await page.goto("/anime");
+    await page.getByText("Anime Movies", { exact: true }).click();
+    await expect(page.getByText("Grid Anime Movie").first()).toBeVisible();
+    await applyDrama(page, { yearFrom: "2010" });
+    await expect.poll(() => grid(urls.movie).filter((u) => u.searchParams.get("with_genres") === "18").length).toBe(1);
+
+    await visit(page, "/watchlist");
+    await expect(page.getByText("Grid Anime Movie")).toHaveCount(0);
+    const tvBefore = urls.tv.length;
+    const movieBefore = urls.movie.length;
+    await visit(page, "/anime");
+    await expect(page.getByText("Grid Anime Movie").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    expect(grid(urls.tv.slice(tvBefore)).map((u) => u.href)).toEqual([]);
+    const after = grid(urls.movie.slice(movieBefore));
+    expect(after.map((u) => u.href)).toHaveLength(1);
+    expect(after[0]?.searchParams.get("with_genres")).toBe("18");
+  });
+});
+
+test.describe("Anime Back-restore in the other mode", () => {
+  test("restores TV mode without a request in the Movies scope", async ({ page }) => {
+    await page.route("**/api/tmdb/discover/tv**", (route) => route.fulfill({ json: tmdbPage([animeTv]) }));
+    await page.route("**/api/tmdb/discover/movie**", (route) => route.fulfill({ json: tmdbPage([animeMovie]) }));
+    const urls = recordDiscover(page);
+    await page.goto("/anime");
+    await page.getByText("Anime Movies", { exact: true }).click();
+    await expect(page.getByText("Grid Anime Movie").first()).toBeVisible();
+    await applyDrama(page, { yearFrom: "2010" });
+    await expect.poll(() => urls.movie.filter((u) => u.searchParams.get("with_genres") === "18").length).toBeGreaterThan(0);
+
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/watchlist");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.getByText("Grid Anime Movie")).toHaveCount(0);
+    const tvBefore = urls.tv.length;
+    const movieBefore = urls.movie.length;
+    // An older Anime TV entry, as Back would restore it (router state under `usr`).
+    await page.evaluate(() => {
+      const usr = { isReturn: true, activeCategory: "anime-tv-popular", loadedPages: 1, scrollY: 0 };
+      window.history.pushState({ usr, key: "restore1", idx: 50 }, "", "/anime");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.getByText("Grid Anime Show").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const tvGrid = urls.tv.slice(tvBefore).filter((u) => u.searchParams.has("page"));
+    expect(tvGrid.map((u) => u.href)).toHaveLength(1);
+    expect(tvGrid[0]?.searchParams.has("with_genres")).toBe(false);
+    expect(urls.movie.slice(movieBefore).filter((u) => u.searchParams.has("page"))).toEqual([]);
   });
 });
 

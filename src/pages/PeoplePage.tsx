@@ -26,6 +26,13 @@ function PeoplePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchTerm = searchParams.get("q")?.trim() ?? "";
   const [inputValue, setInputValue] = useState(searchTerm);
+  // The field follows the address when it changes other than by typing (the
+  // nav's People entry, Back/Forward): same path, so the page isn't remounted.
+  const [shownTerm, setShownTerm] = useState(searchTerm);
+  if (shownTerm !== searchTerm) {
+    setShownTerm(searchTerm);
+    setInputValue(searchTerm);
+  }
   const setSearchTerm = (term: string) =>
     setSearchParams(
       (prev) => {

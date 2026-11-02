@@ -111,11 +111,13 @@ test("a list that doesn't exist shows the not-found state, and a failed load off
     fail ? route.fulfill({ status: 500, json: { detail: "boom" } }) : route.fulfill({ json: paginated(LISTS) }));
   await page.goto("/lists/999");
   await expect(page.getByText("List not found")).toBeVisible();
+  await expect(page).toHaveTitle("List not found · CINE DB");
   await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
 
   fail = true;
   await page.goto("/lists/999");
   await expect(page.getByText("Couldn't load your lists")).toBeVisible();
+  await expect(page).toHaveTitle("Couldn't load your lists · CINE DB");
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -40,15 +40,19 @@ function WatchedPage() {
   usePageTitle("Watched");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { watchedList, removeFromWatched, clearAllWatched, getRating } = useAppContext();
-  const { isLoading, error: loadError, reload } = useWatchedContext();
+  const { watchedList, removeFromWatched, clearAllWatched, getRating, allRatings } = useAppContext();
+  const { isLoading, hasLoaded, error: loadError, reload } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [clearing, setClearing] = useState(false);
 
-  const sortFns: Record<string, (a: WatchedEntry, b: WatchedEntry) => number> = {
+  // Memoized: a new object each render would re-filter and re-sort the whole
+  // history on every render (useLibraryFilters keys its memo on it). Keyed on
+  // allRatings too: getRating is stable (it reads a ref), so a rating change
+  // must still re-sort "My Rating".
+  const sortFns = useMemo<Record<string, (a: WatchedEntry, b: WatchedEntry) => number>>(() => ({
     ...SORT_FNS,
     "my-rating-desc": (a, b) => (getRating(b.id, b.type)?.userRating ?? 0) - (getRating(a.id, a.type)?.userRating ?? 0),
-  };
+  }), [getRating, allRatings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { search, setSearch, sortKey, setSortKey, typeFilter, setTypeFilter, filtered, isDefault, resetFilters } =
     useLibraryFilters<WatchedEntry>({
@@ -75,10 +79,11 @@ function WatchedPage() {
   // Unmarking (or filtering away) the last items on the last page would leave
   // a blank grid; move back to the last page that still has items. Only once
   // loaded, so a ?page=3 deep link isn't clamped against the initial empty list.
+  // A failed reload that kept the list still clamps (hasLoaded stays true).
   const lastPage = Math.max(1, Math.ceil(filtered.length / pageSize));
   useEffect(() => {
-    if (!isLoading && !loadError && page > lastPage) setPageState(lastPage, pageSize);
-  }, [isLoading, loadError, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isLoading && hasLoaded && page > lastPage) setPageState(lastPage, pageSize);
+  }, [isLoading, hasLoaded, page, lastPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildFromUrl = () => {
     const p = new URLSearchParams();

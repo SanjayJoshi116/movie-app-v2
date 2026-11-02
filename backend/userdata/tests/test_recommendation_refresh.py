@@ -301,6 +301,25 @@ class CrossProcessStatusTests(_RefreshBase):
                 self.assertEqual(self.client.get(url).data["status"], "pending")
         self.assertEqual(self.spawned, [])  # fresh cache: nothing started here
 
+    def _make_stale(self):
+        UserRecommendationCache.objects.filter(pk=self.row.pk).update(computed_at=timezone.now() - timedelta(days=2))
+
+    def test_stale_poll_starts_nothing_while_another_process_refreshes(self):
+        """fix-data-sweep-b6: request_refresh coalesces per process only, so a
+        poll honours the cross-process stamp before starting a refresh."""
+        self._make_stale()
+        self._stamp(timedelta(minutes=1))
+        for url in self.URLS:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).data["status"], "pending")
+        self.assertEqual(self.spawned, [])
+
+    def test_stale_poll_starts_a_refresh_once_the_stamp_ages_out(self):
+        self._make_stale()
+        self._stamp(recommendations.REFRESH_STATUS_WINDOW + timedelta(minutes=1))
+        self.client.get(self.URLS[0])
+        self.assertEqual(self.spawned, [self.user.id])
+
     def test_stamp_older_than_window_reports_ready(self):
         self._stamp(recommendations.REFRESH_STATUS_WINDOW + timedelta(minutes=1))
         for url in self.URLS:

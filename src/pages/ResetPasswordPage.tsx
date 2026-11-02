@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Form, Input, Button, App } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { confirmPasswordReset } from "../api/userApi";
@@ -12,12 +12,16 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
+  // A second Enter submits the form again before `loading` re-renders the button.
+  const submitting = useRef(false);
 
   const onFinish = async (values: { new_password: string; confirm_password: string }) => {
     if (!uid || !token) {
       message.error("Invalid reset link.");
       return;
     }
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     try {
       await confirmPasswordReset(uid, token, values.new_password);
@@ -28,6 +32,7 @@ export default function ResetPasswordPage() {
       // sent one; a 502 page or no response never reads as an expired link.
       message.error(getApiError(err, "Couldn't reset your password. The link may have expired."));
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };

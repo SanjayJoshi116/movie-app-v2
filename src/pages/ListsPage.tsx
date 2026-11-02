@@ -214,9 +214,15 @@ function ListsPage() {
         title="Create New List"
         open={createModalOpen}
         onOk={handleCreate}
-        onCancel={() => { setCreateModalOpen(false); form.resetFields(); }}
+        // Holds while the create runs: closing would drop what was typed
+        // before a failure could be retried.
+        onCancel={() => { if (creating) return; setCreateModalOpen(false); form.resetFields(); }}
         okText="Create"
         confirmLoading={creating}
+        closable={!creating}
+        maskClosable={!creating}
+        keyboard={!creating}
+        cancelButtonProps={{ disabled: creating }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

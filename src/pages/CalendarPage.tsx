@@ -156,36 +156,35 @@ function CalendarPage() {
         return results;
       };
 
-      if (filter === "movies" || filter === "both") {
-        const movies = await fetchAllPages<TMDBMovieSummary>(discoverMovies, movieParams);
-        for (const m of movies) {
-          if (m.release_date) {
-            allItems.push({
-              id: m.id,
-              type: "movie",
-              title: m.title,
-              posterPath: m.poster_path,
-              releaseDate: m.release_date,
-              voteAverage: m.vote_average,
-            });
-          }
+      // "All" asks for movies and TV at the same time, not one after the other.
+      const [movies, shows] = await Promise.all([
+        filter === "movies" || filter === "both" ? fetchAllPages<TMDBMovieSummary>(discoverMovies, movieParams) : [],
+        filter === "tv" || filter === "both" ? fetchAllPages<TMDBTVSummary>(discoverTV, tvParams) : [],
+      ]);
+      for (const m of movies) {
+        if (m.release_date) {
+          allItems.push({
+            id: m.id,
+            type: "movie",
+            title: m.title,
+            posterPath: m.poster_path,
+            releaseDate: m.release_date,
+            voteAverage: m.vote_average,
+          });
         }
       }
 
-      if (filter === "tv" || filter === "both") {
-        const shows = await fetchAllPages<TMDBTVSummary>(discoverTV, tvParams);
-        for (const t of shows) {
-          const date = t.first_air_date;
-          if (date) {
-            allItems.push({
-              id: t.id,
-              type: "tv",
-              title: t.name,
-              posterPath: t.poster_path,
-              releaseDate: date,
-              voteAverage: t.vote_average,
-            });
-          }
+      for (const t of shows) {
+        const date = t.first_air_date;
+        if (date) {
+          allItems.push({
+            id: t.id,
+            type: "tv",
+            title: t.name,
+            posterPath: t.poster_path,
+            releaseDate: date,
+            voteAverage: t.vote_average,
+          });
         }
       }
 

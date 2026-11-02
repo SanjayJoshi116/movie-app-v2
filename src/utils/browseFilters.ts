@@ -45,3 +45,8 @@ export function browseScope(pathname: string, animeMediaType: "tv" | "movies"): 
   if (pathname === "/anime") return animeMediaType === "movies" ? "anime-movies" : "anime-tv";
   return null;
 }
+
+/** The Anime mode a saved Anime category belongs to (`anime-movies-*` or `anime-tv-*`). */
+export function animeModeOf(category: string): "tv" | "movies" {
+  return category.startsWith("anime-movies-") ? "movies" : "tv";
+}

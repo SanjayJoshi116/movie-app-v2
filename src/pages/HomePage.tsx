@@ -48,11 +48,13 @@ interface Props {
   tab: "movies" | "tv";
   externalFilters: FilterValues | null;
   externalSortBy: SortOption;
+  /** Applied genre ids; App resets them with the filters when the browse scope changes. */
+  externalGenres: number[];
 }
 
-function HomePage({ tab, externalFilters, externalSortBy }: Props) {
+function HomePage({ tab, externalFilters, externalSortBy, externalGenres }: Props) {
   usePageTitle(tab === "movies" ? "Movies" : "TV Shows");
-  const { selectedGenres, clearGenres, isWatched, watchedList } = useAppContext();
+  const { isWatched, watchedList } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const isMovie = tab === "movies";
@@ -68,15 +70,8 @@ function HomePage({ tab, externalFilters, externalSortBy }: Props) {
     (isReturning && savedActiveCategory) ? savedActiveCategory : defaultCategory
   );
 
-  useEffect(() => {
-    if (!isReturning) {
-      clearGenres();
-      setActiveCategory(defaultCategory);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   const mediaType = isMovie ? "movie" : "tv";
-  const validGenres = genresFor(mediaType, selectedGenres);
+  const validGenres = genresFor(mediaType, externalGenres);
   const genreString = validGenres.join(",");
   const hasFilters = hasActiveFilters(externalFilters, externalSortBy, validGenres);
 

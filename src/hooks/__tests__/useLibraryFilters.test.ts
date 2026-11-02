@@ -137,4 +137,26 @@ describe("useLibraryFilters", () => {
     );
     expect(result2.current.search).toBe("wire");
   });
+
+  // library-filters: "Restored filter choices are validated".
+  it("falls back to the defaults for saved values the controls don't offer", () => {
+    sessionStorage.setItem("mykey_sort", "nope-desc");
+    sessionStorage.setItem("mykey_type_filter", "anime");
+    const { result } = renderHook(() =>
+      useLibraryFilters({ keyPrefix: "mykey", items: ITEMS, sortFns: SORT_FNS, defaultSort: "added-desc" })
+    );
+    expect(result.current.sortKey).toBe("added-desc");
+    expect(result.current.typeFilter).toBe("all");
+    expect(result.current.filtered).toHaveLength(3);
+  });
+
+  it("keeps saved values the controls offer", () => {
+    sessionStorage.setItem("mykey_sort", "title-asc");
+    sessionStorage.setItem("mykey_type_filter", "tv");
+    const { result } = renderHook(() =>
+      useLibraryFilters({ keyPrefix: "mykey", items: ITEMS, sortFns: SORT_FNS, defaultSort: "added-desc" })
+    );
+    expect(result.current.sortKey).toBe("title-asc");
+    expect(result.current.typeFilter).toBe("tv");
+  });
 });

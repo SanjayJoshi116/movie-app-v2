@@ -17,17 +17,15 @@ function renderUI() {
   return { ...view, setSignedIn };
 }
 
-it("resets search, adult content and genres when the user signs out", () => {
+it("resets search and adult content when the user signs out", () => {
   const { result, setSignedIn } = renderUI();
   act(() => {
     result.current.setSearchTerm("fight");
     result.current.setIncludeAdult(true);
-    result.current.setGenres([28, 35]);
   });
   setSignedIn(false);
   expect(result.current.searchTerm).toBe("");
   expect(result.current.includeAdult).toBe(false);
-  expect(result.current.selectedGenres).toEqual([]);
 });
 
 it("keeps the settings while the session continues, and keeps the theme on sign-out", () => {

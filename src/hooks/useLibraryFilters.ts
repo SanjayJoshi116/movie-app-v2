@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import type { MediaType } from "../types";
+import { pickKey } from "../utils/queryParams";
 
-export type LibraryTypeFilter = "all" | "movie" | "tv";
+const TYPE_FILTERS = ["all", "movie", "tv"] as const;
+export type LibraryTypeFilter = (typeof TYPE_FILTERS)[number];
 
 interface Options<T> {
   keyPrefix: string;
@@ -37,9 +39,11 @@ export function useLibraryFilters<T>({
   const ssTypeFilter = `${keyPrefix}_type_filter`;
 
   const [search, setSearch] = useState(() => sessionStorage.getItem(ssSearch) ?? "");
-  const [sortKey, setSortKey] = useState(() => sessionStorage.getItem(ssSort) ?? defaultSort);
+  // A saved value the controls don't offer (an older build's key, a hand
+  // edit) falls back to the default instead of selecting nothing.
+  const [sortKey, setSortKey] = useState(() => pickKey(sessionStorage.getItem(ssSort), Object.keys(sortFns), defaultSort));
   const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(
-    () => (sessionStorage.getItem(ssTypeFilter) as LibraryTypeFilter) ?? "all"
+    () => pickKey(sessionStorage.getItem(ssTypeFilter), TYPE_FILTERS, "all")
   );
 
   useEffect(() => { sessionStorage.setItem(ssSearch, search); }, [ssSearch, search]);

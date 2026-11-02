@@ -3,6 +3,95 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.10] - 2026-11-02
+
+Fixes from the tenth module of the review sweep (B6, data layer: `fix-data-sweep-b6`, backlog item 59; archived, specs synced into `account-security`, `api-hardening` and `recommendation-refresh`), plus the `/simplify` pass and the step 7 code review over 0.31.9 and 0.31.10 together, fixed directly. `/security-review` of the module: no findings. **Migration 0033** (index changes only, no data change). No API or dependency change.
+
+### Fixed
+- **Rotating the TMDB session keys can't undo a connect or disconnect.** `rotate_tmdb_sessions` read every profile, then wrote back what it read, so a user who disconnected (or reconnected) during the run got the old session stored again. The rows are now locked from read to write.
+- **No recommendation is computed twice at once.** A refresh is marked running on the stored row, but a stale poll only checked its own process before starting one. So a second gunicorn worker, or the startup warm-up, computed the same user again (twice the TMDB calls and budget). A stale poll now starts nothing while another process's refresh is marked running; data changes still start or queue one.
+- **The startup warm-up claims each user before computing**, in one conditional update: only while the result is still stale and no refresh is running.
+  - It skips users a request refreshed after it read its list, and clears only its own mark.
+  - Its mark reads as running for 60 s at most, so a run cut off by the 30 s cap doesn't block that user's polls for 10 minutes.
+  - One user's database error skips that user instead of ending the run.
+- **The warm-up's error line is redacted** like the logs (TMDB key, session ids, request tokens): a command's stderr bypasses the log formatter. It can't be reached today, since every TMDB call in the compute catches its own errors, so this is hardening.
+
+### Internal
+- `recommendations.compute_and_save()` is shared by the background refresh and the warm-up.
+- New `claim_stale_refresh()` / `release_refresh_claim()` pair.
+- `stale_before()` and `_stamp_live_after()` define "stale" and "running" once.
+- `userdata.logging.redact()` is split out of `RedactingFormatter`.
+- Migration 0033:
+  - drops the unused single-column `WatchedEntry.watched_at` index (the per-user composite serves its only query);
+  - indexes `TMDBMediaCache.cached_at` for the startup prune;
+  - gives `TMDBMediaCache.media_type` `choices`.
+
+### Docs
+- `CLAUDE.md` (stale-poll rule, warm-up claim and its 60 s bound, `redact()`), README tree, BUG_BACKLOG item 59, `ideas.md` sweep table.
+
+### Tests
+- Backend:
+  - The rotation locks its rows (fails on the old code).
+  - Polls start nothing under a live stamp from another process, and do once it ages out.
+  - The warm-up claims while computing and clears after; skips a user refreshed since; clears only its own stamp on failure; computes a user with no stored result; redacts its error line; survives a DB error on one claim; and its claim ages out after 60 s.
+  - `redact()` itself.
+- Totals:
+  - Before the review fixes: backend pytest 718 pass + 25 skip.
+  - After them: recommendation tests 72 pass.
+  - ruff clean; `makemigrations --check` clean.
+
+## [0.31.9] - 2026-11-02
+
+Fixes from the ninth module of the review sweep (F3, pages: `fix-pages-sweep-f3`, backlog item 58; archived, specs synced into `accessibility`, `browse-filters`, `library-filters`, `load-states` and `write-feedback`), with its `/simplify` and step 7 fixes (shared with 0.31.10). `/security-review` of the module: no findings. No migration, API or dependency change.
+
+### Changed
+- **Genres are kept like the other filters.** Coming back to the same grid (Movies → a title → Movies, by Back or the navigation) keeps the genre picks along with the year, rating and sort. Switching media type drops them all. Before, a normal revisit kept the filters but cleared the genres.
+- **Anime reopens in the mode you last used** this session (TV the first time), so its first request matches the filters kept for that mode. It resets on sign-out.
+
+### Fixed
+- **No stale genre request on Movies, TV and Anime.** Applied genres lived in a context the app could only clear in an effect, so the grid's first request still carried the old `with_genres` and a second request followed. They now live with the applied filters in `App` and reset in the same render.
+- **Anime no longer sends a request in the wrong mode** before correcting itself. This happened on a normal visit after using Anime Movies, and on Back to an older entry in the other mode, where it also lost the Back restore's pages.
+- **Watched and watchlist buttons run the action they show.** The For You cards, the Watchlist page and the movie and TV detail pages wrote through `toggle`, which decides at run time. So a title that became watched elsewhere while Mark as Watched was open got unmarked under a "Marked as watched" toast. They now use explicit add/remove, as `MediaCard` already did.
+- **The New List and Edit List dialogs stay open while saving.** Cancel, Escape, the mask and the close button wait, and a failed save keeps what you typed.
+- **Watched and Watchlist move off an empty page after a failed reload** that kept the list. They used to leave a blank grid with no pager.
+- **The People search box follows the address.** Clicking People while searching shows popular people with an empty box, not the old term.
+- **A malformed photos answer hides only Photos** on a person page, instead of crashing it.
+- **The list page's tab names its state**: "List not found" or "Couldn't load your lists" (and "Page Not Found" for an invalid id), not "List".
+- **Saved filter choices are checked.** An unknown saved type filter, sort or Watchlist watched filter falls back to the default instead of selecting nothing.
+- **Reset and Forgot password guard against a second submit.** antd's loading button already blocked most of them.
+
+### Performance
+- The Calendar's "All" view fetches movies and TV at the same time.
+- Watched's sort functions and the Watchlist's watched filter are memoized, so a 20,000-title library isn't re-sorted on every render. They're keyed on the watched history and ratings too, so they still update.
+
+### Internal
+- `UIContext` drops `selectedGenres`, `toggleGenre`, `setGenres` and `clearGenres`. `App` holds `activeGenres`: pages get `externalGenres`, `FilterPanel` gets `appliedGenres`, and `onApply` takes `(filters, sortBy, genres)`.
+- New `animeModeOf()` in `browseFilters.ts`.
+- `useWatchlist` exposes `hasLoaded` like `useWatched`.
+- `ListDetailPage` titles through `detailPageTitle`.
+
+### Docs
+- `CLAUDE.md` (genres in `App`, Anime mode, explicit watched writes, `hasLoaded` clamp), `docs/ARCHITECTURE.md` (browse filter scope), README tree, features.txt, BUG_BACKLOG item 58, `ideas.md` sweep table.
+
+### Tests
+- e2e:
+  - `browse-restore.spec.ts`: a same-scope visit keeps genres and filters in one request; a scope change sends no stale genre; Anime reopens in Movies mode in one request; a Back-restore in the other Anime mode sends one request in the restored mode. Each fails on the old code except the scope change.
+  - `double-submit.spec.ts`: Enter twice on Reset/Forgot password; the New List dialog holds and keeps its input.
+  - `library-filters.spec.ts`: list titles.
+- Jest:
+  - RecCard and Watchlist writes are add/remove.
+  - Unwatched drops a title once it's watched.
+  - Clamp after a failed reload.
+  - Unknown saved filters fall back.
+  - The People box follows `?q=`.
+  - Person photos answered as `{}`, `null` or with bad entries.
+  - `FilterPanel` takes genres through props.
+- Totals:
+  - Jest 644 pass.
+  - Touched TS e2e: 130 pass after the review fixes.
+  - Python e2e (lists, watchlist, recommendations, browse, auth): 86 pass before the review fixes.
+  - Lint and typecheck clean.
+
 ## [0.31.8] - 2026-11-02
 
 Fixes from the eighth module of the review sweep (F2, hooks & utils: `fix-hooks-sweep-f2`, backlog item 57; archived, specs synced into `data-backup`, `write-feedback`, `library-filters`, `load-states` and `view-state-restore`), plus the `/simplify` pass and the step 7 code review over all uncommitted work, fixed directly (its findings in the B4 code of 0.31.7 included). No migration, API or dependency change.

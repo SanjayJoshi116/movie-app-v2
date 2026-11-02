@@ -11,6 +11,7 @@ import {
   PlayCircleOutlined, MinusOutlined, DeleteOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { useEpisodeProgress } from "../hooks/useEpisodeProgress";
 import { RatingModal } from "./watchlist/RatingModal";
@@ -52,7 +53,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating, isWatched, toggleWatched } = useAppContext();
+  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating } = useAppContext();
+  // Explicit add/remove, never toggle: a stale render can't run the opposite
+  // of what the button showed (or of the dialog's "Mark as watched").
+  const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
   const idleIconColor = useActionIconColor();
   const { showSuccess, showError } = useToast();
   const {
@@ -156,7 +160,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
                   onClick={async () => {
                     if (watched) {
                       try {
-                        await toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                        await removeWatched(id, "tv");
                         showSuccess("Removed from watched");
                       } catch (err) {
                         showError(getApiError(err, "Failed to update watched status."));
@@ -399,7 +403,7 @@ const TVShowDetails = ({ tvShow }: Props) => {
         onCancel={() => setShowMarkWatchedModal(false)}
         onConfirm={async (details) => {
           try {
-            await toggleWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average, ...details });
+            await addWatched({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average, ...details });
             showSuccess("Marked as watched");
           } catch (err) {
             showError(getApiError(err, "Failed to mark as watched."));

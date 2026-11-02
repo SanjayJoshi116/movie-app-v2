@@ -17,6 +17,10 @@ export function useWatchlist() {
   const [loadedGen, setLoadedGen] = useState<number | null>(null);
   const [reloading, setReloading] = useState(false);
   const isLoading = isAuthenticated && (reloading || loadedGen !== currentSessionGeneration());
+  // The session generation of the last successful load (as in useWatched): a
+  // failed reload after one keeps the list, and this.
+  const [loadedOkGen, setLoadedOkGen] = useState<number | null>(null);
+  const hasLoaded = isAuthenticated && loadedOkGen === currentSessionGeneration();
   const [error, setError] = useState<unknown>(null);
   // Bumped as each write settles: a reload that started earlier is rerun.
   const writeSeq = useRef(0);
@@ -58,6 +62,7 @@ export function useWatchlist() {
           dbIdMap.current = map;
           setWatchlist(entries);
           setError(null);
+          setLoadedOkGen(gen);
         },
         {
           reloadSeq,
@@ -149,5 +154,5 @@ export function useWatchlist() {
         : addRaw(entry), "toggle"),
   [removeRaw, addRaw]);
 
-  return { watchlist, isLoading, error, add, remove, clearAll, isIn, toggle, reload };
+  return { watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, toggle, reload };
 }

@@ -75,3 +75,21 @@ it("says no credits only when the requests succeeded with none", async () => {
   expect(await screen.findByText("No credits available")).toBeInTheDocument();
   expect(screen.queryByText("Couldn't load credits")).toBeNull();
 });
+
+// load-states: a malformed photos answer hides Photos only.
+it.each([[{}], [{ profiles: null }], [[]]])("renders the person without Photos when the photos answer is %j", async (body) => {
+  (fetchPersonMovieCredits as jest.Mock).mockResolvedValue(credits(["Se7en"]));
+  (fetchPersonTVCredits as jest.Mock).mockResolvedValue(credits([]));
+  (fetchPersonImages as jest.Mock).mockResolvedValue({ data: body });
+  renderPage();
+  expect(await screen.findByRole("tab", { name: "Movies (1)" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: /Photos/ })).toBeNull();
+});
+
+it("shows only the photo entries that have an image path", async () => {
+  (fetchPersonMovieCredits as jest.Mock).mockResolvedValue(credits(["Se7en"]));
+  (fetchPersonTVCredits as jest.Mock).mockResolvedValue(credits([]));
+  (fetchPersonImages as jest.Mock).mockResolvedValue({ data: { profiles: [{ file_path: "/a.jpg" }, null, { file_path: 5 }] } });
+  renderPage();
+  expect(await screen.findByRole("tab", { name: "Photos (1)" })).toBeInTheDocument();
+});

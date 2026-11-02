@@ -19,7 +19,7 @@ import { PosterPlaceholder } from "../components/PosterPlaceholder";
 import { formatDateDMY } from "../utils/formatDate";
 import { getApiError } from "../utils/apiError";
 import { settledData, isNotFound } from "../utils/settled";
-import { isRecord } from "../utils/appended";
+import { arrayOr, isRecord } from "../utils/appended";
 import NotFoundPage from "./NotFoundPage";
 import { useValidId } from "../hooks/useValidId";
 import { safeHttpUrl } from "../utils/safeUrl";
@@ -27,6 +27,7 @@ import { LoadError } from "../components/LoadError";
 import type {
   TMDBPerson,
   TMDBPersonCredits,
+  TMDBImage,
   TMDBPersonImages,
 } from "../types";
 import { mergeCredits, mergeCrew, sortCreditsNewestFirst } from "../utils/personCredits";
@@ -118,7 +119,11 @@ function PersonPage() {
         setMovieCredits(movies ? toCredits(movies) : null);
         setTvCredits(tv ? toCredits(tv) : null);
         setCreditsError(creditsFailed(movieRes) || creditsFailed(tvRes));
-        setImages(settledData(imagesRes) ?? null);
+        // A malformed photos answer hides Photos (or its bad entries), never the page.
+        const imagesData = settledData(imagesRes);
+        const profiles = arrayOr<TMDBImage>(isRecord(imagesData) ? imagesData.profiles : undefined)
+          .filter((p) => isRecord(p) && typeof p.file_path === "string");
+        setImages({ profiles });
       }
       setLoading(false);
     };

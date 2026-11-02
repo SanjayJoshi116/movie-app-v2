@@ -22,7 +22,7 @@ import CSVListImportModal from "../components/lists/CSVListImportModal";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants } from "../constants/ui";
 import type { WatchlistEntry } from "../types";
-import { usePageTitle } from "../hooks/usePageTitle";
+import { detailPageTitle, usePageTitle } from "../hooks/usePageTitle";
 
 const SORT_FNS = {
   "added-desc": (a: WatchlistEntry, b: WatchlistEntry) => (b.addedAt ?? "").localeCompare(a.addedAt ?? ""),
@@ -31,6 +31,9 @@ const SORT_FNS = {
   "rating-desc": (a: WatchlistEntry, b: WatchlistEntry) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0),
 };
 
+// One source for the tab title and the page's own headings.
+const LIST_HEADINGS = { generic: "List", notFound: "List not found", failed: "Couldn't load your lists" };
+
 function ListDetailPage() {
   const { id } = useParams<{ id: string }>();
   const listId = Number(id);
@@ -38,7 +41,12 @@ function ListDetailPage() {
   const { showSuccess, showError } = useToast();
   const { lists, isLoading, error: loadError, reloadLists, deleteList, updateList, removeFromList, clearList } = useListsContext();
   const list = lists.find((l) => l.id === listId) ?? null;
-  usePageTitle(list?.name ?? "List", { loading: isLoading && !list });
+  usePageTitle(...detailPageTitle({
+    validId: Number.isInteger(listId) && listId > 0,
+    loading: isLoading && !list,
+    error: list ? null : loadError ? "failed" : "not-found",
+    name: list?.name,
+  }, LIST_HEADINGS));
 
   const [editOpen, setEditOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -108,9 +116,9 @@ function ListDetailPage() {
           Back
         </Button>
         {loadError ? (
-          <LoadError title="Couldn't load your lists" onRetry={() => { reloadLists().catch(() => {}); }} />
+          <LoadError title={LIST_HEADINGS.failed} onRetry={() => { reloadLists().catch(() => {}); }} />
         ) : (
-          <LoadError notFound title="List not found" subTitle="It may have been deleted, or the link is wrong." />
+          <LoadError notFound title={LIST_HEADINGS.notFound} subTitle="It may have been deleted, or the link is wrong." />
         )}
       </div>
     );
@@ -274,9 +282,14 @@ function ListDetailPage() {
         title="Edit List"
         open={editOpen}
         onOk={handleEditSubmit}
-        onCancel={() => setEditOpen(false)}
+        // Holds while the save runs, so a failure keeps what was typed.
+        onCancel={() => { if (!saving) setEditOpen(false); }}
         okText="Save"
         confirmLoading={saving}
+        closable={!saving}
+        maskClosable={!saving}
+        keyboard={!saving}
+        cancelButtonProps={{ disabled: saving }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

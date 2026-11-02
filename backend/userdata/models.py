@@ -47,7 +47,9 @@ class WatchedEntry(models.Model):
     # When metadata was last fetched. A title TMDB lists without genres isn't
     # settled: it's fetched again METADATA_RECHECK_DAYS after this.
     metadata_checked_at = models.DateTimeField(null=True, blank=True)
-    watched_at = models.DateTimeField(default=timezone.now, db_index=True)
+    # No single-column index: the only query on it is per user, served by
+    # watched_user_date_idx below.
+    watched_at = models.DateTimeField(default=timezone.now)
     # IANA zone the watch was logged in (decides its day on every device);
     # blank for entries logged before zones were recorded. See timezones.py.
     watched_tz = models.CharField(max_length=64, blank=True, default="")
@@ -123,13 +125,15 @@ CACHE_TTL_DAYS = 7
 
 class TMDBMediaCache(models.Model):
     media_id = models.IntegerField()
-    media_type = models.CharField(max_length=10)
+    media_type = models.CharField(max_length=10, choices=MEDIA_TYPES)
     genre_ids = models.JSONField(default=list)
     top_cast = models.JSONField(default=list)  # [{id, name}, ...]
     cached_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ("media_id", "media_type")
+        # For the startup prune (prune_media_cache: cached_at older than the TTL).
+        indexes = (models.Index(fields=["cached_at"], name="mediacache_cached_at_idx"),)
 
     def __str__(self):
         return f"{self.media_type}/{self.media_id}"

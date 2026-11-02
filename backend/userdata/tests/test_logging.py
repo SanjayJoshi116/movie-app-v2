@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APITestCase
 
-from userdata.logging import RedactingFormatter
+from userdata.logging import RedactingFormatter, redact
 
 FAKE_KEY = "deadbeefcafe0123456789"
 
@@ -128,3 +128,18 @@ class CredentialRedactionTests(APITestCase):
         logged = buf.getvalue()
         self.assertIn("tmdb_proxy request failed", logged)
         self.assertNotIn("PROXYSECRET", logged)
+
+
+class RedactFunctionTests(SimpleTestCase):
+    """fix-data-sweep-b6: the same rules for output that bypasses a handler."""
+
+    @override_settings(TMDB_API_KEY="k3y-s3cret-value")
+    def test_replaces_key_and_credentials(self):
+
+        text = redact(
+            "url?api_key=k3y-s3cret-value&session_id=s1&guest_session_id=g2&request_token=t3 "
+            '{"session_id": "s4"}'
+        )
+        for secret in ("k3y-s3cret-value", "s1", "g2", "t3", "s4"):
+            self.assertNotIn(secret, text)
+        self.assertIn("session_id=***", text)

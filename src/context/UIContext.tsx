@@ -10,11 +10,6 @@ interface UIContextType {
   clearSearch(): void;
   includeAdult: boolean;
   setIncludeAdult(v: boolean): void;
-  selectedGenres: number[];
-  toggleGenre(id: number): void;
-  /** Replace the picks at once (the filter drawer's Apply). */
-  setGenres(ids: number[]): void;
-  clearGenres(): void;
   theme: Theme;
   toggleTheme(): void;
   /** Region for where-to-watch data (ISO 3166-1, e.g. "IN"); a device preference. */
@@ -27,14 +22,13 @@ export const UIContext = createContext<UIContextType | null>(null);
 export function UIProvider({ children }: { children: ReactNode }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [includeAdult, setIncludeAdult] = useState(false);
-  const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [theme, setTheme] = useLocalStorage<Theme>("cinedb_theme", "dark");
   // Like the theme, a device preference: kept across sign-out.
   const [region, setRegion] = useLocalStorage<string>("cinedb_region", deviceRegion());
 
   // Browse settings belong to the session: on sign-out they go back to the
-  // defaults, so the next account in this tab doesn't inherit "include adult"
-  // or genre picks. During render, like App's scope reset, so no page fetches
+  // defaults, so the next account in this tab doesn't inherit "include adult".
+  // During render, like App's scope reset, so no page fetches
   // with the old values first. Theme is a device preference and stays. Read
   // from the context, not useAuth(), so UIProvider also renders without auth.
   const isAuthenticated = useContext(AuthContext)?.isAuthenticated ?? false;
@@ -44,7 +38,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       setSearchTerm("");
       setIncludeAdult(false);
-      setSelectedGenres([]);
     }
   }
 
@@ -61,16 +54,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     [setTheme]
   );
 
-  const toggleGenre = useCallback((genreId: number) => {
-    setSelectedGenres((prev) =>
-      prev.includes(genreId)
-        ? prev.filter((id) => id !== genreId)
-        : [...prev, genreId]
-    );
-  }, []);
-
-  const setGenres = useCallback((ids: number[]) => setSelectedGenres(ids), []);
-  const clearGenres = useCallback(() => setSelectedGenres([]), []);
   const clearSearch = useCallback(() => setSearchTerm(""), []);
 
   const value = useMemo<UIContextType>(() => ({
@@ -79,10 +62,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     clearSearch,
     includeAdult,
     setIncludeAdult,
-    selectedGenres,
-    toggleGenre,
-    setGenres,
-    clearGenres,
     theme,
     toggleTheme,
     region,
@@ -90,7 +69,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
   }), [
     searchTerm, clearSearch,
     includeAdult,
-    selectedGenres, toggleGenre, setGenres, clearGenres,
     theme, toggleTheme,
     region, setRegion,
   ]);

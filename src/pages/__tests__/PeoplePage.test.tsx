@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, render, screen } from "@testing-library/react";
+import { MemoryRouter, useNavigate, type NavigateFunction } from "react-router-dom";
 import { fetchPopularPeople, searchPeople } from "../../api/tmdb";
 import { useAppContext } from "../../context/useAppContext";
 import PeoplePage from "../PeoplePage";
@@ -33,4 +33,19 @@ it("shows popular people when only the app-wide search term is set", async () =>
   render(<MemoryRouter initialEntries={["/people"]}><PeoplePage /></MemoryRouter>);
   expect(await screen.findByText("Popular People")).toBeInTheDocument();
   expect(searchPeople).not.toHaveBeenCalledWith("batman", expect.anything(), expect.anything());
+});
+
+// browse-filters: the field follows ?q= when it changes other than by typing.
+it("empties the field when the address drops the term", async () => {
+  (useAppContext as jest.Mock).mockReturnValue({ searchTerm: "", includeAdult: false });
+  (searchPeople as jest.Mock).mockResolvedValue({ data: { results: [], total_pages: 0 } });
+  (fetchPopularPeople as jest.Mock).mockResolvedValue({ data: { results: [], total_pages: 0 } });
+  let navigate!: NavigateFunction;
+  function Grab() { navigate = useNavigate(); return null; }
+  render(<MemoryRouter initialEntries={["/people?q=nolan"]}><Grab /><PeoplePage /></MemoryRouter>);
+  const field = screen.getByRole("searchbox", { name: "Search for people" });
+  expect(field).toHaveValue("nolan");
+  act(() => navigate("/people"));
+  expect(await screen.findByText("Popular People")).toBeInTheDocument();
+  expect(field).toHaveValue("");
 });

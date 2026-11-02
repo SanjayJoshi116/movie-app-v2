@@ -38,8 +38,10 @@ type NavigateFn = (path: string, opts?: object) => void;
 const RecCard = memo(function RecCard({ item, navigate, from }: { item: PersonalizedRecSection["items"][number]; navigate: NavigateFn; from: string }) {
   const path = `/${item.type === "movie" ? "movie" : "tv"}/${item.id}`;
   const idleIconColor = useActionIconColor();
-  const { isIn: isInWatchlist, toggle: toggleWatchlist } = useWatchlistContext();
-  const { isWatched, toggle: toggleWatched } = useWatchedContext();
+  // Explicit add/remove, never toggle (like MediaCard): the action is the one
+  // the card showed, so a stale render can't run the opposite under its toast.
+  const { isIn: isInWatchlist, add: addToWatchlist, remove: removeFromWatchlist } = useWatchlistContext();
+  const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
   return (
@@ -90,7 +92,7 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
                       e.stopPropagation();
                       if (isWatched(item.id, item.type)) {
                         try {
-                          await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                          await removeWatched(item.id, item.type);
                           showSuccess("Removed from watched");
                         } catch (err) {
                           showError(getApiError(err, "Failed to update watched status."));
@@ -112,7 +114,8 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
                       e.stopPropagation();
                       const inList = isInWatchlist(item.id, item.type);
                       try {
-                        await toggleWatchlist({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
+                        if (inList) await removeFromWatchlist(item.id, item.type);
+                        else await addToWatchlist({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage });
                         showSuccess(inList ? "Removed from watchlist" : "Added to watchlist");
                       } catch (err) {
                         showError(getApiError(err, "Failed to update watchlist."));
@@ -144,7 +147,7 @@ const RecCard = memo(function RecCard({ item, navigate, from }: { item: Personal
       onCancel={() => setShowMarkWatchedModal(false)}
       onConfirm={async (details) => {
         try {
-          await toggleWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage, ...details });
+          await addWatched({ id: item.id, type: item.type, title: item.title, posterPath: item.posterPath, voteAverage: item.voteAverage, ...details });
           showSuccess("Marked as watched");
         } catch (err) {
           showError(getApiError(err, "Failed to mark as watched."));

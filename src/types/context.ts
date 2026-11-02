@@ -17,12 +17,6 @@ export interface AppContextType {
   includeAdult: boolean;
   setIncludeAdult(v: boolean): void;
 
-  // Genre filters
-  selectedGenres: number[];
-  toggleGenre(id: number): void;
-  setGenres(ids: number[]): void;
-  clearGenres(): void;
-
   // Theme
   theme: Theme;
   toggleTheme(): void;

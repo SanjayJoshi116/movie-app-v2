@@ -9,6 +9,7 @@ import {
   BookOutlined, BookFilled, StarOutlined, StarFilled, LeftOutlined, EyeOutlined, EyeFilled, PlusOutlined,
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
+import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
 import { AddToListModal } from "./AddToListModal";
@@ -103,7 +104,9 @@ const MovieDetails = ({ movie }: Props) => {
     .filter((c) => c.job === "Director")
     .map((c) => c.name)
     .join(", ");
-  const { isWatched, toggleWatched } = useAppContext();
+  // Explicit add/remove, never toggle: a stale render can't run the opposite
+  // of what the button showed (or of the dialog's "Mark as watched").
+  const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
   const idleIconColor = useActionIconColor();
   const inWatchlist = isInWatchlist(id, "movie");
   const watched = isWatched(id, "movie");
@@ -173,7 +176,7 @@ const MovieDetails = ({ movie }: Props) => {
                   onClick={async () => {
                     if (watched) {
                       try {
-                        await toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                        await removeWatched(id, "movie");
                         showSuccess("Removed from watched");
                       } catch (err) {
                         showError(getApiError(err, "Failed to update watched status."));
@@ -287,7 +290,7 @@ const MovieDetails = ({ movie }: Props) => {
         onCancel={() => setShowMarkWatchedModal(false)}
         onConfirm={async (details) => {
           try {
-            await toggleWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
+            await addWatched({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average, ...details });
             showSuccess("Marked as watched");
           } catch (err) {
             showError(getApiError(err, "Failed to mark as watched."));

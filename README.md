@@ -211,7 +211,8 @@ backend/
 │   ├── tmdb_proxy_views.py      # /api/tmdb/* passthrough; retry/timeout budget kept under gunicorn's timeout;
 │   │                            #   200s cached in their own `tmdb` cache alias (TTL by path, X-Cache header);
 │   │                            #   plain paths only, own deadline pool, TMDB 401/403 → 502, 429 keeps Retry-After
-│   ├── logging.py               # RedactingFormatter: strips the TMDB API key from log output
+│   ├── logging.py               # redact() + RedactingFormatter: strips the TMDB API key and session
+│   │                            #   credentials from log output and startup command output
 │   ├── watchlist_views.py       # watchlist CRUD (paginated list) + bulk import
 │   ├── watched_views.py         # watched CRUD (paginated list) + bulk import
 │   ├── ratings_views.py         # ratings CRUD (paginated list) + bulk import + TMDB mirror
@@ -228,10 +229,12 @@ backend/
 │   │   └── commands/
 │   │       ├── compute_recommendations.py  # Management command: pre-computes rec cache for all users;
 │   │       │                               #   run at startup by both paths; skips users backing off
-│   │       │                               #   after a TMDB failure or already refreshing
+│   │       │                               #   after a TMDB failure, claims each stale user's row
+│   │       │                               #   (claim_stale_refresh) so no poll computes it twice
 │   │       ├── prune_media_cache.py        # Deletes TMDBMediaCache rows past CACHE_TTL_DAYS that no watched
 │   │       │                               #   entry uses (startup step, both paths)
 │   │       └── rotate_tmdb_sessions.py     # Re-encrypts stored TMDB sessions under the first TMDB_SESSION_KEYS key
+│   │                                       #   (rows locked, so a concurrent connect/disconnect is kept)
 │   ├── secret_fields.py         # EncryptedSessionField: TMDB session_id encrypted at rest (Fernet/MultiFernet)
 │   ├── genre_families.py        # Maps TMDB movie/TV genre ids into shared families (recs + Stats);
 │   │                            #   discover calls convert back to each type's own ids
@@ -311,7 +314,7 @@ src/
 │   └── TVShowDetails.tsx        # Includes episode progress tracker; add-to-list with toggle
 ├── context/
 │   ├── AppContext.tsx            # Composes UIContext + WatchlistContext + WatchedContext + RatingsContext
-│   ├── UIContext.tsx             # theme, search, genre filters
+│   ├── UIContext.tsx             # theme, search, adult toggle, region (applied genres live in App.tsx)
 │   ├── WatchlistContext.tsx      # Wraps useWatchlist()
 │   ├── WatchedContext.tsx        # Wraps useWatched()
 │   ├── RatingsContext.tsx        # Wraps useRatings()
