@@ -7,6 +7,8 @@ const FULL = {
   watchlist: "watchlist is full",
   ratings: "ratings are full",
   list: "list is full",
+  followed: "follow limit reached",
+  episode_progress: "episode progress is full",
 } as const;
 
 /** A collection with a library limit (`library_limits.LIMITS` on the server). */

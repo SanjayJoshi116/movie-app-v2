@@ -16,7 +16,7 @@ import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
 import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
-import { useLibraryFilters } from "../hooks/useLibraryFilters";
+import { mediaTypeOf, useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { mediaLabel } from "../utils/mediaLabel";
@@ -101,6 +101,7 @@ function WatchlistPage() {
       items: watchlist,
       sortFns: SORT_FNS,
       defaultSort: "added-desc",
+      getType: mediaTypeOf,
       extraFilter:
         watchedFilter === "all"
           ? undefined

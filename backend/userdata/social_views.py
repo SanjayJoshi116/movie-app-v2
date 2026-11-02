@@ -1,7 +1,10 @@
 import logging
+import math
+import threading
 import time
+from collections import deque
 from datetime import date, datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 import requests
 from django.core.cache import caches
@@ -12,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
+from . import library_limits
 from .bulk_import import bulk_import, timestamp_or_now
 from .models import EpisodeProgress, FollowedPerson, WatchedEntry
 from .pagination import DefaultPagination
@@ -29,6 +33,11 @@ logger = logging.getLogger(__name__)
 
 def _progress_data(prog):
     return {"showId": prog.show_id, "season": prog.season_number, "episode": prog.episode_number}
+
+
+def _follow_data(fp):
+    return {"id": fp.id, "personId": fp.person_id, "name": fp.name, "profilePath": fp.profile_path,
+            "followedAt": fp.followed_at}
 
 
 @api_view(["GET"])
@@ -55,7 +64,7 @@ def episode_progress_bulk(request):
 
     return bulk_import(
         request, model=EpisodeProgress, entry_serializer=BulkEpisodeProgressSerializer, build=build,
-        identity=("showId", "show_id"),
+        identity=("showId", "show_id"), limit="episode_progress",
     )
 
 
@@ -82,12 +91,15 @@ def episode_progress(request, show_id: int):
     season = body.validated_data["season"]
     episode = body.validated_data["episode"]
 
-    prog, _ = EpisodeProgress.objects.update_or_create(
-        user=request.user,
-        show_id=show_id,
-        defaults={"season_number": season, "episode_number": episode},
+    # A show already tracked just moves on; a new one needs room under the limit.
+    prog, created = library_limits.get_or_create(
+        "episode_progress", request.user.id, request.user.episode_progress,  # related manager: sets user
+        identity={"show_id": show_id}, defaults={"season_number": season, "episode_number": episode},
     )
-    return Response({"showId": prog.show_id, "season": prog.season_number, "episode": prog.episode_number})
+    if not created:
+        prog.season_number, prog.episode_number = season, episode
+        prog.save(update_fields=["season_number", "episode_number", "updated_at"])
+    return Response(_progress_data(prog))
 
 
 @api_view(["GET", "POST"])
@@ -97,31 +109,19 @@ def followed_people_list(request):
         people = FollowedPerson.objects.filter(user=request.user).order_by("-followed_at", "-id")
         paginator = DefaultPagination()
         page = paginator.paginate_queryset(people, request)
-        data = [
-            {"id": p.id, "personId": p.person_id, "name": p.name, "profilePath": p.profile_path,
-             "followedAt": p.followed_at}
-            for p in page
-        ]
-        return paginator.get_paginated_response(data)
+        return paginator.get_paginated_response([_follow_data(p) for p in page])
 
     body = FollowPersonInputSerializer(data=request.data)
     body.is_valid(raise_exception=True)
-    person_id = body.validated_data.get("personId")
-    name = body.validated_data["name"]
-    profile_path = body.validated_data.get("profilePath")
-    if not person_id:
+    # A missing id keeps its own message (test_input_validation pins it).
+    if not body.validated_data.get("personId"):
         return Response({"detail": "personId is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    fp, created = FollowedPerson.objects.get_or_create(
-        user=request.user,
-        person_id=person_id,
-        defaults={"name": name, "profile_path": profile_path},
+    fp, created = library_limits.get_or_create(
+        "followed", request.user.id, request.user.followed_people,  # related manager: sets user
+        identity={"person_id": body.validated_data["personId"]},
+        defaults={"name": body.validated_data["name"], "profile_path": body.validated_data.get("profilePath")},
     )
-    return Response(
-        {"id": fp.id, "personId": fp.person_id, "name": fp.name, "profilePath": fp.profile_path,
-         "followedAt": fp.followed_at},
-        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-    )
+    return Response(_follow_data(fp), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -137,7 +137,7 @@ def followed_people_bulk(request):
 
     return bulk_import(
         request, model=FollowedPerson, entry_serializer=BulkFollowedPersonSerializer, build=build,
-        identity=("personId", "person_id"),
+        identity=("personId", "person_id"), limit="followed",
     )
 
 
@@ -157,11 +157,6 @@ PERSON_CREDITS_TTL = 6 * 60 * 60
 # cold people). Must stay well under gunicorn's --timeout
 # (docker-entrypoint.sh); test_followed_people pins the margin.
 FOLLOWED_RECS_BUDGET_SECONDS = 15
-# Only what notifications / followed-people recommendations read — keeps the
-# DB-cache rows small (a full combined_credits payload can be hundreds of KB).
-_CREDIT_FIELDS = (
-    "id", "media_type", "title", "name", "poster_path", "release_date", "first_air_date", "vote_average",
-)
 # Talk shows and news: a person appearing as themselves, not their work.
 TALK_AND_NEWS_GENRES = {10767, 10763}
 # "New from {name}" reads a person's titles dated this far back, or later.
@@ -182,23 +177,26 @@ def credits_cache():
     return caches["person_credits"]
 
 
-# Versioned: entries cached before crew credits counted (cast only, all-time)
-# are never read.
+# Versioned: older entries (cast only, or stored before credits were cleaned)
+# are never read. One prefix per person, so DatabaseCache's cull, which deletes
+# keys in alphabetical order, removes a person's two entries together.
 def _credits_key(person_id):
-    return f"person_new:v2:{person_id}"
+    return f"person:v3:{person_id}:new"
 
 
 def _recent_key(person_id):
-    return f"person_recent:v2:{person_id}"
+    return f"person:v3:{person_id}:recent"
 
 
 def is_talk_or_news(credit):
-    return bool(TALK_AND_NEWS_GENRES & set(credit.get("genre_ids") or []))
+    genre_ids = credit.get("genre_ids")
+    return isinstance(genre_ids, list) and any(isinstance(g, int) and g in TALK_AND_NEWS_GENRES for g in genre_ids)
 
 
 def credit_date(credit):
-    """A credit's release or first-air date, or None if missing or malformed."""
-    value = credit.get("release_date") or credit.get("first_air_date")
+    """A cleaned credit's date (_clean_credit folds a show's first-air date
+    into release_date), or None if missing or malformed."""
+    value = credit.get("release_date")
     if not value:
         return None
     try:
@@ -227,24 +225,114 @@ def cached_recent_credits(person_ids):
     return {pid: found[_recent_key(pid)] for pid in person_ids if _recent_key(pid) in found}
 
 
+def _clean_credit(c):
+    """The fields notifications and "New from" read, from one TMDB credit, or
+    None for a credit they can't show (not a movie or show, no usable id or
+    title, a talk or news appearance). Cached entries hold only these, so the
+    readers can trust their types."""
+    if not isinstance(c, dict) or is_talk_or_news(c):
+        return None
+    cid, media_type = c.get("id"), c.get("media_type")
+    title = c.get("title") or c.get("name")
+    if type(cid) is not int or media_type not in ("movie", "tv") or not isinstance(title, str) or not title.strip():
+        return None
+    score = c.get("vote_average")
+    usable_score = isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(score)
+    return {
+        "id": cid,
+        "media_type": media_type,
+        "title": title,
+        "poster_path": c["poster_path"] if isinstance(c.get("poster_path"), str) else None,
+        "release_date": c.get("release_date") or c.get("first_air_date"),
+        "vote_average": float(score) if usable_score else 0,
+    }
+
+
 def _fetch_person_credits(person_id):
     """One person's work from TMDB: acting and every crew job, one entry per
-    (id, media_type), talk and news appearances left out, trimmed. Raises on
-    failure. No DB or cache access, so it's safe in a worker thread (the
-    production cache is DB-backed; worker threads would each open and leak a
-    connection)."""
+    (id, media_type), cleaned and trimmed (_clean_credit). Raises on failure,
+    an answer whose credit lists aren't lists included. No DB or cache access,
+    so it's safe in a worker thread (the production cache is DB-backed; worker
+    threads would each open and leak a connection)."""
     data = tmdb_client._get(f"/person/{person_id}/combined_credits")
+    cast, crew = data.get("cast") or [], data.get("crew") or []
+    if not isinstance(cast, list) or not isinstance(crew, list):
+        raise ValueError("TMDB credits aren't lists")
     seen = set()
     out = []
-    for c in [*(data.get("cast") or []), *(data.get("crew") or [])]:
-        if not isinstance(c, dict) or is_talk_or_news(c):
+    for c in map(_clean_credit, [*cast, *crew]):
+        if c is None or (c["id"], c["media_type"]) in seen:
             continue
-        key = (c.get("id"), c.get("media_type"))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({k: c[k] for k in _CREDIT_FIELDS if k in c})
+        seen.add((c["id"], c["media_type"]))
+        out.append(c)
     return out
+
+
+def credit_item(c):
+    """A cleaned credit in the client's item shape."""
+    return {"id": c["id"], "type": c["media_type"], "title": c["title"], "posterPath": c["poster_path"],
+            "voteAverage": c["vote_average"]}
+
+
+# Followed people's credit fetches, for every request in this process: their
+# own pool, so fetches left running past a request's deadline only ever delay
+# each other, never the proxy or the deadline pool (rating sync, TMDB connect).
+# At least the request threads (test_startup_warmup pins it).
+FOLLOWED_POOL_SIZE = 16
+FOLLOWED_POOL = ThreadPoolExecutor(max_workers=FOLLOWED_POOL_SIZE, thread_name_prefix="tmdb-followed")
+# One call's fetches in flight at once, so one poll can't take the whole pool.
+FETCHES_PER_CALL = 5
+
+# Credits that arrived after their request stopped waiting: kept here by the
+# worker (which must not touch the DB-backed cache) and cached by the next
+# call, on its request thread. Bounded; new ones are dropped when full.
+MAX_LATE_RESULTS = 200
+_late_results = {}
+_late_lock = threading.Lock()
+# Fetches still running after their request gave up, removed once their
+# result is kept, so a test's teardown can wait them out instead of one
+# landing in the next test's late results.
+_late_pending = set()
+
+
+def _keep_late(future):
+    keep = not future.cancelled() and future.exception() is None
+    person_id, credits = future.result() if keep else (None, None)
+    with _late_lock:
+        # None: a failure, never stored, so it's retried.
+        if credits is not None and len(_late_results) < MAX_LATE_RESULTS:
+            _late_results[person_id] = credits
+        _late_pending.discard(future)
+
+
+def _take_late_results():
+    with _late_lock:
+        taken = dict(_late_results)
+        _late_results.clear()
+    return taken
+
+
+def _store_credits(store, by_person, today):
+    """Cache each person's new-work list and recent summary together, in one
+    write; returns {cache key: value}."""
+    entries = {}
+    for person_id, credits in by_person.items():
+        entries[_credits_key(person_id)] = new_work(credits, today)
+        entries[_recent_key(person_id)] = _recent_summary(credits, today)
+    if entries:
+        store.set_many(entries, PERSON_CREDITS_TTL)
+    return entries
+
+
+def watched_keys(user, results):
+    """{(media_id, media_type)} of the user's watched titles among the credits
+    in `results` ([(FollowedPerson, credits)]): neither notifications nor "New
+    from" show them. One query, on the request thread, for those ids only, not
+    the whole history (up to 20,000 rows) on every poll."""
+    ids = {c["id"] for _fp, credits in results for c in credits}
+    if not ids:
+        return set()
+    return set(WatchedEntry.objects.filter(user=user, media_id__in=ids).values_list("media_id", "media_type"))
 
 
 def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seconds=None, summary_only=False):
@@ -258,8 +346,9 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     PERSON_CREDITS_TTL, each as soon as it arrives. Failures are never cached,
     so the next call retries; a TMDB 404 is cached as no credits. `max_fetch` caps how many uncached people one
     call fetches (in followed order, so the next call's first uncached ones are
-    new people), and `budget_seconds` caps how long it waits for them. Fetches
-    still running at the deadline are abandoned: they only do HTTP.
+    new people), and `budget_seconds` caps how long it waits for them. At the
+    deadline, fetches not started yet are dropped, and ones still running
+    finish on FOLLOWED_POOL and are cached by the next call (_keep_late).
 
     Without `summary_only` the lists are each person's new and upcoming work
     (new_work). With it, their recent summary (credits dated around now):
@@ -273,7 +362,10 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
 
     key = _recent_key if summary_only else _credits_key
     store = credits_cache()
-    cached = store.get_many([key(fp.person_id) for fp in followed])
+    today = timezone.now().date()
+    _store_credits(store, _take_late_results(), today)
+    wanted = {key(fp.person_id) for fp in followed}
+    cached = store.get_many(list(wanted))
     to_fetch = list(dict.fromkeys(fp.person_id for fp in followed if key(fp.person_id) not in cached))
     if max_fetch is not None:
         to_fetch = to_fetch[:max_fetch]
@@ -281,7 +373,7 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
     def fetch(person_id):
         try:
             return person_id, _fetch_person_credits(person_id)
-        except (requests.RequestException, ValueError) as e:
+        except (requests.RequestException, ValueError, TypeError, AttributeError) as e:
             if tmdb_client.is_not_found(e):
                 # Settled: cached as "no credits", so a merged or deleted
                 # person isn't refetched (and doesn't starve others) every poll.
@@ -290,27 +382,32 @@ def _fetch_followed_people_credits(user, limit=None, max_fetch=None, budget_seco
             logger.exception("Failed to fetch combined credits for person %s", person_id)
             return person_id, None
 
-    if to_fetch:
-        deadline = time.monotonic() + budget_seconds if budget_seconds is not None else None
-        ex = ThreadPoolExecutor(max_workers=5)
-        futures = [ex.submit(fetch, pid) for pid in to_fetch]
-        try:
+    deadline = time.monotonic() + budget_seconds if budget_seconds is not None else None
+    queued, running = deque(to_fetch), set()
+    try:
+        while queued or running:
+            # Past the deadline nothing new starts: it would only run late.
+            while queued and len(running) < FETCHES_PER_CALL and (deadline is None or time.monotonic() < deadline):
+                running.add(FOLLOWED_POOL.submit(fetch, queued.popleft()))
             remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-            for future in as_completed(futures, timeout=remaining):
-                pid, cast = future.result()
-                if cast is not None:
-                    # On this thread: the production cache is DB-backed.
-                    today = timezone.now().date()
-                    recent, new = _recent_summary(cast, today), new_work(cast, today)
-                    store.set_many({_credits_key(pid): new, _recent_key(pid): recent}, PERSON_CREDITS_TTL)
-                    cached[key(pid)] = recent if summary_only else new
-        except TimeoutError:
-            logger.warning(
-                "Followed-people credits budget (%ss) ran out with %s of %s fetches unfinished",
-                budget_seconds, sum(not f.done() for f in futures), len(futures),
-            )
-        finally:
-            ex.shutdown(wait=False, cancel_futures=True)
+            done, running = wait(running, timeout=remaining, return_when=FIRST_COMPLETED)
+            if not done:
+                logger.warning(
+                    "Followed-people credits budget (%ss) ran out with %s of %s fetches unfinished",
+                    budget_seconds, len(running) + len(queued), len(to_fetch),
+                )
+                break
+            # On this thread: the production cache is DB-backed.
+            arrived = dict(f.result() for f in done)
+            stored = _store_credits(store, {pid: c for pid, c in arrived.items() if c is not None}, today)
+            cached.update((k, v) for k, v in stored.items() if k in wanted)
+    finally:
+        # Not started yet: dropped. Already running: kept for the next call.
+        for future in running:
+            if not future.cancel():
+                with _late_lock:
+                    _late_pending.add(future)
+                future.add_done_callback(_keep_late)
 
     return [(fp, cached.get(key(fp.person_id), [])) for fp in followed]
 
@@ -331,10 +428,7 @@ def followed_people_recommendations(request):
     if not results:
         return Response([])
 
-    watched_set = {
-        (e.media_id, e.media_type)
-        for e in WatchedEntry.objects.filter(user=request.user).only("media_id", "media_type")
-    }
+    watched_set = watched_keys(request.user, results)
 
     today = timezone.now().date()
     sections = []
@@ -345,20 +439,11 @@ def followed_people_recommendations(request):
         # New and upcoming work only, newest (upcoming) first. No rating floor:
         # new titles have few votes.
         for c in new_work(cast, today):
-            if c.get("media_type") not in ("movie", "tv"):
-                continue
-            mid = c.get("id")
-            key = (mid, c["media_type"])
+            key = (c["id"], c["media_type"])
             if key in watched_set or key in seen:
                 continue
             seen.add(key)
-            dated.append((credit_date(c), {
-                "id": mid,
-                "type": c["media_type"],
-                "title": c.get("title") or c.get("name", ""),
-                "posterPath": c.get("poster_path"),
-                "voteAverage": c.get("vote_average", 0),
-            }))
+            dated.append((credit_date(c), credit_item(c)))
         dated.sort(key=lambda x: x[0], reverse=True)
         items = [item for _, item in dated[:12]]
         if items:

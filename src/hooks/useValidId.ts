@@ -1,6 +1,5 @@
 import { useParams } from "react-router-dom";
-
-const INT32_MAX = 2_147_483_647;
+import { INT32_MAX } from "../constants/limits";
 
 /** A route id as a TMDB id (positive integer, no sign/leading zeros, ≤ INT32_MAX), else null. */
 export function parseTmdbId(raw: string | undefined): number | null {

@@ -14,17 +14,18 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from userdata import social_views
-from userdata.models import FollowedPerson, NotificationCheckpoint
-from userdata.notifications_views import MAX_SEEN_ITEMS
-from userdata.social_views import _credits_key, _recent_key, credits_cache
+from userdata.models import FollowedPerson, NotificationCheckpoint, WatchedEntry
+from userdata.notifications_views import MAX_ITEMS, MAX_SEEN_ITEMS
+from userdata.social_views import _credits_key, _recent_key, credits_cache, watched_keys
 
 NEW_RELEASES = "/api/notifications/new-releases/"
 MARK_SEEN = "/api/notifications/mark-seen/"
 
 
 def _credit(cid, day, title=None):
+    """A credit in the cleaned shape the cache holds (social_views._clean_credit)."""
     return {"id": cid, "media_type": "movie", "title": title or f"T{cid}", "poster_path": None,
-            "release_date": day.isoformat()}
+            "release_date": day.isoformat(), "vote_average": 0}
 
 
 class CreditsCacheAliasTests(SimpleTestCase):
@@ -77,7 +78,8 @@ class RecentSummaryTests(APITestCase):
     @patch("userdata.tmdb_client._get")
     def test_entries_cached_under_the_old_keys_are_not_read(self, mock_get):
         today = timezone.now().date()
-        credits_cache().set("person_recent:1", [_credit(9, today, "Stale cast-only")], 600)
+        for old_key in ("person_recent:1", "person_recent:v2:1"):  # cast-only, then uncleaned
+            credits_cache().set(old_key, [_credit(9, today, "Stale")], 600)
         mock_get.return_value = {"cast": [_credit(1, today - timedelta(days=1), "Fresh")]}
         res = self.client.get(NEW_RELEASES)
         mock_get.assert_called_once()
@@ -153,6 +155,58 @@ class CrewCreditsTests(SimpleTestCase):
         self.assertNotIn("genre_ids", credits[0])  # trimmed
 
 
+class CleanCreditsTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="cc", password="Xk9#mQ2vTz8p")
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.create(user=self.user, person_id=1, name="One")
+        FollowedPerson.objects.create(user=self.user, person_id=2, name="Two")
+        self.day = (timezone.now().date() - timedelta(days=2)).isoformat()
+
+    def _answers(self, by_person):
+        return lambda path, *a, **k: by_person[int(path.split("/")[2])]
+
+    @patch("userdata.tmdb_client._get")
+    def test_malformed_credits_are_dropped_and_the_poll_succeeds(self, mock_get):
+        good = {"id": 7, "media_type": "movie", "title": "Good", "release_date": self.day}
+        mock_get.side_effect = self._answers({
+            1: {"cast": [
+                good,
+                {"id": [8], "media_type": "movie", "title": "List id", "release_date": self.day},
+                {"id": 9, "media_type": "movie", "title": "Bad genres", "genre_ids": 5, "release_date": self.day},
+                {"id": 10, "media_type": "movie", "title": None, "name": None, "release_date": self.day},
+                {"id": True, "media_type": "movie", "title": "Bool id", "release_date": self.day},
+                {"id": 11, "media_type": "person", "title": "Not a title", "release_date": self.day},
+            ]},
+            2: {"cast": {"id": 1}},  # not a list: a failed fetch
+        })
+        res = self.client.get(NEW_RELEASES)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(sorted(i["title"] for i in res.data["items"]), ["Bad genres", "Good"])
+        self.assertIsNone(credits_cache().get(_recent_key(2)))  # not cached: retried next poll
+        mock_get.reset_mock()
+        self.client.get(NEW_RELEASES)
+        self.assertEqual([c.args[0] for c in mock_get.call_args_list], ["/person/2/combined_credits"])
+
+    @patch("userdata.tmdb_client._get")
+    def test_null_or_missing_score_is_zero(self, mock_get):
+        mock_get.side_effect = self._answers({
+            1: {"cast": [{"id": 7, "media_type": "movie", "title": "Null", "vote_average": None,
+                          "release_date": self.day}]},
+            2: {"cast": [{"id": 8, "media_type": "tv", "name": "Missing", "first_air_date": self.day,
+                          "poster_path": 5}]},
+        })
+        sections = self.client.get("/api/recommendations/followed-people/").data
+        items = {i["title"]: i for s in sections for i in s["items"]}
+        self.assertEqual((items["Null"]["voteAverage"], items["Missing"]["voteAverage"]), (0, 0))
+        self.assertIsNone(items["Missing"]["posterPath"])
+
+    def test_a_persons_two_keys_sort_next_to_each_other(self):
+        keys = sorted(k(pid) for pid in (1, 2, 10, 11) for k in (_credits_key, _recent_key))
+        owners = [k.split(":")[2] for k in keys]
+        self.assertEqual(owners[0::2], owners[1::2])  # each person's pair is adjacent
+
+
 class SeenItemsTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="sd", password="Xk9#mQ2vTz8p")
@@ -224,10 +278,67 @@ class SeenItemsTests(APITestCase):
         self._mark_seen(self.morning)
         self.assertEqual(self._seen_items(), [[2, "movie"], [1, "movie"]])
 
-    def test_mark_seen_makes_no_tmdb_call_and_caps_the_list(self):
-        credits = [_credit(i, self.today) for i in range(MAX_SEEN_ITEMS + 100)]
+    def test_mark_seen_makes_no_tmdb_call_and_records_only_what_a_poll_shows(self):
+        credits = [_credit(i, self.today) for i in range(MAX_ITEMS + 10)]
         credits_cache().set(_recent_key(1), credits, 3600)
+        shown = [[i["id"], i["type"]] for i in self._poll(self.morning)["items"]]
         with patch("userdata.tmdb_client._get") as mock_get:
             self._mark_seen(self.morning)
         mock_get.assert_not_called()
-        self.assertEqual(len(self._seen_items()), MAX_SEEN_ITEMS)
+        self.assertEqual(self._seen_items(), shown)
+        self.assertEqual(len(shown), MAX_ITEMS)
+
+    def test_item_past_the_shown_list_is_unread_once_it_moves_in(self):
+        credits = [_credit(i, self.today - timedelta(days=i % 20)) for i in range(1, MAX_ITEMS + 2)]
+        credits_cache().set(_recent_key(1), credits, 3600)
+        shown = {x["id"] for x in self._poll(self.morning)["items"]}
+        hidden = [c for c in credits if c["id"] not in shown]
+        self.assertEqual(len(hidden), 1)
+        self._mark_seen(self.morning)
+        # A shown title leaves the list (TMDB drops the credit).
+        remaining = [c for c in credits if c["id"] != credits[0]["id"]]
+        credits_cache().set(_recent_key(1), remaining, 3600)
+        unread = self._unread(self._poll(self.morning + timedelta(hours=1)))
+        self.assertTrue(unread[hidden[0]["title"]])
+        self.assertEqual(sum(unread.values()), 1)
+
+    def test_seen_titles_survive_a_mark_seen_while_their_person_is_not_cached(self):
+        FollowedPerson.objects.create(user=self.user, person_id=2, name="Other")
+        credits_cache().set(_recent_key(1), [_credit(1, self.today, "One")], 3600)
+        credits_cache().set(_recent_key(2), [_credit(2, self.today, "Two")], 3600)
+        self._mark_seen(self.morning)
+        # Person 2's summary expires and can't be fetched before the next mark-seen.
+        credits_cache().delete(_recent_key(2))
+        self._mark_seen(self.morning + timedelta(hours=1))
+        credits_cache().set(_recent_key(2), [_credit(2, self.today, "Two")], 3600)
+        self.assertEqual(self._unread(self._poll(self.morning + timedelta(hours=2))), {"One": False, "Two": False})
+
+    def test_seen_set_is_capped_keeping_the_newest(self):
+        old = [[10_000 + i, "movie"] for i in range(MAX_SEEN_ITEMS)]
+        NotificationCheckpoint.objects.create(user=self.user, last_seen_at=self.morning, seen_items=old)
+        credits_cache().set(_recent_key(1), [_credit(1, self.today, "New")], 3600)
+        self._mark_seen(self.morning + timedelta(hours=1))
+        self.assertEqual(self._seen_items(), [[1, "movie"], *old[:MAX_SEEN_ITEMS - 1]])
+
+    def test_watched_title_is_recorded_as_seen_and_stays_read_once_unwatched(self):
+        credits_cache().set(_recent_key(1), [_credit(1, self.today, "Shown"), _credit(2, self.today, "Watched")], 3600)
+        entry = WatchedEntry.objects.create(user=self.user, media_id=2, media_type="movie", title="Watched")
+        self._mark_seen(self.morning)
+        # Shown titles first, then the in-window titles hidden as watched.
+        self.assertEqual(self._seen_items(), [[1, "movie"], [2, "movie"]])
+        entry.delete()  # a mis-click undone: the title comes back, already seen
+        unread = self._unread(self._poll(self.morning + timedelta(hours=1)))
+        self.assertEqual(unread, {"Shown": False, "Watched": False})
+
+
+class WatchedKeysTests(APITestCase):
+    def test_reads_only_the_candidate_titles(self):
+        user = User.objects.create_user(username="wk", password="Xk9#mQ2vTz8p")
+        for media_id in (1, 2, 3):
+            WatchedEntry.objects.create(user=user, media_id=media_id, media_type="movie", title=f"T{media_id}")
+        fp = FollowedPerson(user=user, person_id=9, name="P")
+        credits = [{"id": 2, "media_type": "movie"}, {"id": 2, "media_type": "tv"}, {"id": 7, "media_type": "movie"}]
+        results = [(fp, credits)]
+        self.assertEqual(watched_keys(user, results), {(2, "movie")})
+        with self.assertNumQueries(0):
+            self.assertEqual(watched_keys(user, [(fp, [])]), set())

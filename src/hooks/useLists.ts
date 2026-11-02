@@ -36,6 +36,8 @@ export function useLists() {
   const [error, setError] = useState<unknown>(null);
   // Bumped as each write settles: a reload that started earlier is rerun.
   const writeSeq = useRef(0);
+  // Numbers each reload: only the newest one's result and outcome are applied.
+  const reloadSeq = useRef(0);
   // Each list's item writes, clear, delete and edits share one group, so a
   // clear or delete is ordered with that list's item writes only.
   const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
@@ -62,17 +64,19 @@ export function useLists() {
           setLists(mapListData(data));
           setError(null);
         },
+        {
+          reloadSeq,
+          // Only the newest of overlapping reloads ends the loading state.
+          onSettled: () => {
+            if (isCurrentSession(gen)) { setReloading(false); setLoadedGen(gen); }
+          },
+        },
       );
     } catch (err) {
       if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
-    } finally {
-      if (isCurrentSession(gen)) {
-        setReloading(false);
-        setLoadedGen(gen);
-      }
     }
   }, [isAuthenticated, setLists]);
 

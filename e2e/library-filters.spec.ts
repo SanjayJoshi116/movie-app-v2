@@ -118,3 +118,59 @@ test("a list that doesn't exist shows the not-found state, and a failed load off
   await expect(page.getByText("Couldn't load your lists")).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });
+
+// "The type filter filters library grids": the three pages pass `getType`,
+// which they never did, so the select did nothing from 0.15.8 on.
+async function pickType(page: import("@playwright/test").Page, label: "Movies" | "TV Shows") {
+  await page.locator(".ant-select", { hasText: /^(All Types|Movies|TV Shows)$/ }).click();
+  await page.locator(".ant-select-item-option", { hasText: label }).click();
+}
+
+test("the type filter filters the Watchlist", async ({ page }) => {
+  const entries: WatchlistEntryDTO[] = [
+    ...["Heat", "Alien", "Ronin"].map((title, i) => ({ id: 300 + i, mediaId: 3000 + i, mediaType: "movie" as const,
+      title, posterPath: null, voteAverage: 7, addedAt: "2024-01-01T10:00:00Z" })),
+    ...["Severance", "Andor"].map((title, i) => ({ id: 310 + i, mediaId: 3100 + i, mediaType: "tv" as const,
+      title, posterPath: null, voteAverage: 8, addedAt: "2024-01-02T10:00:00Z" })),
+  ];
+  await page.route("**/api/watchlist/**", (route) => route.fulfill({ json: paginated(entries) }));
+  await page.goto("/watchlist");
+  await expect(page.getByText("Heat")).toBeVisible();
+  await pickType(page, "TV Shows");
+  await expect(page.getByText("Severance")).toBeVisible();
+  await expect(page.getByText("Andor")).toBeVisible();
+  for (const title of ["Heat", "Alien", "Ronin"]) await expect(page.getByText(title)).toHaveCount(0);
+});
+
+test("the type filter combines with search on a list", async ({ page }) => {
+  const tvItem = (id: number, title: string): UserListItemDTO => ({ ...item(id, title), mediaType: "tv" });
+  const lists = [{ id: 3, name: "Sci-fi", description: "", createdAt: "2024-01-01T10:00:00Z",
+    items: [item(31, "Dune"), tvItem(32, "Dune: Prophecy"), item(33, "Alien")] }] satisfies UserListDTO[];
+  await page.route("**/api/lists/**", (route) => route.fulfill({ json: paginated(lists) }));
+  await page.goto("/lists/3");
+  await expect(page.getByText("Dune: Prophecy")).toBeVisible();
+  await page.locator("#list-detail-search").fill("dune");
+  await pickType(page, "Movies");
+  await expect(page.getByText("Dune", { exact: true })).toBeVisible();
+  await expect(page.getByText("Dune: Prophecy")).toHaveCount(0);
+  await expect(page.getByText("Alien")).toHaveCount(0);
+});
+
+test("the Watched type filter survives a reload", async ({ page }) => {
+  const entry = (id: number, title: string, mediaType: "movie" | "tv"): WatchedEntryDTO => ({
+    id, mediaId: 4000 + id, mediaType, title, posterPath: null, voteAverage: 7,
+    watchedAt: "2024-01-01T10:00:00Z", watchedTz: "", originalLanguage: "en", releaseYear: 2000,
+    runtimeMinutes: null, platform: null,
+  });
+  const entries = [entry(1, "Heat", "movie"), entry(2, "Severance", "tv")];
+  await page.route("**/api/watched/**", (route) => route.fulfill({ json: paginated(entries) }));
+  await page.goto("/watched");
+  await expect(page.getByText("Severance")).toBeVisible();
+  await pickType(page, "Movies");
+  await expect(page.getByText("Severance")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByText("Heat")).toBeVisible();
+  await expect(page.locator(".ant-select", { hasText: /^Movies$/ })).toBeVisible();
+  await expect(page.getByText("Severance")).toHaveCount(0);
+});

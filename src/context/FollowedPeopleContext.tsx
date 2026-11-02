@@ -56,6 +56,9 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
   // Bumped when a follow/unfollow settles: a load that started before it is
   // run again rather than applied (guardedReload), like the library hooks.
   const writeSeq = useRef(0);
+  // Numbers each load: an older one (an effect rerun replaced it) is dropped
+  // by guardedReload, like the library hooks' reloads.
+  const reloadSeq = useRef(0);
   const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
 
   useEffect(() => {
@@ -67,22 +70,18 @@ export function FollowedPeopleProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!requested) return;
-    let cancelled = false;
     const gen = currentSessionGeneration();
-    // Dropped after the effect re-ran or the session changed (sign-out lands
-    // before this cleanup can), so another account's list is never applied.
-    const live = () => !cancelled && isCurrentSession(gen);
+    // Dropped once the session changed, so another account's list is never applied.
+    const live = () => isCurrentSession(gen);
     // A rerun (a follow settled meanwhile) never goes out for a dead session:
     // after a sign-out it would 401 with no token and force a logout.
     const fetchIfLive = () => (live() ? getFollowedPeople() : Promise.reject(new SessionEndedError()));
     guardedReload(writeSeq, fetchIfLive, (data) => {
       if (live()) { setFollowed(data); setError(false); }
-    })
+    }, { reloadSeq, onSettled: () => { if (live()) setLoaded(true); } })
       // Keep whatever we had: an empty list here used to read as "not following
       // anyone" on the Following page and as "Follow" on every person card.
-      .catch(() => { if (live()) setError(true); })
-      .finally(() => { if (live()) setLoaded(true); });
-    return () => { cancelled = true; };
+      .catch(() => { if (live()) setError(true); });
   }, [isAuthenticated, requested, retryToken]);
 
   const request = useCallback(() => setRequested(true), []);

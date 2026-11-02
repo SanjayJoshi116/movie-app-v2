@@ -12,9 +12,16 @@ interface Options<T> {
   extraFilter?: (item: T) => boolean;
   /** Defaults to reading `.title` — override for items whose display/search field is named differently (e.g. List.name). */
   getTitle?: (item: T) => string;
-  /** Omit entirely for items with no movie/tv distinction (e.g. List, Person) — the type filter then becomes a no-op. */
+  /**
+   * Omit entirely for items with no movie/tv distinction (e.g. List, Person) — the type filter then becomes a no-op.
+   * A page that renders the type select must pass it (`mediaTypeOf` for items with a `.type`), or the select
+   * does nothing.
+   */
   getType?: (item: T) => MediaType;
 }
+
+/** Stable `getType` for library items that carry their media type as `.type`. */
+export const mediaTypeOf = (item: { type: MediaType }): MediaType => item.type;
 
 /**
  * Shared search/sort/type-filter state + sessionStorage persistence + the

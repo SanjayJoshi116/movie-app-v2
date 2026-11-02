@@ -3,6 +3,62 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.8] - 2026-11-02
+
+Fixes from the eighth module of the review sweep (F2, hooks & utils: `fix-hooks-sweep-f2`, backlog item 57; archived, specs synced into `data-backup`, `write-feedback`, `library-filters`, `load-states` and `view-state-restore`), plus the `/simplify` pass and the step 7 code review over all uncommitted work, fixed directly (its findings in the B4 code of 0.31.7 included). No migration, API or dependency change.
+
+### Fixed
+- **The Movies/TV type filter works on Watchlist, Watched and a list's page.** The three pages never passed the type accessor to the shared filter hook, so picking "TV Shows" left movies in the grid (since 0.15.8).
+- **Impossible dates no longer fail an import batch.** `Date.parse` rolls 30 February, 29 February in a non-leap year and `T24:00` into the next day, while the server rejects them, so one such cell failed its whole 500-row chunk. Every import now treats them as unreadable: that row gets the import time.
+- **Ids are read strictly.** `550x` was imported as title 550, `1.9` and `1e9` as title 1, and an id past 2,147,483,647 failed its chunk. A title, person or show id, season or episode is now digits only, 1 to 2,147,483,647; anything else skips that row.
+- **Backup follows and episode progress use the shared per-row rules**: a name cut to 500 characters, a bad profile path dropped, a bad or future follow date replaced by the restore time, strict ids. One bad row no longer fails the whole Following batch.
+- **Overlapping library reloads show the newest.** When an import's reload finished before the first load of a large library, the older load landed last and the imported titles vanished until the next reload; "loading" also ended with the first reload to finish. Only the newest reload now applies and ends loading (watchlist, watched, ratings, lists, followed people), and an older one settles with the newest one's outcome, so an import whose refresh was overtaken by a failed reload still says the refresh failed.
+- **Back-restore is gentler and survives a failure.** Restoring 20 saved pages fired 20 requests at once against the proxy rate limit, and one failure lost them all: Retry loaded page 1 only and the scroll position was gone. Pages are now fetched 4 at a time, no more start after a failure or once the page is left, and Retry restores the same pages and scroll position.
+- **A recommendation or similar title without genres doesn't crash the detail page**, and a details answer without a genre list shows Recommendations and Similar unfiltered.
+- **Clicks on one collection run in the order made.** A repeated add during a pending add joined it even when a Clear was queued in between, so the Clear undid it; likewise a repeated Clear joined the first even with an add queued after it. Both now run after what was queued.
+- **Notifications (B4 follow-ups):** past a poll's deadline no new followed-people fetch starts (they only ran late); mark-seen also records titles in the window that the bell left out because you'd watched them, so unmarking one doesn't bring it back as new; the watched check reads only the titles in question, not the whole watched history, on every poll and mark-seen.
+
+### Internal
+- `guardedReload` takes `{ reloadSeq, onSettled, maxRetries }`; callers clear their loading flag in `onSettled`. `FollowedPeopleContext` drops its own `cancelled` flag for the reload counter plus the session check.
+- `usePaginatedFetch` keys a restore on the `fetchPage` it's for (`restoreForRef`), cleared on success or when another query loads.
+- `INT32_MAX` lives once in `src/constants/limits.ts` (imports and route ids). `parseId`, `parseTitle`, `parsePosterPath` exported from `csvParse.ts`; `backup.ts`'s own `positiveInt` gone. `genreIdsOf` for a details answer's genres. `mediaTypeOf` accessor for library pages.
+- Removed: `Inflight.whenIdle` (unused) and `todayLocalISO` (callers use `localISODate`).
+
+### Docs
+- `CLAUDE.md` (strict ids and real-moment times, `getType` rule, newest-reload and `onSettled`, restore pool, add/clear order, mark-seen rule), README tree, features.txt, `ideas.md` sweep table, BUG_BACKLOG item 57.
+
+### Tests
+- Jest: `guardedReload.test.ts` (newest wins, older settles with the newest outcome, chains), `filterByGenreOverlap.test.ts`, `csvParse.test.ts` (impossible dates, strict ids), `backup.test.ts` (follows and progress per row), `inflight.test.ts` (add/clear/add, clear/add/clear), `usePaginatedFetch.test.tsx` (4 in flight, stop on failure and on leave, Retry restores all, a new query loads page 1), `useWatched.test.ts` (overlapping reloads). e2e `library-filters.spec.ts`: type filter on Watchlist, a list with search, Watched kept over a reload.
+- Backend: no fetch starts past the poll deadline, mark-seen records watched in-window titles, `watched_keys` reads candidates only; `conftest.py` waits out late followed-people fetches before clearing (`_late_pending`), so none lands in the next test.
+- Totals: backend pytest 709 pass + 25 skip, Jest 633 pass, e2e (library-filters, import, browse-restore, write-feedback, detail-and-nav, notifications) pass; ruff, lint and typecheck clean.
+
+## [0.31.7] - 2026-10-31
+
+Fixes from the seventh module of the review sweep (B4, social & notifications: `fix-social-sweep-b4`, backlog item 56; archived, specs synced into `notifications`, `library-limits` and `endpoint-time-budgets`), with the `/simplify` pass applied before archive, plus a CI-only test failure. The step 7 review of the fix was started and stopped, so it hasn't run. No migration or dependency change. **Deploy note:** followed people's cached credits move to new keys, so each followed person is fetched from TMDB once more after the upgrade (spread over polls).
+
+### Fixed
+- **Seen notifications stay read.** Mark-seen replaced the seen set with whatever summaries happened to be cached, so a person whose credits had expired or failed to load (more than 40 cold follows, a slow or failing TMDB) lost every seen title, which came back unread once they were fetched again. It now keeps the earlier seen titles and adds the ones the bell showed, capped at 500, newest first.
+- **Only what the bell showed is marked seen.** Mark-seen recorded the whole 30-day window (up to 500) where a poll returns 30, so a title past the list was marked read without ever being shown.
+- **A malformed TMDB answer can't break notifications or "New from".** A credit with a non-list `genre_ids` or a non-integer id raised past the catch and returned 500 for every follower of that person. Credits are now cleaned when fetched: kept only with an integer id, a movie or TV type and a title; a missing or null score is 0; an answer whose credit lists aren't lists is a failed fetch (not cached, retried).
+- **Followed-people fetches have bounded threads.** Each poll and "New from" load built its own 5-thread pool and abandoned it at the deadline, so threads grew with requests. They now share one 16-thread pool per process (at most 5 per request), separate from the proxy and deadline pools; the shared TMDB connection pool grows to 48.
+- **A slow TMDB still makes progress.** Fetches that finished after a request's deadline were thrown away, so while every call outlasted the 15 s budget nothing was ever cached. They're now kept (bounded, in memory) and cached by the next call.
+- **A full credit cache evicts a person's two entries together.** `DatabaseCache` culls in key order, and `person_new:*` sorted before `person_recent:*`, so every "New from" list went first. The keys are now `person:v3:<id>:new` and `person:v3:<id>:recent`.
+- **CI-only failure of the proxy deadline test.** `test_incomplete_backfill_keeps_a_larger_stored_result` called real TMDB (it skipped the TMDB mocks its neighbours use), which left a live keep-alive connection in the shared session; the deadline test then reused it and never reached its fake connect. The test now uses the mocks, and the deadline test clears the session's pool before and after.
+
+### Changed
+- **Follows and episode progress have limits:** 1,000 followed people and 20,000 shows with progress per account, like the other library limits. A follow or a new show past the limit is a 400 naming it; a backup restore fills up to it and reports the rest ("follow limit reached", "episode progress is full"). Re-following, and progress on a show already tracked, are never refused.
+- Notification items carry `voteAverage` (one credit-to-item mapping now serves notifications and "New from").
+
+### Internal
+- One response helper each for follows and episode progress, one watched-titles query (`watched_keys`), one reader of stored seen keys (`_seen_keys`), batched cache writes for arrived and late results.
+
+### Docs
+- `CLAUDE.md` (person credit keys, cleaning, `FOLLOWED_POOL` and late results, mark-seen rule, limits, pool sizes, related manager for `library_limits.get_or_create`), `docs/ARCHITECTURE.md` (seen-set merge, followed-people pool, cache key layout), README, features.txt, `ideas.md` sweep table, BUG_BACKLOG item 56.
+
+### Tests
+- `test_notifications_cache.py`: malformed credits dropped and an unreadable answer retried, null score is 0, a person's keys adjacent, mark-seen records only what a poll shows, seen titles survive a mark-seen while their person isn't cached, an item past the list is unread once it moves in, the cap keeps the newest. `test_notifications.py` / `test_followed_people.py`: late fetches served by the next call without a TMDB request, a failed late fetch not kept, at most 5 fetches in flight and no per-call pool. `test_library_limits.py`: follow and progress limits, single and bulk. `test_startup_warmup.py`: the followed pool covers the request threads and the session pool covers every pool. `test_tmdb_live.py`: person credits checked in their cleaned shape. Shared `tests/waiting.py`; `conftest.py` empties late results between tests. Jest: the two new import-summary phrases.
+- Totals: backend pytest 706 pass + 25 skip, live TMDB 24 pass, Jest 587 pass, `import.spec` + `notifications.spec` 32 pass; ruff, lint, typecheck and `makemigrations --check` clean.
+
 ## [0.31.6] - 2026-10-31
 
 Fixes from the sixth module of the review sweep (B7, config & startup: `fix-config-sweep-b7`, backlog item 55; archived, specs synced into `api-hardening`, `service-health` and `recommendation-refresh`), plus the `/simplify` pass and step 7 code review over the combined I1 + B7 diff, fixed directly. No migration, API or dependency change. **Deploy note:** with `DEBUG` off the backend now refuses to start on a weak `SECRET_KEY` or `JWT_SIGNING_KEY`, without `TMDB_API_KEY`, or on an unrecognised boolean value; check `.env.docker` before upgrading.

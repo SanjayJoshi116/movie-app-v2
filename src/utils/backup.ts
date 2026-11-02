@@ -1,7 +1,9 @@
 import JSZip from "jszip";
 import type { RatingEntry, UserList, WatchedEntry, WatchlistEntry } from "../types";
 import { CSV_BOM, buildCSVString } from "./export";
-import { parseBackupCSV, parseCSVRecords, type BackupRow } from "./csvParse";
+import {
+  normalizeWatchedAt, parseBackupCSV, parseCSVRecords, parseId, parsePosterPath, parseTitle, type BackupRow,
+} from "./csvParse";
 
 export const BACKUP_FORMAT = "cinedb-backup";
 // v3 added followed.csv and episode_progress.csv; older backups just lack them.
@@ -192,11 +194,6 @@ function listCSVFiles(zip: JSZip): string[] {
   );
 }
 
-const positiveInt = (v: string | undefined): number | null => {
-  const n = parseInt(v ?? "", 10);
-  return Number.isNaN(n) || n <= 0 ? null : n;
-};
-
 async function readRecords(zip: JSZip, path: string): Promise<Record<string, string>[]> {
   const file = zip.file(path);
   return file ? parseCSVRecords(await file.async("string")) : [];
@@ -205,13 +202,15 @@ async function readRecords(zip: JSZip, path: string): Promise<Record<string, str
 async function readFollowed(zip: JSZip): Promise<BackupFollow[]> {
   const out: BackupFollow[] = [];
   for (const r of await readRecords(zip, "followed.csv")) {
-    const personId = positiveInt(r.person_id);
+    const personId = parseId(r.person_id);
     if (personId === null) continue;
+    // Same per-row rules as the other sections: one bad value would fail its chunk.
+    const followedAt = normalizeWatchedAt(r.followed_at ?? "");
     out.push({
       personId,
-      name: r.name ?? "",
-      profilePath: r.profile_path ?? null,
-      ...(r.followed_at ? { followedAt: r.followed_at } : {}),
+      name: parseTitle(r.name),
+      profilePath: parsePosterPath(r.profile_path) ?? null,
+      ...(followedAt ? { followedAt } : {}),
     });
   }
   return out;
@@ -220,9 +219,9 @@ async function readFollowed(zip: JSZip): Promise<BackupFollow[]> {
 async function readEpisodeProgress(zip: JSZip): Promise<BackupProgress[]> {
   const out: BackupProgress[] = [];
   for (const r of await readRecords(zip, "episode_progress.csv")) {
-    const showId = positiveInt(r.show_id);
-    const season = positiveInt(r.season);
-    const episode = positiveInt(r.episode);
+    const showId = parseId(r.show_id);
+    const season = parseId(r.season);
+    const episode = parseId(r.episode);
     if (showId !== null && season !== null && episode !== null) out.push({ showId, season, episode });
   }
   return out;

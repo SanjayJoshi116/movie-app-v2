@@ -1,4 +1,4 @@
-"""Per-user caps on library size (`library-limits` spec).
+"""Per-user caps on library size, follows and episode progress (`library-limits` spec).
 
 Rows stored before a cap existed stay readable and removable; only adds are
 refused. The count runs under a transaction lock per user and collection, so
@@ -16,6 +16,8 @@ LIMITS = {
     "ratings": (20_000, "Your ratings are limited to {:,} titles."),
     "lists": (200, "You can have at most {:,} lists."),
     "list_items": (2_000, "A list is limited to {:,} titles."),
+    "followed": (1_000, "You can follow at most {:,} people."),
+    "episode_progress": (20_000, "Episode progress is limited to {:,} shows."),
 }
 
 # First key of the advisory lock (pg's two-int form, second key a hash of user

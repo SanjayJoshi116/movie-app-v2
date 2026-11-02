@@ -16,7 +16,7 @@ import type {
 import {
   NEWEST_SORT_MIN_VOTES, OLDEST_SORT_MIN_VOTES, RATING_SORT_MIN_VOTES, TITLE_SORT_MIN_VOTES,
 } from "../constants/discover";
-import { todayLocalISO } from "../utils/browseFilters";
+import { localISODate } from "../utils/formatDate";
 import { currentAccessToken } from "./userApi";
 
 // Same-origin by default (see DJANGO_BASE in userApi.ts).
@@ -253,7 +253,7 @@ export function filtersToTMDBParams(
   } else if (sortBy === "primary_release_date.desc") {
     params["vote_count.gte"] = NEWEST_SORT_MIN_VOTES;
     // Nothing dated after the device's today (placeholders years ahead).
-    const today = todayLocalISO();
+    const today = localISODate(new Date());
     const lte = params[`${dateField}.lte`];
     if (typeof lte !== "string" || lte > today) params[`${dateField}.lte`] = today;
   } else if (sortBy === "primary_release_date.asc") {

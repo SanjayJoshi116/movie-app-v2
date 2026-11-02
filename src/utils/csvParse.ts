@@ -1,4 +1,5 @@
 import type { MediaType } from "../types";
+import { INT32_MAX } from "../constants/limits";
 
 export interface ParsedEntry {
   mediaId: number;
@@ -136,15 +137,9 @@ function parseMediaType(raw: string | undefined): MediaType | undefined {
   return v === "movie" || v === "tv" ? v : undefined;
 }
 
-function parsePositiveInt(raw: string | undefined): number | null {
-  const n = parseInt((raw ?? "").trim(), 10);
-  return Number.isNaN(n) || n <= 0 ? null : n;
-}
-
 // The bulk endpoints' bounds (backend/userdata/serializers.py, Bulk*EntrySerializer).
 // A value outside them would fail the whole batch, so each parser below drops
 // it (or, for a title, shortens it) for that row only.
-const MAX_RUNTIME = 2_147_483_647;
 const MAX_PLATFORM_LENGTH = 100;
 const MAX_POSTER_PATH_LENGTH = 500;
 const MAX_TITLE_LENGTH = 500;
@@ -164,15 +159,27 @@ function cutChars(s: string, max: number): string {
   return chars.length <= max ? s : chars.slice(0, max).join("");
 }
 
+/**
+ * An id (title, person, show), season or episode: a whole number from 1 to
+ * INT32_MAX written in digits alone, else null (the row is skipped).
+ * `parseInt` read `550x` as 550 and `1e9` as 1, importing another title.
+ */
+export function parseId(raw: string | undefined): number | null {
+  const s = (raw ?? "").trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 1 && n <= INT32_MAX ? n : null;
+}
+
 /** A title the server accepts: trimmed, cut to its first 500 characters. */
-function parseTitle(raw: string | undefined): string {
+export function parseTitle(raw: string | undefined): string {
   return cutChars((raw ?? "").trim(), MAX_TITLE_LENGTH);
 }
 
 /** A runtime in minutes: a whole number from 0 up, else undefined. */
 function parseRuntime(raw: string | undefined): number | undefined {
   const s = (raw ?? "").trim();
-  return /^\d+$/.test(s) && Number(s) <= MAX_RUNTIME ? Number(s) : undefined;
+  return /^\d+$/.test(s) && Number(s) <= INT32_MAX ? Number(s) : undefined;
 }
 
 /** Trimmed text, undefined when blank or longer than `max`. */
@@ -189,7 +196,7 @@ function parseUserRating(raw: string | undefined): number | undefined {
 }
 
 /** A TMDB poster path the server accepts, else undefined (that row only). */
-function parsePosterPath(raw: string | undefined): string | undefined {
+export function parsePosterPath(raw: string | undefined): string | undefined {
   const poster = (raw ?? "").trim();
   return poster.startsWith("/") && charLength(poster) <= MAX_POSTER_PATH_LENGTH ? poster : undefined;
 }
@@ -211,6 +218,29 @@ const FUTURE_LEEWAY_MS = 5 * 60_000;
 // more ("05/01/2024", "May 1, 2024"), and one such row failed its whole chunk.
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:?\d{2})$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_FIELDS = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?/;
+const OFFSET_HOUR = /[+-](\d{2}):?\d{2}$/;
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+/**
+ * Whether the written fields name a moment that exists. `Date.parse` rolls
+ * `2024-02-30` into 1 March and `T24:00` into the next day, while the server
+ * rejects them (failing the whole chunk).
+ */
+function isRealMoment(iso: string): boolean {
+  const m = DATE_FIELDS.exec(iso);
+  if (!m) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return false;
+  if (m[4] !== undefined && (Number(m[4]) > 23 || Number(m[5]) > 59)) return false;
+  if (m[6] !== undefined && Number(m[6]) > 59) return false;
+  const offset = OFFSET_HOUR.exec(iso);
+  return !offset || Number(offset[1]) <= 23;
+}
 
 /**
  * A CSV watched time the server will accept, or undefined (the row then gets
@@ -221,7 +251,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export function normalizeWatchedAt(raw: string): string | undefined {
   const value = raw.trim();
   const iso = ISO_DATE_TIME.test(value) ? value : ISO_DATE.test(value) ? `${value}T12:00:00Z` : undefined;
-  if (!iso) return undefined;
+  if (!iso || !isRealMoment(iso)) return undefined;
   const when = Date.parse(iso);
   return when >= EARLIEST_WATCHED && when <= Date.now() + FUTURE_LEEWAY_MS ? iso : undefined;
 }
@@ -262,7 +292,7 @@ export function parseCSVForImport(text: string): { rows: ParsedEntry[]; error: s
 
   const rows: ParsedEntry[] = [];
   for (const cols of lines) {
-    const mediaId = parsePositiveInt(cols[idCol]);
+    const mediaId = parseId(cols[idCol]);
     if (mediaId === null) continue;
     const row: ParsedEntry = { mediaId, title: parseTitle(cols[titleCol]) };
     const type = typeCol === -1 ? undefined : parseMediaType(cols[typeCol]);
@@ -317,7 +347,7 @@ export function parseBackupCSV(text: string): BackupRow[] {
 
   const rows: BackupRow[] = [];
   for (const cols of lines) {
-    const mediaId = parsePositiveInt(cols[idCol]);
+    const mediaId = parseId(cols[idCol]);
     if (mediaId === null) continue;
     const row: BackupRow = {
       mediaId,

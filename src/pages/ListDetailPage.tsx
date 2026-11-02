@@ -9,7 +9,7 @@ import {
 } from "@ant-design/icons";
 import { useListsContext } from "../context/useListsContext";
 import { useToast } from "../hooks/useToast";
-import { useLibraryFilters } from "../hooks/useLibraryFilters";
+import { mediaTypeOf, useLibraryFilters } from "../hooks/useLibraryFilters";
 import { downloadCSV } from "../utils/export";
 import { getApiError } from "../utils/apiError";
 import { mediaLabel } from "../utils/mediaLabel";
@@ -52,6 +52,7 @@ function ListDetailPage() {
     items: list?.items ?? [],
     sortFns: SORT_FNS,
     defaultSort: "added-desc",
+    getType: mediaTypeOf,
   });
 
   const handleExport = () => {

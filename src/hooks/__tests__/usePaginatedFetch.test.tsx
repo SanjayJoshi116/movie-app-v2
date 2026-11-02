@@ -173,6 +173,81 @@ describe("usePaginatedFetch", () => {
     expect(fetchPage).not.toHaveBeenCalled();
     expect(result.current.currentPage).toBe(3);
   });
+
+  it("restores saved pages with at most 4 requests in flight, in page order", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fetchPage = jest.fn(async (n: number) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, (11 - n) % 3));
+      inFlight -= 1;
+      return page([n * 10], 20);
+    });
+    const restore = { isReturning: true, savedLoadedPages: 10, savedScrollY: 0 };
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper });
+    await waitFor(() => expect(result.current.items).toHaveLength(10));
+    expect(maxInFlight).toBe(4);
+    expect(fetchPage).toHaveBeenCalledTimes(10);
+    expect(result.current.items.map((i) => i.id)).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    expect(result.current.currentPage).toBe(10);
+  });
+
+  it("a failed restore page shows the error, and retry restores all the saved pages", async () => {
+    let failPage7 = true;
+    const fetchPage = jest.fn((n: number) =>
+      n === 7 && failPage7 ? Promise.reject(new Error("page 7")) : Promise.resolve(page([n * 10], 20)));
+    const restore = { isReturning: true, savedLoadedPages: 10, savedScrollY: 500 };
+    const scrollTo = jest.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+    expect(result.current.items).toEqual([]);
+
+    failPage7 = false;
+    fetchPage.mockClear();
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.items).toHaveLength(10));
+    expect(fetchPage).toHaveBeenCalledTimes(10);
+    expect(result.current.error).toBeNull();
+    expect(result.current.currentPage).toBe(10);
+    expect(scrollTo).toHaveBeenCalledWith(0, 500);
+    scrollTo.mockRestore();
+  });
+
+  it("a failed restore page stops the remaining page requests (code review)", async () => {
+    const fetchPage = jest.fn((n: number) =>
+      n === 2 ? Promise.reject(new Error("page 2")) : Promise.resolve(page([n * 10], 20)));
+    const restore = { isReturning: true, savedLoadedPages: 20, savedScrollY: 0 };
+    const { result } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+    await new Promise((r) => setTimeout(r, 20));
+    // A worker whose page settled in the same tick may start one more.
+    expect(fetchPage.mock.calls.length).toBeLessThanOrEqual(2 * 4);
+  });
+
+  it("an abandoned restore stops requesting pages", async () => {
+    const fetchPage = jest.fn((n: number) => new Promise<PageResult<Item>>((res) => setTimeout(() => res(page([n], 20)), 5)));
+    const restore = { isReturning: true, savedLoadedPages: 20, savedScrollY: 0 };
+    const { unmount } = renderHook(() => usePaginatedFetch<Item>({ fetchPage, restore }), { wrapper });
+    unmount();
+    await new Promise((r) => setTimeout(r, 40));
+    expect(fetchPage.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it("a new query after a failed restore loads page 1 only", async () => {
+    const failing = jest.fn((n: number) => (n === 2 ? Promise.reject(new Error("x")) : Promise.resolve(page([n]))));
+    const other = jest.fn(() => Promise.resolve(page([99])));
+    const restore = { isReturning: true, savedLoadedPages: 3, savedScrollY: 0 };
+    const { result, rerender } = renderHook(
+      ({ fetchPage }) => usePaginatedFetch<Item>({ fetchPage, restore }),
+      { wrapper, initialProps: { fetchPage: failing as (n: number) => Promise<PageResult<Item>> } },
+    );
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
+    rerender({ fetchPage: other });
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 99 }]));
+    expect(other).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledWith(1);
+  });
 });
 
 // StrictMode (dev only) runs the mount effect, its cleanup and the effect

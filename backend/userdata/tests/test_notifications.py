@@ -1,6 +1,7 @@
 import re
 import threading
 import time
+from concurrent.futures import Future
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -12,9 +13,10 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from userdata import notifications_views
+from userdata import notifications_views, social_views
 from userdata.models import FollowedPerson, NotificationCheckpoint, WatchedEntry
 from userdata.social_views import _credits_key, credits_cache
+from userdata.tests.waiting import wait_for
 
 
 class NewReleaseNotificationsTests(APITestCase):
@@ -243,11 +245,74 @@ class NotificationPollBudgetTests(APITestCase):
         self.assertEqual(credits_cache().get(_credits_key(6)), [])  # arrived in time: cached
         self.assertIsNone(credits_cache().get(_credits_key(5)))
 
+        # The abandoned fetches finish after the poll answered: the next poll
+        # caches them instead of asking TMDB again.
         release.set()
+        self.assertTrue(wait_for(lambda: len(social_views._late_results) == 5))
         mock_get.reset_mock(side_effect=True)
-        mock_get.return_value = {"cast": []}
         self.client.get("/api/notifications/new-releases/")
-        self.assertEqual({_person_id(c.args[0]) for c in mock_get.call_args_list}, {1, 2, 3, 4, 5})
+        mock_get.assert_not_called()
+        self.assertEqual(credits_cache().get(_credits_key(5)), [])
+
+    @patch("userdata.notifications_views.NOTIFICATIONS_BUDGET_SECONDS", 0.3)
+    @patch("userdata.tmdb_client._get")
+    def test_nothing_new_starts_once_the_budget_ran_out(self, mock_get):
+        # Ten follows, five fetched at a time. The first arrives at once, but
+        # caching it outlasts the budget; the second finishes meanwhile, so the
+        # loop goes round again past the deadline. It must not start more.
+        self._follow(10)
+        release = threading.Event()
+        self.addCleanup(release.set)
+        asked = []
+
+        def get(path, *args, **kwargs):
+            pid = _person_id(path)
+            asked.append(pid)
+            if pid == 9:
+                time.sleep(0.05)
+            elif pid != 10:
+                release.wait(10)
+            return {"cast": []}
+        mock_get.side_effect = get
+        real_store = social_views._store_credits
+
+        def slow_store(*args, **kwargs):
+            time.sleep(0.4)
+            return real_store(*args, **kwargs)
+
+        with patch("userdata.social_views._store_credits", side_effect=slow_store):
+            self.client.get("/api/notifications/new-releases/")
+        release.set()
+        self.assertEqual(sorted(asked), [6, 7, 8, 9, 10])
+
+    def test_failed_late_fetch_is_not_kept(self):
+        failed, done = Future(), Future()
+        failed.set_result((1, None))
+        done.set_result((2, []))
+        social_views._keep_late(failed)
+        social_views._keep_late(done)
+        self.assertEqual(social_views._late_results, {2: []})
+
+    @patch("userdata.tmdb_client._get")
+    def test_one_poll_keeps_at_most_five_fetches_in_flight(self, mock_get):
+        self._follow(12)
+        lock, now, peak = threading.Lock(), [0], [0]
+
+        def get(path, *args, **kwargs):
+            with lock:
+                now[0] += 1
+                peak[0] = max(peak[0], now[0])
+            time.sleep(0.05)
+            with lock:
+                now[0] -= 1
+            return {"cast": []}
+        mock_get.side_effect = get
+
+        with patch("userdata.social_views.ThreadPoolExecutor", side_effect=AssertionError("per-call pool")):
+            res = self.client.get("/api/notifications/new-releases/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(mock_get.call_count, 12)
+        self.assertEqual(peak[0], social_views.FETCHES_PER_CALL)
 
     def test_budget_fits_under_gunicorn_timeout(self):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()

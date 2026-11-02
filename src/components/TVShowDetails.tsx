@@ -30,7 +30,7 @@ import type { TMDBTVDetail, TMDBProviderRegion, TMDBAggregateCreditsFull } from 
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { FONT_SIZE } from "../constants/typography";
-import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
+import { filterByGenreOverlap, genreIdsOf } from "../utils/filterByGenreOverlap";
 import { goBack } from "../utils/goBack";
 
 export type TVShowDetailData = TMDBTVDetail & {
@@ -80,8 +80,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
   } = tvShow;
 
   const hasBackdrop = !!backdrop_path;
-  const similarFiltered = filterByGenreOverlap(similar?.results ?? [], (genres ?? []).map((g) => g.id));
-  const recommendationsFiltered = filterByGenreOverlap(recommendations ?? [], (genres ?? []).map((g) => g.id));
+  const sourceGenreIds = genreIdsOf(genres);
+  const similarFiltered = filterByGenreOverlap(similar?.results, sourceGenreIds);
+  const recommendationsFiltered = filterByGenreOverlap(recommendations, sourceGenreIds);
   const castList = aggregate_credits?.cast ?? [];
   const creators = (tvShow.created_by ?? [])
     .map((c) => c.name)

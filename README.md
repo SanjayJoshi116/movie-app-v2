@@ -99,7 +99,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Episode Guide** — Season/episode breakdown on TV detail pages, with the episode list for the selected season behind its own toggle. For a show you track (and haven't marked watched) it opens on your current season and hides the title, still and overview of every episode after your progress; air date, runtime and score stay visible, "Show details for episode N" reveals one episode, and a "Hide spoilers" switch turns the shield off on this device
 - **Episode Progress Tracker** — Track your current season and episode per show, with +/- controls bounded by the show's actual season and episode counts; edit or delete progress at any time. A failed load shows Retry instead of "not tracked" (so a save can't overwrite real progress), and a double click on Next or Save sends one write
 - **Person Pages** — Actor/crew bios with Movies/TV/Photos tabs (full, uncapped filmography with role/character per credit); info panel includes Known For, Birthday/Deathday, Place of Birth, IMDb, and Website links (a homepage becomes a link only for an `http`/`https` address, since TMDB data is community-edited); a malformed id such as `/person/abc` shows the not-found page without fetching anything; failed credit requests show an error with Retry (credits only), never "No credits"
-- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; their acting and crew work both count (talk-show and news appearances don't). Manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section ("New from {name}": their last two years and upcoming work, newest first); a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow
+- **Follow Actors & Directors** — Follow any person from their detail page or browse/search card; their acting and crew work both count (talk-show and news appearances don't). Manage followed people at `/following`, including a search/sort bar and a "Recommended From People You Follow" section ("New from {name}": their last two years and upcoming work, newest first); a failed load shows an error with Retry instead of "not following anyone". A new follow shows first, and notifications refresh right after a follow or unfollow. Up to 1,000 followed people
 
 ### Library
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account. Both paginate (12–96 per page, page and size in the URL), and removing the last items on the last page moves back a page instead of leaving it blank
@@ -107,7 +107,7 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
 - **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
-- **Library Limits** — Up to 20,000 watched titles, 20,000 watchlist titles, 20,000 ratings, 200 lists and 2,000 titles per list. Adding past a limit says so; an import fills up to it and reports the rest; anything stored before the limits stays. A title imported without a name shows as "Untitled (#id)"
+- **Library Limits** — Up to 20,000 watched titles, 20,000 watchlist titles, 20,000 ratings, 200 lists, 2,000 titles per list, 1,000 followed people and 20,000 shows with episode progress. Adding past a limit says so; an import fills up to it and reports the rest; anything stored before the limits stays. A title imported without a name shows as "Untitled (#id)"
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them, and makes no TMDB lookups for rows that already carry a poster and a score; an oversized poster value is dropped for that row only; a title over 500 characters is shortened without splitting an emoji, and length limits count characters as the server does; a file that can't be read says so; watched list refreshes immediately after import
 - **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section, plus rows without a TMDB id and rows not added because a collection is full (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. A bad value in one backup row (poster, runtime, platform, zone, rating, time, oversized review) is dropped for that row only instead of failing its batch. Poster lookups during any import are paced under the TMDB proxy's rate limit, made once per title, skipped for rows the file already covers, and shown with progress; the result says how many titles ended up without a poster
 - **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
@@ -198,7 +198,8 @@ backend/
 │   │                            #   restated length/range bounds, small input serializers for ad-hoc endpoints)
 │   ├── bulk_import.py           # bulk_import(): shared create-only, all-or-nothing bulk endpoint helper;
 │   │                            #   answers {added, skipped, ignored, overLimit}, which add up to the entries sent
-│   ├── library_limits.py        # Per-user library caps (20k watched/watchlist/ratings, 200 lists, 2k items/list)
+│   ├── library_limits.py        # Per-user caps (20k watched/watchlist/ratings, 200 lists, 2k items/list,
+│   │                            #   1k follows, 20k episode-progress shows)
 │   │                            #   checked under a per-user advisory lock
 │   ├── pagination.py            # DefaultPagination (PageNumberPagination, page_size=100)
 │   │                            #   applied to watchlist/watched/ratings/followed-people lists;
@@ -217,7 +218,8 @@ backend/
 │   ├── lists_views.py           # user lists + list items CRUD (incl. PATCH rename)
 │   ├── tmdb_views.py            # TMDB OAuth (request token, session, disconnect)
 │   ├── stats_views.py           # stats aggregation + genre cache (cold lookup time-boxed, fallback cached briefly)
-│   ├── social_views.py          # episode progress + followed people (paginated list) + recs (time-budgeted)
+│   ├── social_views.py          # episode progress + followed people (paginated list) + recs (time-budgeted);
+│   │                            #   credits cleaned at fetch, own FOLLOWED_POOL, late results cached next call
 │   ├── urls.py                  # /api/ endpoint routing
 │   ├── recommendations.py       # K-means genre clustering + followed-people recommendations;
 │   │                            #   _compute_for_you / _compute_personalized are standalone fns
@@ -328,7 +330,8 @@ src/
 │   ├── useNotifications.ts      # NotificationsProvider (single new-release poller) + reader hook
 │   ├── useInfiniteScroll.ts     # IntersectionObserver for infinite scroll + scroll restoration
 │   ├── usePaginatedFetch.ts     # Shared fetch-page-1/loadMore/restore-on-back-nav logic for
-│   │                            #   Home/Anime/People/Search; error + retry(), drops stale-query responses
+│   │                            #   Home/Anime/People/Search; error + retry(), drops stale-query responses;
+│   │                            #   a Back-restore fetches 4 pages at a time and Retry restores them again
 │   ├── useToast.ts              # Memoized App.useApp() toast wrapper; identical messages collapse
 │   ├── useLocalStorage.ts       # Generic localStorage hook
 │   ├── useRegion.ts             # The device's region setting (UIContext), for TMDB region data
@@ -367,7 +370,8 @@ src/
 │   ├── export.ts                # downloadCSV / downloadJSON helpers; CSV cells neutralized against formulas
 │   ├── backup.ts                # Backup ZIP v3 build/parse (manifest, ratings, lists, follows, episode progress); v1/v2-compatible import
 │   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection),
-│   │                            #   strips export.ts's formula-neutralizing `'`
+│   │                            #   strips export.ts's formula-neutralizing `'`; per-column parsers (strict
+│   │                            #   parseId, real-moment times) shared by every importer incl. backups
 │   ├── goBack.ts                # Detail/person Back: `from`, else history only if an in-app entry, else section
 │   ├── pacedLookup.ts           # Paced TMDB lookups (90/min, 4 in flight, waits out 429 Retry-After)
 │   ├── importPosters.ts         # Import poster/score lookups through pacedLookup: once per title, file values win, reports misses
@@ -376,8 +380,10 @@ src/
 │   ├── ics.ts                   # Calendar .ics builder (DTSTAMP, text escaping, 75-octet folding)
 │   ├── tmdbPages.ts             # Caps TMDB total_pages at its 500-page limit
 │   ├── inflight.ts              # createInflight(): per-item dedupe of in-flight mutations; other actions
-│   │                            #   queue behind, runExclusive() for clears, group() per list
-│   ├── guardedReload.ts         # Library reload rerun if a write settled while it was in flight
+│   │                            #   queue behind, runExclusive() for clears, group() per list; repeats
+│   │                            #   never join across a clear/write queued after them
+│   ├── guardedReload.ts         # Library reload rerun if a write settled while it was in flight;
+│   │                            #   only the newest of overlapping reloads applies, older ones settle with it
 │   ├── personLabel.ts           # Followed person's name, "Person <id>" when blank
 │   ├── mediaLabel.ts            # Stored library title, "Untitled (#<id>)" when blank
 │   ├── queryParams.ts           # parseIntParam()/pickKey(): address values with safe fallbacks
@@ -391,7 +397,8 @@ src/
 │   │                            #   (optional pageSize, up to 500; falls back to a plain array response)
 │   ├── appended.ts              # resultsOf/arrayOr/objectOr shape guards for append_to_response parts
 │   ├── mediaSummary.ts          # toMediaSummary(item, type): TMDB movie/TV list item → MediaCard props (title vs name)
-│   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres; falls back
+│   ├── filterByGenreOverlap.ts  # Keeps items sharing >=half a source title's genres (malformed items
+│   │                            #   dropped, missing genre lists tolerated); falls back
 │   │                            #   to the unfiltered list if that would empty the result — used by
 │   │                            #   Movie/TV detail pages' Recommendations and Similar sections
 │   ├── watchRuntime.ts          # prefillRuntime(): Mark as Watched runtime (movie runtime, TV episodes × runtime)
@@ -405,6 +412,7 @@ src/
 │   │                            #   RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE, ON_GOLD_TEXT,
 │   │                            #   AVATAR_INITIALS_TEXT — shared across pages
 │   ├── genres.ts                # Static TMDB genre list for filter UI
+│   ├── limits.ts                # INT32_MAX (the server's integer bound: imported ids, route ids)
 │   ├── providers.ts             # PROVIDER_SEARCH_URLS — TMDB provider_id → deep-link URL builder
 │   └── media.ts                 # resolveAvatarUrl() — resolves a user's relative avatar_url against
 │                                #   REACT_APP_MEDIA_BASE_URL (empty = same-origin; dev goes through CRA's proxy)
@@ -678,7 +686,8 @@ src/hooks/__tests__/
 ├── sessionGeneration.test.tsx    # Library/notification responses from a signed-out session are dropped
 ├── useNotifications.test.tsx     # A poll in flight can't bring back a badge just marked seen; follow change refreshes
 ├── useActionIconColor.test.tsx   # Gold in dark mode, the light theme's text color in light
-└── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch), load-more error
+└── usePaginatedFetch.test.tsx    # Incl. StrictMode replay guard (no dev-only double fetch), load-more error,
+                                  #   restore at most 4 pages at a time, stops on failure, Retry restores again
 
 src/context/__tests__/
 ├── AppContext.test.tsx
@@ -700,13 +709,14 @@ src/api/__tests__/
 
 src/utils/__tests__/
 ├── apiError.test.ts              # Object bodies only; HTML/string bodies → fallback; network → connection message
-├── backup.test.ts                # Backup v3 build/parse, v1/v2 compatibility
+├── backup.test.ts                # Backup v3 build/parse, v1/v2 compatibility; follows/progress per-row bounds
 ├── browseFilters.test.ts         # Genres per media type, active-filter detection, scopes, sort vote floors
 ├── browseReturnState.test.ts     # Browser-Back restore state (router `usr` shape)
 ├── colors.test.ts                # ratingColor thresholds, avatarColor determinism
 ├── csvNeutralize.test.ts         # Formula cells prefixed on export, stripped on import; lossless backups
 ├── csvParse.test.ts              # Quoted fields/newlines, BOM, delimiter detection; Watched export's runtime/platform/poster;
-│                                 #   per-row backup bounds, code-point lengths, 5-min future leeway
+│                                 #   per-row backup bounds, code-point lengths, 5-min future leeway,
+│                                 #   impossible dates dropped, strict bounded ids
 ├── importPosters.test.ts         # Lookups only for uncovered rows, once per title; file values win; missing titles counted once
 ├── csvBom.test.ts                # Exports start with a UTF-8 BOM and still round-trip
 ├── downloadBlob.test.ts          # Anchor attached, object URL revoked only after a tick
@@ -716,7 +726,9 @@ src/utils/__tests__/
 ├── fetchAllPages.test.ts         # Walks past page 1, sends page_size
 ├── formatDate.test.ts            # Day in a given zone, zone label only when the offset differs, local ISO day
 ├── ics.test.ts                   # DTSTAMP, escaped SUMMARY, line folding
-├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection
+├── inflight.test.ts              # Same-key dedupe, independent keys, cleared after rejection; add/clear order
+├── guardedReload.test.ts         # Write-settled rerun; newest of overlapping reloads wins, older settle with it
+├── filterByGenreOverlap.test.ts  # Overlap rule, fallback, items without genre_ids, null items, no source genres
 ├── listImport.test.ts            # Undated rows reversed, dated rows kept
 ├── personCredits.test.ts         # Newest first, crew merged per title, movie/TV with one id kept apart
 ├── postLoginPath.test.ts         # Query/hash kept, missing state → /movies, auth page as from → /movies
@@ -832,9 +844,13 @@ backend/userdata/tests/
 │                                   #   cache DB access off worker threads, outage guard, cross-process status
 ├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
 ├── test_notifications.py           # New-release notifications (every followed person, credits cache),
-│                                   #   40-person/15s poll budget pinned under gunicorn's timeout
+│                                   #   40-person/15s poll budget pinned under gunicorn's timeout, 5 fetches
+│                                   #   in flight per poll, late fetches cached by the next poll
 ├── test_notifications_cache.py     # Person credits in their own cache alias (acting + crew, no talk/news),
-│                                   #   polls read recent summaries only, unread = not seen at last mark-seen
+│                                   #   polls read recent summaries only, unread = not seen at last mark-seen;
+│                                   #   mark-seen keeps earlier seen keys, records what a poll shows plus
+│                                   #   in-window titles hidden as watched; watched_keys reads candidates only;
+│                                   #   malformed credits dropped, a person's two keys adjacent
 ├── test_metadata_backfill.py       # One backfill per user, 2 at once per process, 100 titles per run, 404 settled in the DB
 │                                   #   (survives restarts), bounded failure backoff
 ├── test_data_correctness.py        # No overwrite on TMDB failure, rated_at on re-rate, unique section keys, list order
@@ -863,8 +879,8 @@ backend/userdata/tests/
 ├── test_bulk_import.py             # Bulk watchlist/watched/ratings/list items: create-only, timestamps,
 │                                   #   all-or-nothing; list createdAt on create only; counts add up;
 │                                   #   account deleted mid-import → 401
-├── test_library_limits.py          # Per-collection caps: single adds refused, updates allowed, racing adds,
-│                                   #   bulk fills to the cap, rows already over it stay readable
+├── test_library_limits.py          # Per-collection caps (follows and episode progress too): single adds refused,
+│                                   #   updates allowed, racing adds, bulk fills to the cap, rows over it stay readable
 ├── test_input_bounds.py            # voteAverage 0–10 (Stats ignores stored outliers), episode progress needs
 │                                   #   season + episode (no PATCH), list deleted mid-add → 404
 ├── test_tmdb_deadline.py           # call_with_deadline: result in time, overrun → Timeout, queued call cancelled;
@@ -922,7 +938,8 @@ e2e/
 ├── browse-restore.spec.ts # Genre reset on media switch, filter drawer draft (one request per Apply), People Back
 ├── import.spec.ts         # Backup ZIP and CSV import dialogs through their real file inputs
 ├── library-filters.spec.ts # Per-list search kept, last item on the last page (Watched and Watchlist),
-│                           #   Watchlist pages, a missing list is not-found
+│                           #   Watchlist pages, a missing list is not-found, the Movies/TV type filter
+│                           #   on Watchlist, Watched and a list (with search, kept over a reload)
 ├── theme-readability.spec.ts # Computed-color checks for Stats, card icons, empty states, placeholders
 └── responsive.spec.ts     # Sidebar/bottom-nav per breakpoint (phone/tablet/desktop), auth-card and
                             #   bottom-nav no-overflow at 320px, notification popup on-screen +

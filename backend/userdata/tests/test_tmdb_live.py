@@ -532,13 +532,13 @@ class TestLiveBackendShapes:
         # social_views._fetch_person_credits: what notifications and "New from" read
         feature = "Follows _fetch_person_credits"
         cast = backend_call(feature, social_views._fetch_person_credits, ACTOR_ID)
+        # The cleaned shape (_clean_credit): a show's name and first-air date
+        # are folded into title and release_date.
         assert_items(feature, f"person/{ACTOR_ID}", cast, {
-            **COMBINED_CREDIT, "title": (str, OPT), "name": (str, OPT),
-            "release_date": (str, OPT), "first_air_date": (str, OPT),
+            **COMBINED_CREDIT, "title": (str, REQ), "release_date": (str, NULLABLE),
         })
         assert any(social_views.credit_date(c) for c in cast), f"{feature}: no credit has a usable date"
-        for c in cast[:20]:
-            assert c.get("title") or c.get("name"), f"{feature}: credit {c.get('id')} has neither title nor name"
+        assert any(c["media_type"] == "tv" for c in cast), f"{feature}: no TV credit survived cleaning"
 
     def test_stats_genre_names(self):
         # stats_views._get_cached_genre_names, recommendations' section labels
@@ -621,7 +621,8 @@ class TestLiveQuerySanity:
         keys = {(c["id"], c["media_type"]) for c in credits}
         talk = {(c["id"], c.get("media_type")) for c in raw.get("cast", []) + raw.get("crew", [])
                 if social_views.is_talk_or_news(c)}
-        crew = {(c["id"], c.get("media_type")) for c in raw.get("crew", [])} - talk
+        # Crew credits notifications can show (a movie or show with a title).
+        crew = {(c["id"], c["media_type"]) for c in map(social_views._clean_credit, raw.get("crew", [])) if c}
         assert crew and crew <= keys, f"{feature}: crew credits missing: {sorted(crew - keys)[:10]}"
         leaked = [c.get("title") or c.get("name") for c in credits if (c["id"], c["media_type"]) in talk]
         assert not leaked, f"{feature}: talk/news appearances kept: {leaked}"

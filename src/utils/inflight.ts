@@ -4,6 +4,11 @@
  * - A repeated `run()` with a key whose request is still pending, for the same
  *   action (or with no action), gets the same promise back instead of starting
  *   a new request, so a double-click settles with the first click's outcome.
+ *   Not when a `runExclusive()` started after that request: the repeat then
+ *   queues behind the clear and reports its own outcome (add, clear, add again
+ *   ends with the title in the collection). Likewise a repeated clear joins
+ *   the pending one only when no item run was queued after it (clear, add,
+ *   clear again ends empty).
  * - A *different* action on the same key waits for the pending one to settle
  *   and then runs, resolving with its own outcome. Sharing the pending promise
  *   made "Unmark" report a "Mark" (and "Remove" an episode advance).
@@ -16,8 +21,6 @@
 export interface Inflight {
   run<T>(key: string, fn: () => Promise<T>, action?: string): Promise<T>;
   runExclusive<T>(fn: () => Promise<T>, action?: string): Promise<T>;
-  /** Settles once nothing is pending here or in any group. */
-  whenIdle(): Promise<void>;
   group(id: string | number): Inflight;
 }
 
@@ -29,8 +32,12 @@ export interface InflightOptions {
 const ignore = () => undefined;
 
 export function createInflight({ onSettle }: InflightOptions = {}): Inflight {
-  const pending = new Map<string, { action?: string; promise: Promise<unknown> }>();
-  let exclusive: { action?: string; promise: Promise<unknown> } | null = null;
+  // `exclusiveGen` is the count of exclusive runs started before the entry.
+  const pending = new Map<string, { action?: string; promise: Promise<unknown>; exclusiveGen: number }>();
+  // `runGen` is the count of item runs started before the exclusive run.
+  let exclusive: { action?: string; promise: Promise<unknown>; runGen: number } | null = null;
+  let exclusiveGen = 0;
+  let runGen = 0;
   const groups = new Map<string, Inflight>();
 
   function track<T>(start: () => Promise<T>, done: (p: Promise<T>) => void): Promise<T> {
@@ -43,7 +50,9 @@ export function createInflight({ onSettle }: InflightOptions = {}): Inflight {
 
   function run<T>(key: string, fn: () => Promise<T>, action?: string): Promise<T> {
     const existing = pending.get(key);
-    if (existing && existing.action === action) return existing.promise as Promise<T>;
+    if (existing && existing.action === action && existing.exclusiveGen === exclusiveGen) {
+      return existing.promise as Promise<T>;
+    }
     const waits = [existing?.promise, exclusive?.promise].filter((w): w is Promise<unknown> => !!w);
     const p = track(
       // Nothing to wait for: call fn now, as callers (and the double-click
@@ -51,30 +60,24 @@ export function createInflight({ onSettle }: InflightOptions = {}): Inflight {
       waits.length === 0 ? fn : () => Promise.all(waits.map((w) => w.catch(ignore))).then(fn),
       (settled) => { if (pending.get(key)?.promise === settled) pending.delete(key); },
     );
-    pending.set(key, { action, promise: p });
+    pending.set(key, { action, promise: p, exclusiveGen });
+    runGen += 1;
     return p;
   }
 
   function runExclusive<T>(fn: () => Promise<T>, action = "exclusive"): Promise<T> {
-    if (exclusive && exclusive.action === action) return exclusive.promise as Promise<T>;
+    if (exclusive && exclusive.action === action && exclusive.runGen === runGen) {
+      return exclusive.promise as Promise<T>;
+    }
     const waits = [...[...pending.values()].map((e) => e.promise), exclusive?.promise]
       .filter((w): w is Promise<unknown> => !!w);
     const p = track(
       waits.length === 0 ? fn : () => Promise.all(waits.map((w) => w.catch(ignore))).then(fn),
       (settled) => { if (exclusive?.promise === settled) exclusive = null; },
     );
-    exclusive = { action, promise: p };
+    exclusive = { action, promise: p, runGen };
+    exclusiveGen += 1;
     return p;
-  }
-
-  async function whenIdle(): Promise<void> {
-    for (;;) {
-      const waits = [...[...pending.values()].map((e) => e.promise), exclusive?.promise]
-        .filter((w): w is Promise<unknown> => !!w);
-      if (waits.length === 0) break;
-      await Promise.all(waits.map((w) => w.catch(ignore)));
-    }
-    await Promise.all([...groups.values()].map((g) => g.whenIdle()));
   }
 
   function group(id: string | number): Inflight {
@@ -87,5 +90,5 @@ export function createInflight({ onSettle }: InflightOptions = {}): Inflight {
     return g;
   }
 
-  return { run, runExclusive, whenIdle, group };
+  return { run, runExclusive, group };
 }

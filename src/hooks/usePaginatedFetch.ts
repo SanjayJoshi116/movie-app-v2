@@ -41,6 +41,35 @@ function appendNew<T extends { id: number }>(prev: T[], next: T[]): T[] {
   return [...prev, ...added];
 }
 
+/** Saved pages requested at once during a Back-restore. */
+export const RESTORE_CONCURRENCY = 4;
+
+/**
+ * `fn` over `inputs` with at most `limit` calls in flight, results in input
+ * order. Starts no further call once one has failed or `shouldStop()` is true,
+ * so a failed or abandoned restore doesn't spend the proxy rate limit.
+ */
+async function mapLimit<I, O>(
+  inputs: I[], limit: number, fn: (input: I) => Promise<O>, shouldStop: () => boolean,
+): Promise<O[]> {
+  const out = new Array<O>(inputs.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (next < inputs.length && !failed && !shouldStop()) {
+      const i = next++;
+      try {
+        out[i] = await fn(inputs[i]!);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, inputs.length) }, worker));
+  return out;
+}
+
 /**
  * Shared "fetch page 1, infinite-scroll loadMore, restore N pages + scroll
  * position when returning via router location.state" logic used by the
@@ -60,7 +89,10 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
   const [retryToken, setRetryToken] = useState(0);
 
   const didRestoreScrollRef = useRef(false);
-  const isRestoringRef = useRef(restore.isReturning);
+  // The fetchPage a Back-restore is for. Cleared once a load succeeds, so a
+  // failed restore is restored again by Retry, and another query (another
+  // fetchPage) never matches it and starts from page 1.
+  const restoreForRef = useRef(restore.isReturning ? fetchPage : null);
   const restoredStateRef = useRef(restoredState);
   // The load the mount effect last started (or finished), armed as soon as
   // it starts. See the StrictMode note in the effect.
@@ -91,6 +123,8 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       prev.ctl.cancelled = false;
       return () => { prev.ctl.cancelled = true; };
     }
+    // Another query never restores, and its marker doesn't keep the old fetchPage alive.
+    if (restoreForRef.current !== fetchPage) restoreForRef.current = null;
     const ctl = { cancelled: false };
     const entry = { fetchPage, retryToken, ctl, done: false };
     inflightRef.current = entry;
@@ -100,15 +134,18 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
       setLoading(true);
       setError(null);
       setLoadMoreError(null);
+      const restoring = restoreForRef.current === fetchPage;
       try {
-        if (isRestoringRef.current && restoredStateRef.current) {
+        if (restoring && restoredStateRef.current) {
           const { items: cachedItems, hasMore: cachedHasMore } = restoredStateRef.current;
           setItems(cachedItems);
           setCurrentPage(restore.savedLoadedPages);
           setHasMore(cachedHasMore);
-        } else if (isRestoringRef.current && restore.savedLoadedPages > 1) {
+        } else if (restoring && restore.savedLoadedPages > 1) {
           const pages = Array.from({ length: restore.savedLoadedPages }, (_, i) => i + 1);
-          const pageResults = await Promise.all(pages.map((p) => fetchPage(p)));
+          // At most RESTORE_CONCURRENCY at a time: 20 at once ran into the
+          // proxy throttle, and one failure lost them all.
+          const pageResults = await mapLimit(pages, RESTORE_CONCURRENCY, fetchPage, () => ctl.cancelled);
           if (ctl.cancelled) return;
           const combined = pageResults.reduce<T[]>((acc, p) => appendNew(acc, p.results), []);
           const totalPages = pageResults[pageResults.length - 1]?.totalPages ?? 1;
@@ -126,11 +163,11 @@ export function usePaginatedFetch<T extends { id: number }>({ fetchPage, restore
           setCurrentPage(1);
           setHasMore(1 < totalPages);
         }
+        restoreForRef.current = null;
       } catch (err) {
         if (!ctl.cancelled) setError(err);
       } finally {
         if (!ctl.cancelled) setLoading(false);
-        isRestoringRef.current = false;
         entry.done = true;
       }
     };

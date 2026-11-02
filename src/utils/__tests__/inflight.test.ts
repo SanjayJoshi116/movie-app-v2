@@ -103,6 +103,42 @@ describe("createInflight", () => {
     expect(order).toEqual(["add", "clear-start", "clear", "add2"]);
   });
 
+  it("add, clear, add again: the repeat runs after the clear with its own outcome (fix-hooks-sweep-f2)", async () => {
+    const order: string[] = [];
+    const { run, runExclusive } = createInflight();
+    const add = deferred();
+    const clear = deferred();
+    let adds = 0;
+    const addFn = async () => { adds += 1; const n = adds; if (n === 1) await add.promise; order.push(`add${n}`); return n; };
+    const first = run("k", addFn, "add");
+    const c = runExclusive(async () => { await clear.promise; order.push("clear"); });
+    const again = run("k", addFn, "add");
+    const third = run("k", addFn, "add");
+    add.resolve();
+    await expect(first).resolves.toBe(1);
+    clear.resolve();
+    await c;
+    await expect(again).resolves.toBe(2);
+    // A further repeat during the queued add shares it again.
+    await expect(third).resolves.toBe(2);
+    expect(order).toEqual(["add1", "clear", "add2"]);
+  });
+
+  it("clear, add, clear again: the second clear runs after the add (code review)", async () => {
+    const order: string[] = [];
+    const { run, runExclusive } = createInflight();
+    const clear = deferred();
+    let clears = 0;
+    const clearFn = async () => { clears += 1; const n = clears; if (n === 1) await clear.promise; order.push(`clear${n}`); };
+    const c1 = runExclusive(clearFn);
+    const add = run("k", async () => { order.push("add"); }, "add");
+    const c2 = runExclusive(clearFn);
+    expect(c2).not.toBe(c1);
+    clear.resolve();
+    await Promise.all([c1, add, c2]);
+    expect(order).toEqual(["clear1", "add", "clear2"]);
+  });
+
   it("dedupes a repeated exclusive run", async () => {
     const { runExclusive } = createInflight();
     const fn = jest.fn(() => new Promise<void>(() => {}));
@@ -115,12 +151,12 @@ describe("createInflight", () => {
     const onSettle = jest.fn();
     const inflight = createInflight({ onSettle });
     const blocked = deferred();
-    inflight.group(1).runExclusive(() => blocked.promise);
+    const cleared = inflight.group(1).runExclusive(() => blocked.promise);
     const other = jest.fn(async () => undefined);
     await inflight.group(2).run("x", other, "add");
     expect(other).toHaveBeenCalledTimes(1);
     blocked.resolve();
-    await inflight.whenIdle();
+    await cleared;
     expect(onSettle).toHaveBeenCalledTimes(2);
   });
 });

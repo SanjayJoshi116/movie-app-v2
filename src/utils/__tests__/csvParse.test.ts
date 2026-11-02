@@ -1,4 +1,4 @@
-import { normalizeWatchedAt, parseCSV, parseCSVForImport, parseBackupCSV } from "../csvParse";
+import { normalizeWatchedAt, parseCSV, parseCSVForImport, parseBackupCSV, parseId } from "../csvParse";
 import { buildCSVString } from "../export";
 
 describe("parseCSV", () => {
@@ -267,5 +267,46 @@ describe("normalizeWatchedAt future leeway", () => {
     expect(normalizeWatchedAt(tomorrow)).toBeUndefined();
     const row = parseBackupCSV(buildCSVString([{ tmdb_id: 1, title: "A", type: "movie", added_at: soon }]))[0]!;
     expect(row.addedAt).toBe(soon);
+  });
+});
+
+describe("imported times must name a real moment (fix-hooks-sweep-f2)", () => {
+  it.each([
+    "2024-02-30T12:00:00Z", "2023-02-29", "2024-04-31", "2024-01-01T24:00Z",
+    "2024-01-01T10:60:00Z", "2024-01-01T10:00:60Z", "2024-13-01", "2024-00-10", "2024-01-00",
+    "2024-01-01T10:00:00+24:00",
+  ])("drops %s", (value) => {
+    expect(normalizeWatchedAt(value)).toBeUndefined();
+  });
+
+  it("keeps a real leap day and edge times", () => {
+    expect(normalizeWatchedAt("2024-02-29")).toBe("2024-02-29T12:00:00Z");
+    expect(normalizeWatchedAt("2000-02-29T23:59:59Z")).toBe("2000-02-29T23:59:59Z");
+    expect(normalizeWatchedAt("1900-02-28")).toBe("1900-02-28T12:00:00Z");
+    expect(normalizeWatchedAt("1900-02-29")).toBeUndefined();
+  });
+
+  it("gives a bad row the import time and keeps the others", () => {
+    const { rows } = parseCSVForImport("id,title,watched_at\n1,A,2024-02-30T12:00:00Z\n2,B,2024-02-29");
+    expect(rows[0]!.watchedAt).toBeUndefined();
+    expect(rows[1]!.watchedAt).toBe("2024-02-29T12:00:00Z");
+  });
+});
+
+describe("parseId (fix-hooks-sweep-f2)", () => {
+  it.each(["550x", "1.9", "1e9", "99999999999", "2147483648", "0", "-4", "", " ", "+5", "0x10"])(
+    "rejects %p", (raw) => expect(parseId(raw)).toBeNull(),
+  );
+
+  it("keeps whole numbers up to INT32_MAX", () => {
+    expect(parseId(" 550 ")).toBe(550);
+    expect(parseId("2147483647")).toBe(2147483647);
+    expect(parseId(undefined)).toBeNull();
+  });
+
+  it("skips rows with a bad id in both CSV readers", () => {
+    expect(parseCSVForImport("id,title\n550x,X\n1.9,Y\n1e9,Z\n99999999999,W\n7,Ok").rows)
+      .toEqual([{ mediaId: 7, title: "Ok" }]);
+    expect(parseBackupCSV("tmdb_id,title,type\n550x,X,movie\n7,Ok,movie").map((r) => r.mediaId)).toEqual([7]);
   });
 });

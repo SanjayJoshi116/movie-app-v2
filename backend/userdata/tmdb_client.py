@@ -52,11 +52,11 @@ RETRY = Retry(
     total=2, connect=2, read=1, backoff_factor=0.5,
     allowed_methods=Retry.DEFAULT_ALLOWED_METHODS | {"POST"},
 )
-# Every thread that calls TMDB shares this pool: the proxy's and the deadline
-# pool's 16 each, plus background work. Smaller, and urllib3 discards the extra
-# connections, which brings the per-call handshake back under load.
-# (test_startup_warmup pins it at least the request threads.)
-SESSION_POOL_SIZE = 32
+# Every thread that calls TMDB shares this pool: the proxy's, the deadline
+# pool's and the followed-people pool's 16 each, plus background work. Smaller,
+# and urllib3 discards the extra connections, which brings the per-call
+# handshake back under load. (test_startup_warmup pins it at least the pools.)
+SESSION_POOL_SIZE = 48
 _session = requests.Session()
 _session.mount("https://", HTTPAdapter(pool_connections=4, pool_maxsize=SESSION_POOL_SIZE, max_retries=RETRY))
 

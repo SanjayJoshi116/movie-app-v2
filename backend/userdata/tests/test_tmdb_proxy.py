@@ -161,6 +161,11 @@ class TmdbProxyDeadlineTests(APITestCase):
         # Load the URLconf and its view modules (scikit-learn, scipy) first: a
         # cold import on the first request takes seconds and isn't the call's time.
         self.assertEqual(self.client.get("/api/tmdb/movie/..").status_code, 400)
+        # The shared session may already hold a kept-alive TMDB connection from
+        # an earlier call in this process; reusing it would skip the connect.
+        pool = tmdb_proxy_views._session.get_adapter("https://").poolmanager
+        pool.clear()
+        self.addCleanup(pool.clear)
         with patch("socket.getaddrinfo", fake_getaddrinfo), \
                 patch("socket.socket.connect", slow_connect), \
                 patch("userdata.tmdb_proxy_views._session.get", side_effect=tracked_get):

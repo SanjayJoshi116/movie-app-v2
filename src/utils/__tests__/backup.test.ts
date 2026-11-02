@@ -130,6 +130,31 @@ describe("backup round trip", () => {
     expect(data.followed).toEqual([{ personId: 7, name: "Greta Gerwig", profilePath: null }]);
   });
 
+  it("restores follows and progress through the per-row rules (fix-hooks-sweep-f2)", async () => {
+    const zip = new JSZip();
+    const longName = "n".repeat(700);
+    zip.file("followed.csv", [
+      "person_id,name,profile_path,followed_at",
+      "1,Future,/f.jpg,2999-01-01T00:00:00Z",
+      `2,${longName},/l.jpg,2024-01-01T00:00:00Z`,
+      "3,Bad Path,http://example.com/a.jpg,2024-02-30T00:00:00Z",
+      "4x,Bad Id,,",
+      "5,Kept,/k.jpg,2024-02-29T10:00:00Z",
+    ].join("\n"));
+    zip.file("episode_progress.csv", "show_id,season,episode\n1396,1,1e3\n1399,1.5,2\n60059,2,3\n99999999999,1,1");
+    zip.file("watchlist.csv", "tmdb_id,title,type,vote_average,added_at,poster_path\n13,Gump,movie,8,2023-02-29,/g.jpg");
+    const data = await roundTrip(zip);
+    expect(data.followed).toEqual([
+      { personId: 1, name: "Future", profilePath: "/f.jpg" },
+      { personId: 2, name: "n".repeat(500), profilePath: "/l.jpg", followedAt: "2024-01-01T00:00:00Z" },
+      { personId: 3, name: "Bad Path", profilePath: null },
+      { personId: 5, name: "Kept", profilePath: "/k.jpg", followedAt: "2024-02-29T10:00:00Z" },
+    ]);
+    expect(data.episodeProgress).toEqual([{ showId: 60059, season: 2, episode: 3 }]);
+    expect(data.watchlist).toHaveLength(1);
+    expect(data.watchlist[0]!.addedAt).toBeUndefined();
+  });
+
   it("rejects a ZIP with nothing recognizable", async () => {
     const zip = new JSZip();
     zip.file("notes.txt", "hi");

@@ -20,6 +20,8 @@ export function useRatings() {
   const [error, setError] = useState<unknown>(null);
   // Bumped as each write settles: a reload that started earlier is rerun.
   const writeSeq = useRef(0);
+  // Numbers each reload: only the newest one's result and outcome are applied.
+  const reloadSeq = useRef(0);
   const inflight = useRef(createInflight({ onSettle: () => { writeSeq.current += 1; } }));
   const dbIdMap = useRef<Record<string, number>>({});
   const ratingsRef = useRef(ratings);
@@ -54,17 +56,19 @@ export function useRatings() {
           setRatings(ratingsMap);
           setError(null);
         },
+        {
+          reloadSeq,
+          // Only the newest of overlapping reloads ends the loading state.
+          onSettled: () => {
+            if (isCurrentSession(gen)) { setReloading(false); setLoadedGen(gen); }
+          },
+        },
       );
     } catch (err) {
       if (!isCurrentSession(gen)) return;
       // Keep whatever was already loaded; the page decides how to surface it.
       setError(err);
       throw err;
-    } finally {
-      if (isCurrentSession(gen)) {
-        setReloading(false);
-        setLoadedGen(gen);
-      }
     }
   }, [isAuthenticated]);
 

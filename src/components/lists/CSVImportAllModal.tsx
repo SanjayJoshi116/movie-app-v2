@@ -278,10 +278,13 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
             })),
             { guard },
           ),
+          { collection: "followed" },
         );
       }
       if (contents.episodeProgress.length > 0) {
-        await run("Episode progress", () => bulkImportEpisodeProgress(contents.episodeProgress, { guard }));
+        await run("Episode progress", () => bulkImportEpisodeProgress(contents.episodeProgress, { guard }), {
+          collection: "episode_progress",
+        });
       }
 
       guard.check();

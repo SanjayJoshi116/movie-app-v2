@@ -27,7 +27,7 @@ import { FONT_SIZE } from "../constants/typography";
 import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
-import { filterByGenreOverlap } from "../utils/filterByGenreOverlap";
+import { filterByGenreOverlap, genreIdsOf } from "../utils/filterByGenreOverlap";
 import { goBack } from "../utils/goBack";
 import { pickRegion, regionName } from "../utils/region";
 import { useRegion } from "../hooks/useRegion";
@@ -95,8 +95,9 @@ const MovieDetails = ({ movie }: Props) => {
     vote_average,
   } = movie;
 
-  const similarFiltered = filterByGenreOverlap(similarMovies ?? [], (genres ?? []).map((g) => g.id));
-  const recommendationsFiltered = filterByGenreOverlap(recommendations ?? [], (genres ?? []).map((g) => g.id));
+  const sourceGenreIds = genreIdsOf(genres);
+  const similarFiltered = filterByGenreOverlap(similarMovies, sourceGenreIds);
+  const recommendationsFiltered = filterByGenreOverlap(recommendations, sourceGenreIds);
   const cast = credits?.cast ?? [];
   const directors = (credits?.crew ?? [])
     .filter((c) => c.job === "Director")

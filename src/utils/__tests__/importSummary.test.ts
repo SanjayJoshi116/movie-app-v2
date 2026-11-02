@@ -11,6 +11,13 @@ describe("notAddedParts", () => {
       "400 not added: watched history is full",
     ]);
   });
+
+  it("names the follow and episode-progress limits", () => {
+    expect(notAddedParts({ ignored: 0, overLimit: 3 }, "followed")).toEqual(["3 not added: follow limit reached"]);
+    expect(notAddedParts({ ignored: 0, overLimit: 1 }, "episode_progress")).toEqual([
+      "1 not added: episode progress is full",
+    ]);
+  });
 });
 
 describe("importResultToast", () => {

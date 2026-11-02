@@ -14,6 +14,7 @@ from rest_framework.test import APITestCase
 from userdata import social_views
 from userdata.models import FollowedPerson
 from userdata.social_views import credits_cache
+from userdata.tests.waiting import wait_for
 
 # A release date inside "New from"'s window (the last two years or ahead).
 RECENT = (timezone.now().date() - timedelta(days=30)).isoformat()
@@ -92,6 +93,14 @@ class FollowedPeopleRecommendationsBudgetTests(APITestCase):
         self.assertLess(elapsed, 0.5 + 2)
         self.assertIsNotNone(credits_cache().get(social_views._credits_key(6)))  # arrived in time: cached
         self.assertIsNone(credits_cache().get(social_views._credits_key(5)))
+
+        # Fetches that finish later are cached by the next call, not refetched.
+        release.set()
+        self.assertTrue(wait_for(lambda: len(social_views._late_results) == 5))
+        mock_get.reset_mock()
+        sections = self.client.get("/api/recommendations/followed-people/").data
+        mock_get.assert_not_called()
+        self.assertEqual(len(sections), 6)
 
     def test_budget_fits_under_gunicorn_timeout(self):
         entrypoint = (Path(__file__).resolve().parents[2] / "docker-entrypoint.sh").read_text()

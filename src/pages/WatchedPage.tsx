@@ -19,7 +19,7 @@ import { LoadError } from "../components/LoadError";
 import MediaGrid from "../components/MediaGrid";
 import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
-import { useLibraryFilters } from "../hooks/useLibraryFilters";
+import { mediaTypeOf, useLibraryFilters } from "../hooks/useLibraryFilters";
 import { FONT_SIZE } from "../constants/typography";
 import { pageVariants, WATCHED_GREEN } from "../constants/ui";
 import type { WatchedEntry } from "../types";
@@ -56,6 +56,7 @@ function WatchedPage() {
       items: watchedList,
       sortFns,
       defaultSort: "watched-desc",
+      getType: mediaTypeOf,
     });
 
   // A hand-edited ?page=-2 or ?pageSize=1.5 falls back instead of slicing oddly.

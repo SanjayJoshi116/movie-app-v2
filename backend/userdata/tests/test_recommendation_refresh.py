@@ -439,7 +439,7 @@ class BackfillHealthTests(_RefreshBase):
     def test_incomplete_backfill_keeps_a_larger_stored_result(self):
         stored = [_section(f"old-{i}") for i in range(30)]
         UserRecommendationCache.objects.create(user=self.user, for_you_json=stored, personalized_json=[])
-        self._with([
+        self._with([p for p in _tmdb_ok() if p.attribute != "backfill_entries"] + [
             patch.object(recommendations, "backfill_entries", return_value=False),
             patch.object(recommendations, "_compute_for_you", return_value=[_section("trending")]),
         ])

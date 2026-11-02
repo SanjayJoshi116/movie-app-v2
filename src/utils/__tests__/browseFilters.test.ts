@@ -1,4 +1,4 @@
-import { hasActiveFilters, todayLocalISO } from "../browseFilters";
+import { hasActiveFilters } from "../browseFilters";
 import { filtersToTMDBParams } from "../../api/tmdb";
 import type { FilterValues } from "../../types";
 import {
@@ -30,12 +30,6 @@ describe("hasActiveFilters", () => {
 
   it("is true when a genre is selected", () => {
     expect(hasActiveFilters(null, "popularity.desc", [28])).toBe(true);
-  });
-});
-
-describe("todayLocalISO", () => {
-  it("formats the local calendar date, not UTC", () => {
-    expect(todayLocalISO(new Date(2026, 0, 5, 23, 30))).toBe("2026-01-05");
   });
 });
 

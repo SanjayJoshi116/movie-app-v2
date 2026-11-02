@@ -24,14 +24,6 @@ export function hasActiveFilters(
   return VALUE_FIELDS.some((k) => filters[k] !== "");
 }
 
-/** Today's date in the browser's local timezone as yyyy-mm-dd (not UTC). */
-export function todayLocalISO(now: Date = new Date()): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 /**
  * Keep only genre ids that exist for this media type. Genre picks live in
  * UIContext, a parent provider App can't update during its render, so they're

@@ -215,3 +215,47 @@ describe("useWatched hasLoaded", () => {
     expect(result.current.hasLoaded).toBe(false);
   });
 });
+
+describe("overlapping reloads (fix-hooks-sweep-f2)", () => {
+  const row = (mediaId: number, title: string) => ({
+    id: 100 + mediaId, mediaId, mediaType: "movie", title, posterPath: null, voteAverage: 7,
+    watchedAt: "2024-01-01T00:00:00Z", watchedTz: "", runtimeMinutes: null, platform: null,
+  });
+
+  it("keeps the newer reload's list when the older one resolves last", async () => {
+    let answerFirst!: (v: unknown) => void;
+    mockGet.mockReturnValueOnce(new Promise((res) => { answerFirst = res; }));
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+
+    let answerSecond!: (v: unknown) => void;
+    mockGet.mockReturnValueOnce(new Promise((res) => { answerSecond = res; }));
+    let second!: Promise<void>;
+    act(() => { second = result.current.reload(); });
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+
+    // The older one finishing first doesn't end loading or apply anything.
+    await act(async () => { answerFirst({ data: [row(1, "Old")] }); });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.watchedList).toEqual([]);
+
+    await act(async () => { answerSecond({ data: [row(1, "Old"), row(2, "Imported")] }); await second; });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.watchedList.map((w) => w.title)).toEqual(["Old", "Imported"]);
+  });
+
+  it("an older reload resolving after the newer one doesn't overwrite it", async () => {
+    let answerFirst!: (v: unknown) => void;
+    mockGet.mockReturnValueOnce(new Promise((res) => { answerFirst = res; }));
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+
+    mockGet.mockResolvedValueOnce({ data: [row(2, "Imported")] });
+    await act(async () => { await result.current.reload(); });
+    expect(result.current.isLoading).toBe(false);
+
+    await act(async () => { answerFirst({ data: [] }); });
+    expect(result.current.watchedList.map((w) => w.title)).toEqual(["Imported"]);
+    expect(result.current.isLoading).toBe(false);
+  });
+});

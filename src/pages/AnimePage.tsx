@@ -16,7 +16,8 @@ import {
   discoverTV,
   filtersToTMDBParams,
 } from "../api/tmdb";
-import { genresFor, hasActiveFilters, todayLocalISO } from "../utils/browseFilters";
+import { genresFor, hasActiveFilters } from "../utils/browseFilters";
+import { localISODate } from "../utils/formatDate";
 import { stashReturnState } from "../utils/browseReturnState";
 import type { MediaType, TMDBMovieSummary, TMDBTVSummary, FilterValues, SortOption } from "../types";
 import { pageVariants } from "../constants/ui";
@@ -48,7 +49,7 @@ function categoryParams(category: string): Record<string, string | number> {
     case "anime-movies-top-rated":
       return { sort_by: "vote_average.desc", "vote_count.gte": 50 };
     case "anime-tv-airing": {
-      const today = todayLocalISO();
+      const today = localISODate(new Date());
       return { sort_by: "popularity.desc", "air_date.gte": today, "air_date.lte": today };
     }
     default:

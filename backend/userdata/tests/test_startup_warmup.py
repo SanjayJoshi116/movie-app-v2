@@ -164,11 +164,14 @@ class ThreadedServerTests(TestCase):
         import django
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "cinedb.settings")
         django.setup()
-        from userdata import tmdb_client, tmdb_proxy_views
+        from userdata import social_views, tmdb_client, tmdb_proxy_views
         threads = int(re.search(r"--threads (\d+)", GUNICORN_LINE).group(1))
-        self.assertGreaterEqual(tmdb_client.DEADLINE_POOL_SIZE, threads)
-        self.assertGreaterEqual(tmdb_proxy_views.PROXY_POOL_SIZE, threads)
+        pools = (tmdb_client.DEADLINE_POOL_SIZE, tmdb_proxy_views.PROXY_POOL_SIZE, social_views.FOLLOWED_POOL_SIZE)
+        for size in pools:
+            self.assertGreaterEqual(size, threads)
         self.assertEqual(tmdb_proxy_views.PROXY_POOL._max_workers, tmdb_proxy_views.PROXY_POOL_SIZE)
-        self.assertGreaterEqual(tmdb_client.SESSION_POOL_SIZE, threads)
+        self.assertEqual(social_views.FOLLOWED_POOL._max_workers, social_views.FOLLOWED_POOL_SIZE)
+        # Every pool's threads can hold a connection at once without urllib3 discarding one.
+        self.assertGreaterEqual(tmdb_client.SESSION_POOL_SIZE, sum(pools))
         adapter = tmdb_client._session.get_adapter("https://api.tmdb.org")
         self.assertEqual(adapter._pool_maxsize, tmdb_client.SESSION_POOL_SIZE)

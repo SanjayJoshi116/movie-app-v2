@@ -9,7 +9,9 @@ from rest_framework import status
 from rest_framework.test import APIClient, APITestCase, APITransactionTestCase
 
 from userdata import library_limits, watched_views
-from userdata.models import RatingEntry, UserList, UserListItem, WatchedEntry, WatchlistEntry
+from userdata.models import (
+    EpisodeProgress, FollowedPerson, RatingEntry, UserList, UserListItem, WatchedEntry, WatchlistEntry,
+)
 
 PASSWORD = "Xk9#mQ2vTz8p"
 
@@ -79,6 +81,45 @@ class SingleAddLimitTests(APITestCase):
             removed = self.client.delete(f"/api/watchlist/{WatchlistEntry.objects.first().pk}/")
         self.assertEqual(listed.data["count"], 3)
         self.assertEqual(removed.status_code, status.HTTP_204_NO_CONTENT)
+
+
+class FollowAndProgressLimitTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="fol", password=PASSWORD)
+        self.client.force_authenticate(user=self.user)
+        FollowedPerson.objects.bulk_create([FollowedPerson(user=self.user, person_id=i, name="P") for i in (1, 2)])
+        EpisodeProgress.objects.bulk_create([
+            EpisodeProgress(user=self.user, show_id=i, season_number=1, episode_number=1) for i in (1, 2)
+        ])
+
+    def test_single_adds_past_the_limit_are_refused(self):
+        with _limits(followed=2, episode_progress=2):
+            follow = self.client.post("/api/followed-people/", {"personId": 3, "name": "C"}, format="json")
+            progress = self.client.post("/api/episode-progress/3/", {"season": 1, "episode": 1}, format="json")
+        self.assertEqual(follow.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("follow at most 2 people", follow.data["detail"])
+        self.assertEqual(progress.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("limited to 2 shows", progress.data["detail"])
+        self.assertEqual((FollowedPerson.objects.count(), EpisodeProgress.objects.count()), (2, 2))
+
+    def test_refollow_and_progress_on_a_tracked_show_are_saved_at_the_limit(self):
+        with _limits(followed=2, episode_progress=2):
+            follow = self.client.post("/api/followed-people/", {"personId": 1, "name": "P"}, format="json")
+            progress = self.client.post("/api/episode-progress/1/", {"season": 2, "episode": 5}, format="json")
+        self.assertEqual(follow.status_code, status.HTTP_200_OK)
+        self.assertEqual(progress.data, {"showId": 1, "season": 2, "episode": 5})
+        self.assertEqual(EpisodeProgress.objects.get(user=self.user, show_id=1).season_number, 2)
+
+    def test_bulk_restores_fill_to_the_limit(self):
+        with _limits(followed=3, episode_progress=3):
+            follows = self.client.post("/api/followed-people/bulk/", {"entries": [
+                {"personId": 10 + i, "name": "N"} for i in range(3)
+            ]}, format="json")
+            progress = self.client.post("/api/episode-progress/bulk/", {"entries": [
+                {"showId": 10 + i, "season": 1, "episode": 1} for i in range(3)
+            ]}, format="json")
+        self.assertEqual((follows.data["added"], follows.data["overLimit"]), (1, 2))
+        self.assertEqual((progress.data["added"], progress.data["overLimit"]), (1, 2))
 
 
 class BulkLimitAndCountTests(APITestCase):
