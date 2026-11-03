@@ -23,7 +23,13 @@ jest.mock("../../hooks/useToast", () => ({ useToast: () => ({ showSuccess: jest.
 jest.mock("../../api/tmdb", () => ({ fetchProviderRegions: () => new Promise(() => {}) }));
 // The import dialogs aren't under test and need the library providers.
 jest.mock("../CSVUploadModal", () => () => null);
-jest.mock("../lists/CSVImportAllModal", () => () => null);
+// Stands in for a restore that starts and reports itself busy.
+jest.mock("../lists/CSVImportAllModal", () => ({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) => (
+  <>
+    <button onClick={() => onBusyChange?.(true)}>start mock restore</button>
+    <button onClick={() => onBusyChange?.(false)}>finish mock restore</button>
+  </>
+));
 
 // eslint-disable-next-line no-var -- assigned from a hoisted jest.mock factory
 var mockFinishRemove: (v: unknown) => void;
@@ -60,3 +66,20 @@ it("holds while a photo removal is in flight, then closes normally", async () =>
   fireEvent.click(await screen.findByRole("button", { name: /close/i }));
   expect(onClose).toHaveBeenCalled();
 }, 20000); // the whole tabbed dialog renders slowly in jsdom
+
+// fix-components-sweep-f4: Escape in a running import dialog isn't stopped
+// there (its own keyboard close is off), so it reached this dialog and closed it.
+it("holds while an import opened from it is running", async () => {
+  const onClose = jest.fn();
+  render(<ProfileModal open onClose={onClose} />);
+  const dialog = await screen.findByRole("dialog");
+
+  fireEvent.click(screen.getByRole("button", { name: "start mock restore" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: /close/i })).toBeNull());
+  fireEvent.keyDown(dialog, { key: "Escape", code: "Escape", keyCode: 27 });
+  expect(onClose).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "finish mock restore" }));
+  fireEvent.click(await screen.findByRole("button", { name: /close/i }));
+  expect(onClose).toHaveBeenCalled();
+}, 20000);

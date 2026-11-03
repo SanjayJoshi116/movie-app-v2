@@ -20,7 +20,7 @@ Priority weighs value against effort and fit with the current architecture, and 
 
 ---
 
-## Top priority: module-by-module review sweep
+## Done: module-by-module review sweep (2026-10-30 to 2026-11-03)
 
 Added 2026-10-30, ahead of every feature below. Run `/code-review high <paths>` on each module, and `/security-review` on the ones marked **high**. Unnumbered so the feature numbers (referenced from BUG_BACKLOG and CHANGELOG) stay put.
 
@@ -34,17 +34,17 @@ Order: B1 → F1 → B3 → B2 → I1 → B7 → B4 → F2 → F3 → B6 → B5 
 | B2 ✅ | TMDB access | `backend/userdata/tmdb_proxy_views.py tmdb_client.py tmdb_budget.py timezones.py logging.py` | ~470 | **high** |
 | B3 ✅ | Library CRUD | `backend/userdata/watchlist_views.py watched_views.py ratings_views.py lists_views.py bulk_import.py pagination.py views.py urls.py health_views.py` | ~740 | **high** |
 | B4 ✅ | Social & notifications | `backend/userdata/social_views.py notifications_views.py` | ~490 | med |
-| B5 | Recommendations & stats | `backend/userdata/recommendations.py metadata_backfill.py genre_families.py stats_views.py signals.py` | ~1,400 | low |
+| B5 ✅ | Recommendations & stats | `backend/userdata/recommendations.py metadata_backfill.py genre_families.py stats_views.py signals.py` | ~1,400 | low |
 | B6 ✅ | Data layer | `backend/userdata/models.py backend/userdata/migrations backend/userdata/management` | ~1,340 | med |
 | B7 ✅ | Config & startup | `backend/cinedb backend/start.py backend/warmup.py backend/docker-entrypoint.sh` | ~480 | **high** |
 | F1 ✅ | API, auth & session | `src/api src/context` | ~1,410 | **high** |
 | F2 ✅ | Hooks & utils | `src/hooks src/utils` | ~3,110 | med |
 | F3 ✅ | Pages (split account vs library/browse if shallow) | `src/pages` | ~4,900 | med |
-| F4 | Components (split detail/media vs rest if shallow) | `src/components` | ~4,800 | low |
-| F5 | Shell & theme | `src/App.tsx src/index.tsx src/*.css src/constants src/theme src/types` | ~1,900 | low |
+| F4 ✅ | Components (split detail/media vs rest if shallow) | `src/components` | ~4,800 | low |
+| F5 ✅ | Shell & theme | `src/App.tsx src/index.tsx src/*.css src/constants src/theme src/types` | ~1,900 | low |
 | I1 ✅ | Deploy & CI | `nginx.conf Dockerfile.frontend backend/Dockerfile docker-compose.yml .github/workflows scripts` | ~550 | **high** |
 
-Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4), I1 (item 54, `fix-deploy-sweep-i1`, 0.31.5), B7 (item 55, `fix-config-sweep-b7`, 0.31.6), B4 (item 56, `fix-social-sweep-b4`, 0.31.7), F2 (item 57, `fix-hooks-sweep-f2`, 0.31.8), F3 (item 58, `fix-pages-sweep-f3`, 0.31.9), B6 (item 59, `fix-data-sweep-b6`, 0.31.10). Next: B5. Next feature after the sweep: item 2, rating queue.
+Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4), I1 (item 54, `fix-deploy-sweep-i1`, 0.31.5), B7 (item 55, `fix-config-sweep-b7`, 0.31.6), B4 (item 56, `fix-social-sweep-b4`, 0.31.7), F2 (item 57, `fix-hooks-sweep-f2`, 0.31.8), F3 (item 58, `fix-pages-sweep-f3`, 0.31.9), B6 (item 59, `fix-data-sweep-b6`, 0.31.10), B5 (item 60, `fix-recs-sweep-b5`, 0.31.11), F4 (item 61, `fix-components-sweep-f4`, 0.31.12), F5 (item 62, `fix-shell-sweep-f5`, 0.31.13). The sweep is complete (all 13 modules). Next feature: item 2, rating queue.
 
 ## Tier 1: quick wins
 

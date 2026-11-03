@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Modal, Button, Table, Typography, Alert, Radio, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { bulkImport, sessionGuard, SessionEndedError } from "../api/userApi";
@@ -9,34 +9,24 @@ import { useToast } from "../hooks/useToast";
 import { useAppContext } from "../context/useAppContext";
 import { parseCSVForImport, type ParsedEntry } from "../utils/csvParse";
 import { getApiError, IMPORT_REFRESH_ERROR } from "../utils/apiError";
-import { downloadCSV } from "../utils/export";
+import { downloadCSV, templateRows } from "../utils/export";
 import { FONT_SIZE } from "../constants/typography";
+import { useLatestOnly } from "../hooks/useLatestOnly";
 
 const { Text } = Typography;
 
 interface Props {
   open: boolean;
   onClose: () => void;
-}
-
-/** Template rows: only the columns parseCSVForImport reads (id, title and the optional type). */
-export function templateRows(type: "movie" | "tv") {
-  return type === "movie"
-    ? [
-        { id: 550, title: "Fight Club", type: "movie" },
-        { id: 13, title: "Forrest Gump", type: "movie" },
-      ]
-    : [
-        { id: 1396, title: "Breaking Bad", type: "tv" },
-        { id: 66732, title: "Stranger Things", type: "tv" },
-      ];
+  /** Told when an import starts and ends, so the dialog that opened this one holds too. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 function downloadTemplate(type: "movie" | "tv") {
   downloadCSV(templateRows(type), type === "movie" ? "movies_template.csv" : "tvshows_template.csv");
 }
 
-const CSVUploadModal = ({ open, onClose }: Props) => {
+const CSVUploadModal = ({ open, onClose, onBusyChange }: Props) => {
   const { showSuccess, showError, showInfo } = useToast();
   const { reloadWatched } = useAppContext();
   const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
@@ -46,19 +36,32 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Only the latest pick's parse is applied.
+  const picks = useLatestOnly();
+
+  // Reported to whatever opened this dialog (Edit Profile), so a held import
+  // holds it too: Escape in a held dialog isn't stopped and would close it.
+  useEffect(() => {
+    onBusyChange?.(loading);
+    return () => onBusyChange?.(false);
+  }, [loading, onBusyChange]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Reset so picking the same file again (e.g. after an error) fires `change` again.
     e.target.value = "";
     if (!file) return;
+    const isLatest = picks.start();
     setFileName(file.name);
     setParsed([]);
     setParseError(null);
 
     const reader = new FileReader();
-    reader.onerror = () => setParseError("Couldn't read that file.");
+    reader.onerror = () => {
+      if (isLatest()) setParseError("Couldn't read that file.");
+    };
     reader.onload = (ev) => {
+      if (!isLatest()) return; // a later pick (or a close) replaced it
       const text = ev.target?.result as string;
       const { rows, error } = parseCSVForImport(text);
       if (error) {
@@ -121,6 +124,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
   };
 
   const handleClose = () => {
+    picks.cancel();
     setParsed([]);
     setParseError(null);
     setFileName(null);
@@ -174,6 +178,7 @@ const CSVUploadModal = ({ open, onClose }: Props) => {
         accept=".csv"
         aria-label="CSV file to import"
         onChange={handleFileChange}
+        disabled={loading}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />
       {fileName && (

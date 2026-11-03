@@ -11,6 +11,7 @@ Static, like tmdb_client.STATIC_GENRE_NAMES: TMDB's genre ids haven't changed
 in years. An id this table doesn't know becomes a family of its own, for the
 media type it was seen on, so a new TMDB genre degrades to the old behavior.
 """
+import threading
 
 # Families that merge ids, primary id first (the one used when AND-ing
 # several families, since TMDB doesn't document mixing `|` and `,`).
@@ -33,6 +34,8 @@ IDS: dict[str, dict[str, list[int]]] = {
     **{str(g): {"movie": [], "tv": [g]} for g in _TV_ONLY},
 }
 
+_register_lock = threading.Lock()
+
 FAMILY_OF: dict[int, str] = {
     gid: family for family, by_type in IDS.items() for ids in by_type.values() for gid in ids
 }
@@ -46,13 +49,16 @@ def family_of(genre_id, media_type=None):
         return family
     family = str(genre_id)
     types = [media_type] if media_type in ("movie", "tv") else ["movie", "tv"]
-    if family not in IDS:
-        IDS[family] = {"movie": [], "tv": []}
-    # Each type it's seen on, not only the first: the same new id on the
-    # other type must be queryable there too.
-    for t in types:
-        if genre_id not in IDS[family][t]:
-            IDS[family][t].append(genre_id)
+    # Under a lock: Stats requests and refresh threads register at once, and
+    # two first sightings could each create the dict and lose one's type.
+    # Not added to FAMILY_OF, so each new type it's seen on still registers.
+    with _register_lock:
+        by_type = IDS.setdefault(family, {"movie": [], "tv": []})
+        # Each type it's seen on, not only the first: the same new id on the
+        # other type must be queryable there too.
+        for t in types:
+            if genre_id not in by_type[t]:
+                by_type[t].append(genre_id)
     return family
 
 

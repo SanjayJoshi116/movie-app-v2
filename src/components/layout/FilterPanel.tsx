@@ -13,7 +13,7 @@ import {
   theme,
 } from "antd";
 import type { FilterValues, SortOption } from "../../types";
-import { useAppContext } from "../../context/useAppContext";
+import { useUIContext } from "../../context/UIContext";
 import { movieGenres, tvGenres } from "../../constants/genres";
 import { genresFor } from "../../utils/browseFilters";
 import { FONT_SIZE } from "../../constants/typography";
@@ -74,7 +74,7 @@ interface Props {
 }
 
 export function FilterPanel({ open, onClose, isMovie, appliedFilters, appliedSortBy, appliedGenres, onApply, onReset }: Props) {
-  const { includeAdult, setIncludeAdult } = useAppContext();
+  const { includeAdult, setIncludeAdult } = useUIContext();
   const { token } = theme.useToken();
   // Everything here is a draft until Apply, genre picks included: a chip that
   // applied on its own refetched the grid, then Apply fetched it again.

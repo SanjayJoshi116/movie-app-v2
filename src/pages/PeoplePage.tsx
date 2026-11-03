@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Typography, Input, Empty } from "antd";
-import { useAppContext } from "../context/useAppContext";
+import { useUIContext } from "../context/UIContext";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
@@ -20,7 +20,7 @@ function PeoplePage() {
   usePageTitle("People");
   const navigate = useNavigate();
   const location = useLocation();
-  const { includeAdult } = useAppContext();
+  const { includeAdult } = useUIContext();
   // The page's own search, in its URL: it survives Back and reload, and never
   // shares the app-wide term the search box and Search page use.
   const [searchParams, setSearchParams] = useSearchParams();

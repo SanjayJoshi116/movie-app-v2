@@ -31,7 +31,7 @@ const TVShows = ({ tvShows, onKnowMore, hasFilters }: Props) => {
   }
 
   return (
-    <main aria-label="TV show results">
+    <section aria-label="TV show results">
       <Row gutter={[16, 20]}>
         {tvShows.map((tvShow) => (
           <Col key={tvShow.id} xs={12} sm={8} md={6} lg={4} xl={4}>
@@ -39,7 +39,7 @@ const TVShows = ({ tvShows, onKnowMore, hasFilters }: Props) => {
           </Col>
         ))}
       </Row>
-    </main>
+    </section>
   );
 };
 

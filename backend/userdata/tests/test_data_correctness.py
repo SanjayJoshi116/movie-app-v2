@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from userdata.models import FollowedPerson, UserList, UserListItem, WatchedEntry
-from userdata.recommendations import _add_or_merge_section, _compute_for_you
+from userdata.recommendations import _add_or_merge_section, _compute_for_you, _number
 
 
 def _items(*ids, type_="movie"):
@@ -61,6 +61,22 @@ class SectionKeyTests(APITestCase):
 
         self.assertEqual([s["label"] for s in sections], ["Your Taste: Drama & Crime", "Your Taste: Comedy"])
         self.assertEqual([i["id"] for i in sections[0]["items"]], [1, 2, 3])
+
+    def test_merge_returns_only_the_items_it_shows(self):
+        """A cluster reserves only what the merged row shows, not what the cut drops."""
+        sections = []
+        drama = "Your Taste: Drama"
+        first = _add_or_merge_section(sections, {"key": "a", "label": drama, "items": _items(1, 2)}, limit=3)
+        self.assertEqual([i["id"] for i in first], [1, 2])
+        shown = _add_or_merge_section(sections, {"key": "b", "label": drama, "items": _items(2, 3, 4, 5)}, limit=3)
+        self.assertEqual([i["id"] for i in shown], [3])
+        self.assertEqual([i["id"] for i in sections[0]["items"]], [1, 2, 3])
+
+    def test_number_turns_bad_tmdb_scores_into_zero(self):
+        for value in (None, "7.5", True, float("nan"), float("inf"), [7]):
+            self.assertEqual(_number(value), 0, value)
+        self.assertEqual(_number(7.5), 7.5)
+        self.assertEqual(_number(3), 3)
 
 
 class ListItemOrderTests(APITestCase):

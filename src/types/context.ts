@@ -9,25 +9,30 @@ import type {
   UserList,
 } from "./domain";
 
-export interface AppContextType {
-  // Search
+export interface UIContextType {
   searchTerm: string;
   setSearchTerm(t: string): void;
   clearSearch(): void;
   includeAdult: boolean;
   setIncludeAdult(v: boolean): void;
-
-  // Theme
   theme: Theme;
   toggleTheme(): void;
+  /** Region for where-to-watch data (ISO 3166-1, e.g. "IN"); a device preference. */
+  region: string;
+  setRegion(code: string): void;
+}
 
+/** The back-compat `useAppContext()` shape. Its UI members are UIContext's
+ *  own (not restated), so the two can't drift; components that need only
+ *  those read `useUIContext()` instead, so library changes don't re-render them. */
+export interface AppContextType
+  extends Pick<UIContextType, "searchTerm" | "setSearchTerm" | "clearSearch" | "includeAdult" | "setIncludeAdult" | "theme" | "toggleTheme"> {
   // Watchlist
   watchlist: WatchlistEntry[];
   addToWatchlist(entry: WatchlistInput): Promise<void>;
   removeFromWatchlist(id: number, type: string): Promise<void>;
   clearAllWatchlist(): Promise<void>;
   isInWatchlist(id: number, type: string): boolean;
-  toggleWatchlist(entry: WatchlistInput): Promise<void>;
   reloadWatchlist(): Promise<void>;
   watchlistError: unknown;
 

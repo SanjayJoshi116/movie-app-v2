@@ -39,10 +39,6 @@ export const darkThemeConfig: ThemeConfig = {
     Button: {
       primaryColor: ON_GOLD_TEXT,
     },
-    Layout: {
-      headerBg: "#14172a",
-      bodyBg: "#0d0f1a",
-    },
     Card: {
       colorBgContainer: "rgba(26, 29, 46, 0.72)",
     },

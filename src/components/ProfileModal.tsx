@@ -68,7 +68,9 @@ function ProfileModalBody({ onClose, onBusyChange }: { onClose: () => void; onBu
   const [tmdbLoading, setTmdbLoading] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [avatarLoading, setAvatarLoading] = useState(false);
-  const busy = loading || deleteLoading || avatarLoading || tmdbLoading;
+  // An import opened from here holds this dialog too (fix-components-sweep-f4).
+  const [importBusy, setImportBusy] = useState(false);
+  const busy = loading || deleteLoading || avatarLoading || tmdbLoading || importBusy;
   useEffect(() => {
     onBusyChange(busy);
     return () => onBusyChange(false);
@@ -499,8 +501,8 @@ function ProfileModalBody({ onClose, onBusyChange }: { onClose: () => void; onBu
         ]}
       />
 
-      <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} />
-      <CSVImportAllModal open={importAllOpen} onClose={() => setImportAllOpen(false)} />
+      <CSVUploadModal open={csvOpen} onClose={() => setCsvOpen(false)} onBusyChange={setImportBusy} />
+      <CSVImportAllModal open={importAllOpen} onClose={() => setImportAllOpen(false)} onBusyChange={setImportBusy} />
     </>
   );
 }

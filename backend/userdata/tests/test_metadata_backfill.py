@@ -133,6 +133,18 @@ class RequestBackfillTests(_Base):
         req.assert_not_called()
 
 
+class RequestBackfillStartFailureTests(_Base):
+    def test_failed_thread_start_releases_the_user(self):
+        """fix-recs-sweep-b5: the user used to stay in _running for good."""
+        with patch("threading.Thread.start", side_effect=RuntimeError("can't start new thread")), \
+                self.assertLogs("userdata.metadata_backfill", level="ERROR"):
+            request_backfill(self.user.id)
+        self.assertNotIn(self.user.id, metadata_backfill._running)
+        with patch("userdata.metadata_backfill.threading.Thread") as thread:
+            request_backfill(self.user.id)
+        thread.return_value.start.assert_called_once()
+
+
 class WatchedPostMetadataTests(_Base):
     def test_post_keeps_supplied_language_and_year(self):
         res = self.client.post("/api/watched/", {
@@ -216,11 +228,33 @@ class BackfillCompletenessTests(_Base):
         self.assertTrue(backfill_entries([self._entry()]))
 
     @patch("userdata.tmdb_client._get", side_effect=requests.Timeout())
-    def test_transient_failure_is_incomplete_and_so_is_its_backoff(self, get):
+    def test_transient_failure_is_incomplete_but_its_backoff_is_not(self, get):
+        """fix-recs-sweep-b5: an earlier failure still in backoff isn't this
+        run's failure, so a later refresh isn't refused as an outage for it."""
         entry = self._entry()
-        self.assertFalse(backfill_entries([entry]))
-        self.assertFalse(backfill_entries([entry]))  # skipped while in backoff
+        with self.assertLogs("userdata.metadata_backfill", level="WARNING") as logs:
+            self.assertFalse(backfill_entries([entry]))
+        self.assertTrue(backfill_entries([entry]))  # skipped while in backoff
         self.assertEqual(get.call_count, 1)
+        # The type only: an HTTPError's text carries the URL with api_key.
+        self.assertIn("Timeout", logs.output[0])
+        self.assertNotIn("api_key", logs.output[0])
+
+    def test_null_or_malformed_genres_store_none_and_complete(self):
+        """fix-recs-sweep-b5: used to raise TypeError and fail every refresh."""
+        answers = [
+            {"genres": None, "original_language": None, "release_date": "2001-01-01"},
+            {"genres": "drama", "original_language": 5},
+            {"genres": [{"id": 18}, "x", {"id": "80"}, None]},
+        ]
+        for media_id, data in enumerate(answers, start=1):
+            with self.subTest(data=data), patch("userdata.tmdb_client._get", return_value=data):
+                entry = self._entry(media_id)
+                self.assertTrue(backfill_entries([entry]))
+                entry.refresh_from_db()
+                self.assertEqual(entry.genre_ids, [18] if media_id == 3 else [])
+                self.assertEqual(entry.original_language, metadata_backfill.UNKNOWN_LANGUAGE)
+                self.assertIsNotNone(entry.metadata_checked_at)
 
     @patch("userdata.tmdb_client._get", return_value=_details())
     def test_store_failure_is_incomplete(self, _):
@@ -278,3 +312,14 @@ class BackfillConcurrencyCapTests(SimpleTestCase):
         self.assertEqual(state["max_loading"], cap)
         self.assertEqual(state["loaded"], len(users))
         self.assertEqual(metadata_backfill._running, set())
+
+
+class FetchEntryMetadataShapeTests(_Base):
+    def test_non_string_release_date_gives_unknown_year(self):
+        """A malformed date must never raise: it would fail every refresh."""
+        entry = self._entry()
+        for date in (2020, None, ["2020"], {"y": 2020}):
+            with patch("userdata.tmdb_client._get", return_value={"genres": [], "release_date": date}):
+                fields, settled = metadata_backfill.fetch_entry_metadata(entry)
+            self.assertEqual(fields["release_year"], metadata_backfill.UNKNOWN_YEAR, date)
+            self.assertFalse(settled)

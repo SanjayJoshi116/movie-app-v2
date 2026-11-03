@@ -609,6 +609,17 @@ body:not(.dark-theme) ::-webkit-scrollbar-thumb {
 ::-webkit-scrollbar-thumb:hover {
   background: #f5c518;
 }
+/* Browsers without the WebKit scrollbar styles (Firefox) get the same colors.
+   Not set where those styles work: Chromium ignores them once scrollbar-color
+   is set, which would drop the 6px bar. */
+@supports not selector(::-webkit-scrollbar) {
+  html:has(body.dark-theme) {
+    scrollbar-color: #373b69 #0d0f1a;
+  }
+  html:has(body:not(.dark-theme)) {
+    scrollbar-color: #d4c9a8 #f0e9d8;
+  }
+}
 
 /* ── Sign-in stage (pilot-login-redesign) ─────────────────
    A projector beam falls from above the viewport onto the card, which

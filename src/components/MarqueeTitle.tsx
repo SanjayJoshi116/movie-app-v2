@@ -28,10 +28,19 @@ export default function MarqueeTitle({ children, style }: Props) {
       setDistance(d > 0 ? d : 0);
     };
     measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
+    // The web font can swap in after this first measure without changing the
+    // container's size: a title that overflows only in Poppins would keep no
+    // tooltip, so measure again once fonts have loaded.
+    let cancelled = false;
+    document.fonts?.ready.then(() => {
+      if (!cancelled) measure();
+    });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(container);
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+    };
   }, [children]);
 
   const scrolling = hovered && distance > 0 && !reduceMotion;

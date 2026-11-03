@@ -10,9 +10,14 @@ import { NotificationsProvider } from "./hooks/useNotifications";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
 import App from "./App";
+import { applyDocumentTheme, readStoredTheme } from "./utils/documentTheme";
 
 // Prevent browser from auto-restoring scroll; our pages handle it explicitly
 window.history.scrollRestoration = "manual";
+
+// The saved theme before the first render: UIContext's effect only runs after
+// React mounts, and the page showed the light background until then.
+applyDocumentTheme(readStoredTheme());
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");

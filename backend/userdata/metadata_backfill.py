@@ -90,19 +90,27 @@ def fetch_entry_metadata(entry):
     except (requests.RequestException, ValueError) as e:
         if tmdb_client.is_not_found(e):
             return {"genre_ids": [], "original_language": UNKNOWN_LANGUAGE, "release_year": UNKNOWN_YEAR}, True
-        logger.warning("Metadata fetch failed for WatchedEntry %s: %s", entry.pk, e)
+        # The type only: the error's text carries the request URL (api_key).
+        logger.warning("Metadata fetch failed for WatchedEntry %s: %s", entry.pk, type(e).__name__)
         _mark_failed(entry.pk)
         return None
 
-    date_str = data.get("release_date" if entry.media_type == "movie" else "first_air_date") or ""
+    date_str = data.get("release_date" if entry.media_type == "movie" else "first_air_date")
     try:
-        year = int(date_str[:4]) if len(date_str) >= 4 else UNKNOWN_YEAR
+        year = int(date_str[:4]) if isinstance(date_str, str) and len(date_str) >= 4 else UNKNOWN_YEAR
     except ValueError:
         year = UNKNOWN_YEAR
-    genre_ids = [g["id"] for g in data.get("genres", []) if isinstance(g, dict) and "id" in g]
+    # A null or malformed list stores no genres (rechecked later), never
+    # raises: an exception here would fail every refresh for this user.
+    genres = data.get("genres")
+    genre_ids = [
+        g["id"] for g in (genres if isinstance(genres, list) else [])
+        if isinstance(g, dict) and isinstance(g.get("id"), int)
+    ]
+    language = data.get("original_language")
     fields = {
         "genre_ids": genre_ids,
-        "original_language": data.get("original_language") or UNKNOWN_LANGUAGE,
+        "original_language": language if isinstance(language, str) and language else UNKNOWN_LANGUAGE,
         "release_year": year,
     }
     # Only a 404 settles a title; no genres yet is rechecked later.
@@ -134,15 +142,15 @@ def backfill_entries(entries):
     the workers never open (and leak) their own DB connections. Entries are
     updated in place.
 
-    Returns False when this run leaves titles unfilled because of a failure:
-    a fetch or store failed, or a title was skipped while in backoff from an
-    earlier failure. Titles left for a later run only by the MAX_PER_RUN cap,
-    or by the user's daily title budget (tmdb_budget), don't count.
-    Recommendations use this to mark the compute as failed.
+    Returns False when a fetch or store failed in this run. Titles skipped
+    while in backoff from an earlier failure, or left for a later run by the
+    MAX_PER_RUN cap or the user's daily title budget (tmdb_budget), don't
+    count: an old failure must not make this run's result look like an
+    outage. Recommendations use this to mark the compute as failed.
     """
     needing = [e for e in entries if entry_needs_metadata(e)]
     candidates = [e for e in needing if not _in_backoff(e)]
-    complete = len(candidates) == len(needing)
+    complete = True
     candidates.sort(key=lambda e: (e.watched_at, e.pk), reverse=True)
     todo = candidates[:MAX_PER_RUN]
     if todo:
@@ -179,4 +187,11 @@ def request_backfill(user_id):
         if user_id in _running:
             return
         _running.add(user_id)
-    threading.Thread(target=_run_backfill, args=(user_id,), daemon=True).start()
+    try:
+        threading.Thread(target=_run_backfill, args=(user_id,), daemon=True).start()
+    except RuntimeError:
+        # Can't start a thread (exhaustion): release the user, or no backfill
+        # runs for them again in this process.
+        logger.exception("Could not start a metadata backfill for user %s", user_id)
+        with _lock:
+            _running.discard(user_id)

@@ -164,7 +164,8 @@ export interface TMDBMovieDetail extends Omit<TMDBMovieSummary, "genre_ids"> {
   reviews: TMDBReview[];
   similarMovies: TMDBMovieSummary[];
   watchProviders: TMDBWatchProviders;
-  certifications: string;
+  // The `release_dates` part's per-country results (MovieDetailPage).
+  certifications: TMDBReleaseDates["results"];
   recommendations: TMDBMovieSummary[];
 }
 
@@ -173,8 +174,16 @@ export interface TMDBReleaseDates {
 }
 
 /** Raw `/movie/{id}` response with its `append_to_response` parts, before the
- *  app flattens them. Any part can be missing, so each is optional. */
-export type TMDBMovieDetailResponse = Omit<TMDBMovieDetail, "recommendations" | "reviews"> & {
+ *  app flattens them. Any part can be missing, so each is optional; the
+ *  fields the app builds from them (similarMovies, watchProviders,
+ *  certifications) aren't part of it. */
+export type TMDBMovieDetailResponse = Omit<
+  TMDBMovieDetail,
+  "credits" | "videos" | "images" | "recommendations" | "reviews" | "similarMovies" | "watchProviders" | "certifications"
+> & {
+  credits?: TMDBCredits;
+  videos?: TMDBVideoResults;
+  images?: TMDBImages;
   recommendations?: TMDBPaginatedResponse<TMDBMovieSummary>;
   reviews?: TMDBPaginatedResponse<TMDBReview>;
   similar?: TMDBPaginatedResponse<TMDBMovieSummary>;

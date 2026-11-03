@@ -105,15 +105,15 @@ describe("useWatchlist", () => {
     expect(result.current.isIn(99, "movie")).toBe(false);
   });
 
-  it("toggle() adds when not present, removes when already in", async () => {
+  it("add() then remove() puts the title in and takes it out", async () => {
     const { result } = renderHook(() => useWatchlist(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     const entry = makeEntry({ id: 5 });
-    await act(async () => { await result.current.toggle(entry); });
+    await act(async () => { await result.current.add(entry); });
     expect(result.current.isIn(5, "movie")).toBe(true);
 
-    await act(async () => { await result.current.toggle(entry); });
+    await act(async () => { await result.current.remove(5, "movie"); });
     expect(result.current.isIn(5, "movie")).toBe(false);
   });
 
@@ -168,13 +168,13 @@ describe("useWatchlist", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("double toggle on the same item sends one request", async () => {
+  it("a double add on the same item sends one request", async () => {
     const { result } = renderHook(() => useWatchlist(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     const entry = makeEntry({ id: 5 });
     await act(async () => {
-      await Promise.all([result.current.toggle(entry), result.current.toggle(entry)]);
+      await Promise.all([result.current.add(entry), result.current.add(entry)]);
     });
 
     expect(mockPost).toHaveBeenCalledTimes(1);
@@ -182,7 +182,7 @@ describe("useWatchlist", () => {
     expect(result.current.isIn(5, "movie")).toBe(true);
   });
 
-  it("toggles on different items are independent", async () => {
+  it("adds on different items are independent", async () => {
     mockPost
       .mockResolvedValueOnce({ data: { id: 10, addedAt: "2024-01-01T00:00:00Z" } })
       .mockResolvedValueOnce({ data: { id: 11, addedAt: "2024-01-01T00:00:00Z" } });
@@ -191,8 +191,8 @@ describe("useWatchlist", () => {
 
     await act(async () => {
       await Promise.all([
-        result.current.toggle(makeEntry({ id: 1 })),
-        result.current.toggle(makeEntry({ id: 2 })),
+        result.current.add(makeEntry({ id: 1 })),
+        result.current.add(makeEntry({ id: 2 })),
       ]);
     });
 

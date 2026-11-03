@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import RouteAnnouncer, { ANNOUNCE_SETTLE_MS } from "../RouteAnnouncer";
+import RouteAnnouncer, { ANNOUNCE_SETTLE_MS, REANNOUNCE_GAP_MS } from "../RouteAnnouncer";
 import { usePageTitle } from "../../hooks/usePageTitle";
 
 // accessibility spec: each page has its own title, and in-app navigation is
@@ -20,7 +20,7 @@ function Nav() {
   return null;
 }
 
-const NAMES: Record<string, string> = { "1": "Dune", "2": "Arrival" };
+const NAMES: Record<string, string> = { "1": "Dune", "2": "Arrival", "3": "Dune" };
 
 function Detail() {
   // A detail page names itself once its fetch lands (300 ms; /movie/9 fails,
@@ -36,6 +36,18 @@ function Detail() {
     return () => clearTimeout(t);
   }, [id]);
   return <Page name={state.name} loading={state.loading} />;
+}
+
+function Retitling() {
+  // Reports a loading flip 50 ms after its name: a title event inside the
+  // re-announce gap.
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(true), ANNOUNCE_SETTLE_MS + 50);
+    const u = setTimeout(() => setLoading(false), ANNOUNCE_SETTLE_MS + 60);
+    return () => { clearTimeout(t); clearTimeout(u); };
+  }, []);
+  return <Page name="Dune" loading={loading} />;
 }
 
 function LazyPage() {
@@ -57,6 +69,7 @@ function renderApp(initial = "/watchlist", strict = false) {
         <Route path="/lists" element={<Page name="My Lists" />} />
         <Route path="/stats" element={<LazyPage />} />
         <Route path="/movie/:id" element={<Detail />} />
+        <Route path="/retitle" element={<Retitling />} />
       </Routes>
     </MemoryRouter>
   );
@@ -160,4 +173,34 @@ it("leaves focus alone", () => {
   act(() => go("/lists"));
   advance(ANNOUNCE_SETTLE_MS);
   expect(stay).toHaveFocus();
+});
+
+// fix-components-sweep-f4: an unchanged live region isn't announced.
+it("announces a page whose title equals the previous one", () => {
+  renderApp();
+  act(() => go("/movie/1"));
+  advance(300);
+  advance(ANNOUNCE_SETTLE_MS);
+  expect(status()).toHaveTextContent("Dune · CINE DB");
+  act(() => go("/movie/3")); // another film with the same name
+  advance(300);
+  advance(ANNOUNCE_SETTLE_MS);
+  expect(status()).toHaveTextContent(""); // cleared, so the refill is a change
+  advance(REANNOUNCE_GAP_MS);
+  expect(status().textContent).toBe("Dune · CINE DB");
+});
+
+it("still refills a repeated title when the page reports a title event in the gap", () => {
+  renderApp();
+  act(() => go("/movie/1"));
+  advance(300);
+  advance(ANNOUNCE_SETTLE_MS);
+  expect(status()).toHaveTextContent("Dune · CINE DB");
+  act(() => go("/retitle"));
+  advance(ANNOUNCE_SETTLE_MS); // its name is in at once
+  expect(status().textContent).toBe(""); // cleared for the refill
+  advance(50); // loading flips inside the gap
+  advance(10);
+  advance(REANNOUNCE_GAP_MS);
+  expect(status().textContent).toBe("Dune · CINE DB");
 });

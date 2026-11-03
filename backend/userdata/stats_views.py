@@ -1,35 +1,19 @@
 import logging
-import time as _time
 from collections import Counter
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-import requests
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .metadata_backfill import entry_needs_metadata, request_backfill
 from .models import WatchedEntry, RatingEntry, UserList, UserListItem, WatchlistEntry
+from .serializers import EARLIEST_TIMESTAMP
 from . import genre_families, tmdb_client
 from .timezones import entry_day, entry_local, local_today
 
 logger = logging.getLogger(__name__)
-
-_genre_name_cache: dict[int, str] = {}
-_genre_cache_ts: float = 0.0
-_genre_cache_ttl: float = 0.0
-_GENRE_CACHE_TTL = 86400  # 24 hours
-# After a failed lookup the built-in names are used, and TMDB is tried again
-# after this long instead of after a full day.
-_GENRE_FALLBACK_TTL = 300
-# (connect, read) per attempt of a genre call, and a wall-clock deadline per
-# call: per-attempt timeouts alone don't bound it, because the connect is tried
-# once per address DNS returns. The two calls run back to back on a cold cache,
-# so 2 * GENRE_LOOKUP_DEADLINE must stay well under gunicorn's --timeout
-# (docker-entrypoint.sh); test_stats_genres pins the margin.
-GENRE_LOOKUP_TIMEOUT = (3.05, 5)
-GENRE_LOOKUP_DEADLINE = 8
 
 
 def round_half_up(value: float, places: int = 1) -> float:
@@ -54,25 +38,6 @@ def _month_range(first: tuple[int, int], last: tuple[int, int]) -> list[tuple[in
     return months
 
 
-def _get_cached_genre_names() -> dict[int, str]:
-    global _genre_name_cache, _genre_cache_ts, _genre_cache_ttl
-    if not _genre_name_cache or (_time.time() - _genre_cache_ts) > _genre_cache_ttl:
-        try:
-            def lookup(media_type):
-                return tmdb_client.call_with_deadline(
-                    tmdb_client.get_genre_names, GENRE_LOOKUP_DEADLINE,
-                    media_type, GENRE_LOOKUP_TIMEOUT, fallback=False,
-                )
-            _genre_name_cache = {**lookup("movie"), **lookup("tv")}
-            _genre_cache_ttl = _GENRE_CACHE_TTL
-        except (requests.RequestException, ValueError, KeyError, TypeError) as e:
-            logger.warning("Genre names lookup failed, using built-in names: %s", type(e).__name__)
-            _genre_name_cache = dict(tmdb_client.STATIC_GENRE_NAMES)
-            _genre_cache_ttl = _GENRE_FALLBACK_TTL
-        _genre_cache_ts = _time.time()
-    return _genre_name_cache
-
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def stats(request):
@@ -95,10 +60,18 @@ def stats(request):
         dist[bucket] += 1
     rating_distribution = [{"rating": k, "count": v} for k, v in dist.items()]
 
+    today = local_today(request)
+    # Clock skew can put a stored watch at most into next month.
+    latest_month = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
     monthly_counts: dict[tuple[int, int], int] = {}
     for entry in watched_list:
         # Days and months come from the zone each watch was logged in.
         local = entry_local(entry, request)
+        # A legacy watch dated before 1900 or far in the future (imported
+        # before timestamps were bounded) would stretch the chart over
+        # centuries of empty months.
+        if local.year < EARLIEST_TIMESTAMP.year or (local.year, local.month) > latest_month:
+            continue
         month_key = (local.year, local.month)
         monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
     # Every month from the first watch through this month (on the requesting
@@ -106,7 +79,6 @@ def stats(request):
     # January next to June. A stored watch past "today" (clock skew) extends it.
     monthly_activity = []
     if monthly_counts:
-        today = local_today(request)
         last = max(max(monthly_counts), (today.year, today.month))
         monthly_activity = [
             {"month": date(year, month, 1).strftime("%b %Y"), "count": monthly_counts.get((year, month), 0)}
@@ -120,7 +92,7 @@ def stats(request):
         for family in genre_families.families(entry.genre_ids, entry.media_type):
             genre_counts[family] = genre_counts.get(family, 0) + 1
 
-    genre_names = _get_cached_genre_names()
+    genre_names = tmdb_client.cached_genre_names()
     top_genres = [
         {"genre": genre_families.family_name(family, genre_names), "count": cnt}
         for family, cnt in sorted(genre_counts.items(), key=lambda x: -x[1])[:10]

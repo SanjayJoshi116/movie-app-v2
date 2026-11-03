@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Input, Dropdown, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAppContext } from "../context/useAppContext";
+import { useUIContext } from "../context/UIContext";
 import { useRecentSearches } from "../hooks/useRecentSearches";
 import { FONT_SIZE } from "../constants/typography";
 
@@ -16,7 +16,7 @@ interface Props {
 }
 
 const SearchBox = ({ id = "global-search" }: Props) => {
-  const { setSearchTerm, searchTerm } = useAppContext();
+  const { setSearchTerm, searchTerm } = useUIContext();
   const [inputValue, setInputValue] = useState(searchTerm);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   // Show the term in effect whenever it changes from outside the typing

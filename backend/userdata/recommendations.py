@@ -1,4 +1,5 @@
 import logging
+import math
 import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -34,6 +35,8 @@ MAX_FILL_PER_RUN = 200
 # one OR'd condition per watched title.
 _LOOKUP_CHUNK = 1000
 RECOMMENDATIONS_TTL_HOURS = 12
+# Titles one section shows.
+SECTION_LIMIT = 12
 # How long a refreshing_since stamp counts as "still running". Well above a
 # normal refresh, so a killed process's stamp expires on its own.
 REFRESH_STATUS_WINDOW = timedelta(minutes=10)
@@ -129,7 +132,8 @@ def request_refresh(user_id, *, rerun_if_running):
                 _rerun_users.add(user_id)
             return
         _computing_users.add(user_id)
-    # No-op without a row yet; the endpoints already answer "pending" then.
+    # No-op without a row yet; the endpoints read "computing" from
+    # _computing_users then.
     _stamp_refresh(user_id)
     _spawn_refresh(user_id)
 
@@ -163,7 +167,8 @@ def _fetch_media_details(entry, health=None):
         if tmdb_client.is_not_found(e):
             logger.info("TMDB has no %s %s; caching it as empty", entry.media_type, entry.media_id)
             return {"genre_ids": [], "top_cast": []}
-        logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, e)
+        # The type only: the error's text carries the request URL (api_key).
+        logger.warning("TMDB cache fetch failed for %s %s: %s", entry.media_type, entry.media_id, type(e).__name__)
         if health is not None:
             health.mark_failed()
         return None
@@ -271,13 +276,19 @@ def _interleave(a, b):
     return result
 
 
+def media_label(title, media_id):
+    """A stored title for display: "Untitled (#id)" when blank, as a bulk
+    import can store (the frontend's mediaLabel)."""
+    return (title or "").strip() or f"Untitled (#{media_id})"
+
+
 def _tmdb_item(r, media_type):
     return {
         "id": r.get("id"),
         "type": media_type,
         "title": r.get("title") or r.get("name", ""),
         "posterPath": r.get("poster_path"),
-        "voteAverage": r.get("vote_average", 0),
+        "voteAverage": _number(r.get("vote_average")),
     }
 
 
@@ -354,28 +365,27 @@ def _compute_for_you(user, health=None) -> list:
 
     # A rated title counts as seen even if it was never marked watched.
     watched_set = {(w.media_id, w.media_type) for w in watched} | {(r.media_id, r.media_type) for r in ratings}
+    # Titles an earlier section shows. Only shown titles are reserved: one
+    # that a section scanned but cut stays available to the next section.
     seen = set()
 
-    def filter_new(items):
+    def filter_new(items, limit=SECTION_LIMIT):
         out = []
+        keys = set()
         for item in items:
             k = (item["id"], item["type"])
-            if k in watched_set or k in seen:
+            if k in watched_set or k in seen or k in keys:
                 continue
-            seen.add(k)
+            keys.add(k)
             out.append(item)
+            if len(out) == limit:
+                break
+        seen.update(keys)
         return out
 
     sections = []
 
-    # ── Fetch genre names ────────────────────────────────────────────────────
-    try:
-        genre_name_map = {
-            **tmdb_client.get_genre_names("movie"),
-            **tmdb_client.get_genre_names("tv"),
-        }
-    except TypeError:
-        genre_name_map = {}
+    genre_name_map = tmdb_client.cached_genre_names()
 
     def discover_mixed(family):
         # Each type gets its own ids for the family; a type without the genre
@@ -395,9 +405,7 @@ def _compute_for_you(user, health=None) -> list:
     if top_loved_genres:
         with ThreadPoolExecutor(max_workers=4) as ex:
             loved_results = list(ex.map(discover_mixed, top_loved_genres))
-        loved_items = filter_new(
-            [item for sublist in loved_results for item in sublist]
-        )[:12]
+        loved_items = filter_new([item for sublist in loved_results for item in sublist])
         if loved_items:
             sections.append({"key": "loved", "label": "More like what you love", "items": loved_items})
 
@@ -406,9 +414,9 @@ def _compute_for_you(user, health=None) -> list:
         trending_data = tmdb_client._get("/trending/all/week")
         trending_items = filter_new([
             _tmdb_item(r, r.get("media_type"))
-            for r in trending_data.get("results", [])
+            for r in tmdb_client.result_list(trending_data, "results")
             if r.get("media_type") in ("movie", "tv")
-        ])[:12]
+        ])
         if trending_items:
             sections.append({"key": "trending", "label": "Trending This Week", "items": trending_items})
     except (requests.RequestException, ValueError):
@@ -418,7 +426,7 @@ def _compute_for_you(user, health=None) -> list:
     with ThreadPoolExecutor(max_workers=6) as ex:
         genre_results = list(ex.map(discover_mixed, top_genres))
     for family, items in zip(top_genres, genre_results, strict=False):
-        filtered = filter_new(items)[:12]
+        filtered = filter_new(items)
         if filtered:
             genre_name = genre_families.family_name(family, genre_name_map)
             sections.append({
@@ -434,7 +442,7 @@ def _compute_for_you(user, health=None) -> list:
                 data = tmdb_client._get(f"/movie/{w.media_id}/similar")
             else:
                 data = tmdb_client._get(f"/tv/{w.media_id}/recommendations")
-            return w, [_tmdb_item(r, w.media_type) for r in data.get("results", [])]
+            return w, [_tmdb_item(r, w.media_type) for r in tmdb_client.result_list(data, "results")]
         except (requests.RequestException, ValueError) as e:
             # A title TMDB no longer has just yields no section.
             if not tmdb_client.is_not_found(e):
@@ -444,19 +452,19 @@ def _compute_for_you(user, health=None) -> list:
     with ThreadPoolExecutor(max_workers=5) as ex:
         because_results = list(ex.map(fetch_similar, because_source))
     for w, items in because_results:
-        filtered = filter_new(items)[:12]
+        filtered = filter_new(items)
         if filtered:
             sections.append({
                 # Movie and TV ids overlap, so the type is part of the key.
                 "key": f"because-{w.media_type}-{w.media_id}",
-                "label": f"Because you watched {w.title}",
+                "label": f"Because you watched {media_label(w.title, w.media_id)}",
                 "items": filtered,
             })
 
     # ── 5. Hidden Gems ────────────────────────────────────────────────────────
     def fetch_gems(media_type):
         try:
-            return [_tmdb_item(r, media_type) for r in tmdb_client._get(
+            data = tmdb_client._get(
                 f"/discover/{media_type}",
                 {
                     "sort_by": "vote_average.desc",
@@ -464,14 +472,15 @@ def _compute_for_you(user, health=None) -> list:
                     "vote_count.gte": 50,
                     "vote_count.lte": 1500,
                 }
-            ).get("results", [])]
+            )
+            return [_tmdb_item(r, media_type) for r in tmdb_client.result_list(data, "results")]
         except (requests.RequestException, ValueError):
             health.mark_failed()
             return []
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         gems_results = list(ex.map(fetch_gems, ["movie", "tv"]))
-    gems_mov = filter_new(_interleave(*gems_results))[:12]
+    gems_mov = filter_new(_interleave(*gems_results))
     if gems_mov:
         sections.append({"key": "hidden-gems", "label": "Hidden Gems", "items": gems_mov})
 
@@ -482,8 +491,8 @@ def _compute_for_you(user, health=None) -> list:
             data = tmdb_client._get(f"/person/{actor_id}/combined_credits")
             items = [
                 _tmdb_item(c, c.get("media_type"))
-                for c in data.get("cast", [])
-                if c.get("media_type") in ("movie", "tv") and (c.get("vote_average") or 0) >= 6
+                for c in tmdb_client.result_list(data, "cast")
+                if c.get("media_type") in ("movie", "tv") and _number(c.get("vote_average")) >= 6
                 # Talk shows and news: the actor as themselves, not their work.
                 and not is_talk_or_news(c)
             ]
@@ -499,7 +508,7 @@ def _compute_for_you(user, health=None) -> list:
     with ThreadPoolExecutor(max_workers=3) as ex:
         actor_results = list(ex.map(fetch_actor_credits, top_actors))
     for actor_id, name, items in actor_results:
-        filtered = filter_new(items)[:12]
+        filtered = filter_new(items)
         if filtered:
             sections.append({
                 "key": f"actor-{actor_id}",
@@ -510,16 +519,29 @@ def _compute_for_you(user, health=None) -> list:
     return sections
 
 
-def _add_or_merge_section(sections, section, limit=12):
+def _number(value):
+    """A finite number from a TMDB field, else 0: a null or string score in one
+    discover result must not crash the whole compute."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return 0
+    return value
+
+
+def _add_or_merge_section(sections, section, limit=SECTION_LIMIT):
     """Append `section`, or merge its items into an existing one with the same
     label. Two KMeans clusters can resolve to the same top genres, which used
-    to show the same "Your Taste: …" row twice."""
+    to show the same "Your Taste: …" row twice.
+
+    Returns the items of `section` that are shown, so the caller reserves only
+    those (a merge cuts the rest at `limit`)."""
     existing = next((s for s in sections if s["label"] == section["label"]), None)
     if existing is None:
         sections.append(section)
-        return
+        return section["items"]
     have = {(i["id"], i["type"]) for i in existing["items"]}
-    existing["items"] = (existing["items"] + [i for i in section["items"] if (i["id"], i["type"]) not in have])[:limit]
+    added = [i for i in section["items"] if (i["id"], i["type"]) not in have][:max(limit - len(existing["items"]), 0)]
+    existing["items"] = existing["items"] + added
+    return added
 
 
 def _genres_for(media_type, families):
@@ -583,11 +605,7 @@ def _compute_personalized(user, health=None) -> list:
     kmeans.fit(X)
     centroids = kmeans.cluster_centers_  # (k, n_genres)
 
-    # --- Fetch genre name maps ---
-    try:
-        genre_name_map = {**tmdb_client.get_genre_names("movie"), **tmdb_client.get_genre_names("tv")}
-    except TypeError:
-        genre_name_map = {}
+    genre_name_map = tmdb_client.cached_genre_names()
 
     # Every watched or rated title is excluded, dropped rows included.
     watched_set = {(e.media_id, e.media_type) for e in watched} | {(r.media_id, r.media_type) for r in ratings}
@@ -607,8 +625,11 @@ def _compute_personalized(user, health=None) -> list:
             genre_families.family_name(f, genre_name_map) for f in top_families
         )
 
-        # Fetch candidates from TMDB Discover (movie + tv)
+        # Fetch candidates from TMDB Discover (movie + tv). Only the titles a
+        # cluster shows are reserved (`seen`), so a later cluster sharing a
+        # genre can still use the rest.
         candidates = []
+        keys = set()
         for media_type in ("movie", "tv"):
             genres = _genres_for(media_type, top_families)
             if genres is None:
@@ -621,16 +642,16 @@ def _compute_personalized(user, health=None) -> list:
             for r in results:
                 mid = r.get("id")
                 key = (mid, media_type)
-                if key in watched_set or key in seen:
+                if key in watched_set or key in seen or key in keys:
                     continue
-                seen.add(key)
+                keys.add(key)
                 candidates.append({
                     "id": mid,
                     "type": media_type,
                     "title": r.get("title") or r.get("name", ""),
                     "posterPath": r.get("poster_path"),
-                    "voteAverage": r.get("vote_average", 0),
-                    "popularity": r.get("popularity", 0),
+                    "voteAverage": _number(r.get("vote_average")),
+                    "popularity": _number(r.get("popularity")),
                     "families": genre_families.families(r.get("genre_ids", []), media_type),
                 })
 
@@ -658,10 +679,10 @@ def _compute_personalized(user, health=None) -> list:
         scored.sort(key=lambda x: x[0], reverse=True)
         items = [
             {k: v for k, v in c.items() if k != "families"}
-            for _, c in scored[:12]
+            for _, c in scored[:SECTION_LIMIT]
         ]
-
-        _add_or_merge_section(sections, {"key": f"cluster-{cluster_idx}", "label": label, "items": items})
+        shown = _add_or_merge_section(sections, {"key": f"cluster-{cluster_idx}", "label": label, "items": items})
+        seen.update((i["id"], i["type"]) for i in shown)
 
     return sections
 
@@ -864,9 +885,15 @@ def _recommendations_response(user, sections_of):
             _start_refresh_if_needed(user)
             computing = user.id in _computing_users  # false if the thread couldn't start
         return Response({"status": "pending" if computing else "ready", "sections": sections_of(cache_row)})
+    # No result yet. "pending" only while a refresh is really running; with
+    # the failure backoff set, or a thread that couldn't start, nothing will
+    # arrive soon, so say so instead of letting the page poll a minute.
     if not in_failure_backoff(user.id):
         _start_refresh_if_needed(user)
-    return Response({"status": "pending", "sections": []})
+        # A refresh that already finished has saved a row: the next poll reads it.
+        if user.id in _computing_users or UserRecommendationCache.objects.filter(user=user).exists():
+            return Response({"status": "pending", "sections": []})
+    return Response({"status": "unavailable", "sections": []})
 
 
 @api_view(["GET"])

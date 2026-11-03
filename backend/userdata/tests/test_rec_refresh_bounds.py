@@ -72,12 +72,20 @@ class FailureBackoffTests(_Base):
         self.assertEqual(self.spawned, [])
         self.assertEqual(self.client.get(FOR_YOU).data["sections"], [_section("trending")])
 
-    def test_no_row_stays_pending_without_retriggering(self):
+    def test_no_row_during_backoff_is_unavailable_without_retriggering(self):
+        """fix-recs-sweep-b5: nothing is computing, so not "pending"."""
         self._refuse()
         self.assertFalse(UserRecommendationCache.objects.filter(user=self.user).exists())
         for _ in range(3):
-            self.assertEqual(self.client.get(FOR_YOU).data["status"], "pending")
+            for url in (FOR_YOU, PERSONALIZED):
+                self.assertEqual(self.client.get(url).data, {"status": "unavailable", "sections": []})
         self.assertEqual(self.spawned, [])
+
+    def test_no_row_is_pending_again_once_the_backoff_ends(self):
+        self._refuse()
+        cache.delete(recommendations._backoff_key(self.user.id))
+        self.assertEqual(self.client.get(FOR_YOU).data["status"], "pending")
+        self.assertEqual(self.spawned, [self.user.id])
 
     def test_a_data_change_still_refreshes(self):
         _stale_row(self.user)

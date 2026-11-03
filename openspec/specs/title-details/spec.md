@@ -42,3 +42,21 @@ The app SHALL have a region preference: by default the region of the device's lo
 #### Scenario: Nothing for the region
 - **WHEN** TMDB has no providers for the user's region but has US providers
 - **THEN** the US providers are shown under a label saying they are for the US
+
+### Requirement: Episode tracking only offers episodes a season has
+The episode progress editor SHALL NOT cap the episode number at 0. A season TMDB lists with no episodes, or without an episode count, SHALL have no upper bound in the editor and SHALL show no count. "Next Episode" SHALL NOT move to the next season while that season lists no episodes.
+
+#### Scenario: Announced season
+- **WHEN** a show lists an upcoming season 5 with 0 episodes and the user edits their progress to season 5
+- **THEN** the episode number can't go below 1, "+" raises it, and saving stores a valid episode
+
+#### Scenario: Last aired episode
+- **WHEN** a user's progress is the last episode of season 4 and season 5 lists 0 episodes
+- **THEN** no "Next Episode" action is offered
+
+### Requirement: Prime Video links work in every region
+A Prime Video logo in Where to Watch SHALL link to a Prime Video title search that works in the user's region, not to a single country's Amazon store.
+
+#### Scenario: Region outside the US
+- **WHEN** a user with region GB clicks the Prime Video logo for a title
+- **THEN** a Prime Video search for that title opens, not an amazon.com US product search

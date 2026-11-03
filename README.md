@@ -343,6 +343,7 @@ src/
 │   ├── useRecentSearches.ts     # Last 5 searches (shared by the Sidebar and BottomNav search boxes)
 │   ├── useActionIconColor.ts    # Idle watched/watchlist icon color: gold (dark) / theme text color (light)
 │   ├── useScrollBehavior.ts     # Programmatic scroll behavior: instant under reduced motion, else smooth
+│   ├── useLatestOnly.ts         # Applies only the latest of overlapping async reads (import dialogs' file picks)
 │   └── useFlashTooltip.ts       # Force-shows a nav icon's tooltip for ~1.4s after click,
 │                                #   used by Sidebar.tsx and BottomNav.tsx
 ├── pages/
@@ -370,7 +371,9 @@ src/
 │   ├── TMDBCallbackPage.tsx     # /tmdb-callback — completes TMDB OAuth session exchange
 │   └── NotFoundPage.tsx         # Any unknown path — "Page not found" + link to Movies (URL kept)
 ├── utils/
-│   ├── export.ts                # downloadCSV / downloadJSON helpers; CSV cells neutralized against formulas
+│   ├── export.ts                # downloadCSV / downloadJSON helpers; CSV cells neutralized against formulas;
+│   │                            #   templateRows() for the CSV import templates
+│   ├── documentTheme.ts         # applyDocumentTheme(): body class, color-scheme, theme-color (before render + on change)
 │   ├── backup.ts                # Backup ZIP v3 build/parse (manifest, ratings, lists, follows, episode progress); v1/v2-compatible import
 │   ├── csvParse.ts              # RFC 4180 CSV parser (quoted newlines, BOM, delimiter detection),
 │   │                            #   strips export.ts's formula-neutralizing `'`; per-column parsers (strict
@@ -741,21 +744,25 @@ src/utils/__tests__/
 ├── safeUrl.test.ts               # http(s) kept; javascript:/data:/relative rejected
 ├── tmdbPages.test.tsx            # TMDB's 500-page cap
 ├── spoilerShield.test.ts         # Episodes after the tracked one hidden; specials and no progress never
-└── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
+├── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
+├── importTemplates.test.ts       # Import templates list only the columns the import reads
+└── documentTheme.test.ts         # Body class, color-scheme and theme-color follow the theme
 
 src/components/__tests__/
 ├── AuthStage.test.tsx            # Wordmark as h1, tagline, card heading and content
 ├── Wordmark.test.tsx             # Heading level, optional size, extra class
 ├── EpisodeGuide.test.tsx         # Spoiler shield: hidden content absent, reveal, switch, waits for progress (first season prefetched), Retry keeps the list, opens on tracked season
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
-├── CSVUploadModal.test.ts        # Import templates list only the columns the import reads
+├── detailActions.test.tsx        # Detail pages' watchlist button calls explicit add/remove
+├── resultsLandmark.test.tsx      # Movies/TV grids are a labelled section, not a second <main>
 ├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
 ├── MediaCard.test.tsx            # Poster link, labelled actions, placeholder, add/remove (never toggle) for movie and TV
 ├── MarkWatchedModal.test.tsx     # Holds while saving, keeps the input on a failed save or a region change
 ├── ProfileModalBusy.test.tsx     # Edit Profile can't close (button, Escape) while a write is in flight
 ├── MarqueeTitle.test.tsx         # Ellipsis + full-title tooltip, no scroll under reduced motion
-├── RouteAnnouncer.test.tsx       # Tab title per page; only the new page's loaded title announced, never the first load
+├── RouteAnnouncer.test.tsx       # Tab title per page; only the new page's loaded title announced, never the first load;
+│                                 #   a repeated title is still announced, even with a title event in the refill gap
 ├── renderCertifications.test.ts  # A malformed country entry empties only the Certification cell
 ├── PersonCardFollow.test.tsx     # Follow disabled while follow state loads
 ├── importSession.test.tsx        # Imports/restores stop after sign-out, can't close mid-run; unreadable file,
@@ -763,6 +770,13 @@ src/components/__tests__/
 │                                 #   looked-up score and looks a title up once across sections; personLabel
 ├── TrailerEmbed.test.tsx         # No iframe until the thumbnail is activated
 └── WatchProviders.test.tsx       # TMDB's provider link used only if http(s); user's region, labelled US fallback
+
+src/__tests__/
+└── AppShell.test.tsx             # Auth-page guard however the path is written; per-route error boundary;
+                                  #   filter drawer closed after leaving browse pages, on Back, and after sign-out
+
+src/constants/__tests__/
+└── providers.test.ts             # Prime Video links open its own search
 
 src/theme/__tests__/
 └── themeContrast.test.ts         # Secondary/tertiary text and link tokens >= 4.5:1 on every background,
@@ -832,7 +846,8 @@ backend/userdata/tests/
 │                                   #   response cache (TTL tiers, credential bypass, errors never cached, order-free key),
 │                                   #   plain-path allowlist, 401/403 → 502, 429 Retry-After, own pool
 ├── test_pagination.py              # Library lists accept page_size up to 500
-├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout
+├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout; stale names
+│                                   #   served while another thread refreshes
 ├── test_stats_math.py              # Half-up rounding and buckets, gap-free monthly activity, unscored titles
 │                                   #   left out of the TMDB average
 ├── test_tmdb_auth.py               # TMDB OAuth: no key/error leakage, encoded redirect_to, session revoke,
@@ -845,7 +860,8 @@ backend/userdata/tests/
 │                                   #   warm-up order, 4 concurrent refreshes, thread-start failure
 ├── test_recommendation_refresh.py  # Per-user coalescing, on-commit trigger, slot release on errors,
 │                                   #   cache DB access off worker threads, outage guard, cross-process status
-├── test_recommendations_api.py     # for-you/personalized: pending → ready, response shape
+├── test_recommendations_api.py     # for-you/personalized: pending → ready, "unavailable" with no row and nothing computing
+├── test_rec_sections_b5.py         # Sections reserve only shown titles; malformed TMDB lists skipped; blank seed label
 ├── test_notifications.py           # New-release notifications (every followed person, credits cache),
 │                                   #   40-person/15s poll budget pinned under gunicorn's timeout, 5 fetches
 │                                   #   in flight per poll, late fetches cached by the next poll

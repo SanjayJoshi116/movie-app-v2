@@ -12,7 +12,8 @@ import { bulkAddListItems, sessionGuard, SessionEndedError } from "../../api/use
 import { orderForImport } from "../../utils/listImport";
 import { getApiError, IMPORT_REFRESH_ERROR } from "../../utils/apiError";
 import { FONT_SIZE } from "../../constants/typography";
-import { downloadBlob } from "../../utils/export";
+import { useLatestOnly } from "../../hooks/useLatestOnly";
+import { downloadCSV, templateRows } from "../../utils/export";
 
 const { Text } = Typography;
 
@@ -22,13 +23,10 @@ interface Props {
   lockedListId?: number;
 }
 
+/** A list import reads only `id` and `title`, so its template has just those. */
 function downloadTemplate(type: "movie" | "tv") {
-  const rows =
-    type === "movie"
-      ? ["id,title", "550,Fight Club", "13,Forrest Gump"]
-      : ["id,title", "1396,Breaking Bad", "66732,Stranger Things"];
-  downloadBlob(
-    new Blob([rows.join("\n")], { type: "text/csv" }),
+  downloadCSV(
+    templateRows(type).map(({ id, title }) => ({ id, title })),
     type === "movie" ? "list_movies_template.csv" : "list_tv_template.csv",
   );
 }
@@ -48,18 +46,24 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Only the latest pick's parse is applied.
+  const picks = useLatestOnly();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Reset so picking the same file again (e.g. after an error) fires `change` again.
     e.target.value = "";
     if (!file) return;
+    const isLatest = picks.start();
     setFileName(file.name);
     setParsed([]);
     setParseError(null);
     const reader = new FileReader();
-    reader.onerror = () => setParseError("Couldn't read that file.");
+    reader.onerror = () => {
+      if (isLatest()) setParseError("Couldn't read that file.");
+    };
     reader.onload = (ev) => {
+      if (!isLatest()) return; // a later pick (or a close) replaced it
       const { rows, error } = parseCSVForImport(ev.target?.result as string);
       if (error) setParseError(error);
       else setParsed(rows);
@@ -122,6 +126,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
   };
 
   const handleClose = () => {
+    picks.cancel();
     setParsed([]);
     setParseError(null);
     setFileName(null);
@@ -188,6 +193,7 @@ const CSVListImportModal = ({ open, onClose, lockedListId }: Props) => {
         accept=".csv"
         aria-label="CSV file to import"
         onChange={handleFileChange}
+        disabled={loading}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />
       {fileName && (

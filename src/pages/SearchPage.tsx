@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Row, Col, Typography, Tabs, Empty, theme } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
-import { useAppContext } from "../context/useAppContext";
+import { useUIContext } from "../context/UIContext";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadMoreError } from "../components/LoadMoreError";
 import { LoadError } from "../components/LoadError";
@@ -261,7 +261,7 @@ function PeopleTab({ query, adult, active }: TabProps) {
 
 function SearchPage() {
   const { token } = theme.useToken();
-  const { searchTerm, setSearchTerm, includeAdult } = useAppContext();
+  const { searchTerm, setSearchTerm, includeAdult } = useUIContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = pickKey(searchParams.get("tab"), ["movies", "tv", "people"], "movies");
   const urlQuery = searchParams.get("q")?.trim() ?? "";

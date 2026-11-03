@@ -11,6 +11,9 @@ from userdata.models import UserRecommendationCache
 SECTION = {"key": "trending", "label": "Trending This Week", "items": []}
 
 
+_real_spawn_refresh = recommendations._spawn_refresh
+
+
 @patch("userdata.recommendations._spawn_refresh")  # never start a real background thread
 class RecommendationEndpointTests(APITestCase):
     def setUp(self):
@@ -30,6 +33,15 @@ class RecommendationEndpointTests(APITestCase):
                 res = self.client.get(url)
                 self.assertEqual(res.data, {"status": "pending", "sections": []})
                 spawn.assert_called_once_with(self.user.id)
+
+    def test_cold_cache_whose_refresh_cannot_start_is_unavailable(self, spawn):
+        """fix-recs-sweep-b5: no thread means nothing will arrive, so not "pending"."""
+        spawn.side_effect = _real_spawn_refresh
+        with patch("threading.Thread.start", side_effect=RuntimeError("can't start new thread")), \
+                self.assertLogs("userdata.recommendations", level="ERROR"):
+            res = self.client.get("/api/recommendations/for-you/")
+        self.assertEqual(res.data, {"status": "unavailable", "sections": []})
+        self.assertNotIn(self.user.id, recommendations._computing_users)
 
     def test_warm_cache_is_ready_with_sections(self, spawn):
         UserRecommendationCache.objects.create(user=self.user, for_you_json=[SECTION], personalized_json=[SECTION])

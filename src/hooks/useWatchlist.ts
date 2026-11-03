@@ -147,12 +147,6 @@ export function useWatchlist() {
     inflight.current.run(mkKey(id, type), () => removeRaw(id, type), "remove"),
   [removeRaw]);
 
-  const toggle = useCallback((entry: WatchlistInput) =>
-    inflight.current.run(mkKey(entry.id, entry.type), () =>
-      watchlistRef.current.some((i) => i.id === entry.id && i.type === entry.type)
-        ? removeRaw(entry.id, entry.type)
-        : addRaw(entry), "toggle"),
-  [removeRaw, addRaw]);
-
-  return { watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, toggle, reload };
+  // No toggle: every button runs the add or remove it showed (write-feedback).
+  return { watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, reload };
 }

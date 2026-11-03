@@ -1,3 +1,4 @@
+import threading
 from unittest import TestCase
 
 from userdata import genre_families as gf
@@ -47,3 +48,26 @@ class GenreFamilyTests(TestCase):
         self.assertEqual(gf.with_genres("tv", [family]), "999001")
         self.assertIsNone(gf.with_genres("movie", [family]))
         self.assertEqual(gf.family_name(family, {}), "Genre 999001")
+
+    def test_concurrent_first_sightings_register_both_types(self):
+        """fix-recs-sweep-b5: unlocked check-then-insert could lose one type."""
+        for gid in range(999100, 999140):
+            barrier = threading.Barrier(2)
+
+            def see(media_type, gid=gid, barrier=barrier):
+                barrier.wait()
+                gf.family_of(gid, media_type)
+
+            threads = [threading.Thread(target=see, args=(t,)) for t in ("movie", "tv")]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(5)
+            with self.subTest(gid=gid):
+                self.assertEqual(gf.with_genres("movie", [str(gid)]), str(gid))
+                self.assertEqual(gf.with_genres("tv", [str(gid)]), str(gid))
+
+    def test_unknown_id_seen_on_the_other_type_later_registers_there_too(self):
+        family = gf.family_of(999200, "movie")
+        gf.family_of(999200, "tv")
+        self.assertEqual(gf.with_genres("tv", [family]), "999200")

@@ -6,11 +6,11 @@ type WatchlistContextType = ReturnType<typeof useWatchlist>;
 export const WatchlistContext = createContext<WatchlistContextType | null>(null);
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
-  const { watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, toggle, reload } = useWatchlist();
+  const { watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, reload } = useWatchlist();
 
   const value = useMemo<WatchlistContextType>(() => ({
-    watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, toggle, reload,
-  }), [watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, toggle, reload]);
+    watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, reload,
+  }), [watchlist, isLoading, hasLoaded, error, add, remove, clearAll, isIn, reload]);
 
   return <WatchlistContext.Provider value={value}>{children}</WatchlistContext.Provider>;
 }

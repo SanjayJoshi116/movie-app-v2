@@ -541,7 +541,7 @@ class TestLiveBackendShapes:
         assert any(c["media_type"] == "tv" for c in cast), f"{feature}: no TV credit survived cleaning"
 
     def test_stats_genre_names(self):
-        # stats_views._get_cached_genre_names, recommendations' section labels
+        # tmdb_client.cached_genre_names: Stats and recommendations' section labels
         for media_type in ("movie", "tv"):
             feature = f"Stats genre names ({media_type})"
             names = backend_call(feature, tmdb_client.get_genre_names, media_type, fallback=False)

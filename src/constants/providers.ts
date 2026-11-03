@@ -1,7 +1,7 @@
 export const PROVIDER_SEARCH_URLS: Record<number, (title: string) => string> = {
   8:    (t) => `https://www.netflix.com/search?q=${encodeURIComponent(t)}`,
-  9:    (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
-  119:  (t) => `https://www.amazon.com/s?k=${encodeURIComponent(t)}&i=instant-video`,
+  9:    (t) => `https://www.primevideo.com/search/?phrase=${encodeURIComponent(t)}`,
+  119:  (t) => `https://www.primevideo.com/search/?phrase=${encodeURIComponent(t)}`,
   337:  (t) => `https://www.disneyplus.com/search/${encodeURIComponent(t)}`,
   384:  (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,
   1899: (t) => `https://www.max.com/search?q=${encodeURIComponent(t)}`,

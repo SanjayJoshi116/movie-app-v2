@@ -32,7 +32,7 @@ function Movies({ movies, onKnowMore, hasFilters }: Props) {
   }
 
   return (
-    <main aria-label="Movie results">
+    <section aria-label="Movie results">
       <Row gutter={[16, 20]}>
         {movies.map((movie) => (
           <Col key={movie.id} xs={12} sm={8} md={6} lg={4} xl={4}>
@@ -40,7 +40,7 @@ function Movies({ movies, onKnowMore, hasFilters }: Props) {
           </Col>
         ))}
       </Row>
-    </main>
+    </section>
   );
 }
 

@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useWatchedContext } from "../context/WatchedContext";
+import { useWatchlistContext } from "../context/WatchlistContext";
 import { useToast } from "../hooks/useToast";
 import { RatingModal } from "./watchlist/RatingModal";
 import { AddToListModal } from "./AddToListModal";
@@ -25,7 +26,7 @@ import { ReviewsSection } from "./ReviewsSection";
 import { TrailerEmbed } from "./TrailerEmbed";
 import { PosterPlaceholder } from "./PosterPlaceholder";
 import { FONT_SIZE } from "../constants/typography";
-import type { TMDBMovieDetail, TMDBProviderRegion } from "../types";
+import type { TMDBMovieDetail, TMDBProviderRegion, TMDBReleaseDates } from "../types";
 import { IMG_URL, BACKDROP_URL, BACKDROP_ORIGINAL_URL, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
 import { filterByGenreOverlap, genreIdsOf } from "../utils/filterByGenreOverlap";
@@ -37,31 +38,27 @@ import { arrayOr } from "../utils/appended";
 // USD amounts: grouped the US way whatever the browser locale (no "1.000.000 $").
 const USD_AMOUNT = new Intl.NumberFormat("en-US");
 
-interface ReleaseDateEntry {
-  iso_3166_1: string;
-  release_dates: Array<{ certification: string; type: number }>;
-}
+type ReleaseDateEntry = TMDBReleaseDates["results"][number];
 
 type RecommendationItem = { id: number; poster_path: string | null; title: string; genre_ids: number[] };
 type SimilarMovieItem = RecommendationItem;
 
 export type MovieDetailData = Omit<
   TMDBMovieDetail,
-  "recommendations" | "reviews" | "similarMovies" | "watchProviders" | "certifications"
+  "recommendations" | "reviews" | "similarMovies" | "watchProviders"
 > & {
   reviews: Array<{ id: string; author: string; content: string }>;
   recommendations: RecommendationItem[];
   similarMovies: SimilarMovieItem[];
   watchProviders: Record<string, TMDBProviderRegion>;
-  certifications: ReleaseDateEntry[] | string;
 };
 
 interface Props {
   movie: MovieDetailData;
 }
 
-export function renderCertifications(certs: ReleaseDateEntry[] | string, region: string): string {
-  if (!certs || typeof certs === "string") return certs || "N/A";
+export function renderCertifications(certs: ReleaseDateEntry[], region: string): string {
+  if (!Array.isArray(certs)) return "N/A";
   // Each country entry is guarded too: one malformed entry must empty only
   // this cell, never throw and take the page down (load-states).
   const byRegion = Object.fromEntries(
@@ -83,7 +80,8 @@ const MovieDetails = ({ movie }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating } = useAppContext();
+  const { isInWatchlist, getRating, setRating, removeRating } = useAppContext();
+  const { add: addToWatchlist, remove: removeFromWatchlist } = useWatchlistContext();
   const { showSuccess, showError } = useToast();
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
@@ -159,7 +157,9 @@ const MovieDetails = ({ movie }: Props) => {
                 <motion.button
                   onClick={async () => {
                     try {
-                      await toggleWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
+                      // What the button showed decides the action, never the state at run time.
+                      if (inWatchlist) await removeFromWatchlist(id, "movie");
+                      else await addToWatchlist({ id, type: "movie", title, posterPath: poster_path, voteAverage: vote_average });
                       showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
                     } catch (err) {
                       showError(getApiError(err, "Failed to update watchlist."));

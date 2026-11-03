@@ -1,6 +1,5 @@
-import { templateRows } from "../CSVUploadModal";
-import { buildCSVString } from "../../utils/export";
-import { parseCSV, parseCSVForImport } from "../../utils/csvParse";
+import { buildCSVString, templateRows } from "../export";
+import { parseCSV, parseCSVForImport } from "../csvParse";
 
 describe("CSV import templates", () => {
   it.each(["movie", "tv"] as const)("%s template has only columns the import reads", (type) => {

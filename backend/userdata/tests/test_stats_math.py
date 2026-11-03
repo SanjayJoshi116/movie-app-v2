@@ -5,7 +5,6 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from userdata import stats_views
 from userdata.tmdb_client import STATIC_GENRE_NAMES
 from userdata.models import RatingEntry, WatchedEntry
 from userdata.stats_views import rating_bucket, round_half_up
@@ -26,7 +25,7 @@ class RoundingHelperTests(APITestCase):
         self.assertEqual((rating_bucket(6.5), rating_bucket(7.5), rating_bucket(0.5)), (7, 8, 1))
 
 
-@patch.object(stats_views, "_get_cached_genre_names", return_value={18: "Drama"})
+@patch("userdata.tmdb_client.cached_genre_names", return_value={18: "Drama"})
 class StatsMathTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="sam", password="Xk9#mQ2vTz8p")
@@ -96,11 +95,29 @@ class StatsMathTests(APITestCase):
         self.assertEqual(monthly[0]["month"], months_ago(5).strftime("%b %Y"))
         self.assertEqual(monthly[-1]["month"], now.strftime("%b %Y"))
 
+    def test_legacy_watch_before_1900_stays_out_of_monthly_activity(self, _genres):
+        """fix-recs-sweep-b5: one year-1 row used to add ~24,300 empty months."""
+        now = timezone.now()
+        self.watch(when=datetime(1, 1, 1, 12, tzinfo=UTC))
+        self.watch(when=now)
+        data = self.stats()
+        self.assertEqual(data["monthlyActivity"], [{"month": now.strftime("%b %Y"), "count": 1}])
+        self.assertEqual(data["totalWatched"], 2)
+
+    def test_legacy_far_future_watch_stays_out_of_monthly_activity(self, _genres):
+        """A year-9999 row would stretch the chart over ~96,000 empty months."""
+        now = timezone.now()
+        self.watch(when=datetime(9999, 6, 1, 12, tzinfo=UTC))
+        self.watch(when=now)
+        data = self.stats()
+        self.assertEqual(data["monthlyActivity"], [{"month": now.strftime("%b %Y"), "count": 1}])
+        self.assertEqual(data["totalWatched"], 2)
+
     def test_no_history_gives_no_months(self, _genres):
         self.assertEqual(self.stats()["monthlyActivity"], [])
 
 
-@patch.object(stats_views, "_get_cached_genre_names", return_value=dict(STATIC_GENRE_NAMES))
+@patch("userdata.tmdb_client.cached_genre_names", return_value=dict(STATIC_GENRE_NAMES))
 class StatsGenreFamilyTests(APITestCase):
     """watch-stats: a movie genre and its TV counterpart are one genre."""
 

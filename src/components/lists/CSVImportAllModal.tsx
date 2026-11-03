@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef } from "react";
+import React, { useContext, useEffect, useState, useRef } from "react";
 import { Modal, Button, Typography, Alert, Tag, Space } from "antd";
 import JSZip from "jszip";
 import { useToast } from "../../hooks/useToast";
@@ -27,6 +27,7 @@ import { orderForImport } from "../../utils/listImport";
 import { fetchAllPages } from "../../utils/fetchAllPages";
 import type { UserListDTO } from "../../types";
 import { FONT_SIZE } from "../../constants/typography";
+import { useLatestOnly } from "../../hooks/useLatestOnly";
 
 const { Text } = Typography;
 
@@ -90,9 +91,11 @@ function describeResult(r: SectionResult): string {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Told when a restore starts and ends, so the dialog that opened this one holds too. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
-const CSVImportAllModal = ({ open, onClose }: Props) => {
+const CSVImportAllModal = ({ open, onClose, onBusyChange }: Props) => {
   const { showSuccess, showError } = useToast();
   const { reloadWatchlist, reloadWatched, reloadRatings } = useAppContext();
   const { createList, reloadLists } = useListsContext();
@@ -108,6 +111,15 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [postersMissing, setPostersMissing] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Only the latest pick's parse is applied.
+  const picks = useLatestOnly();
+
+  // Reported to whatever opened this dialog (Edit Profile), so a held restore
+  // holds it too: Escape in a held dialog isn't stopped and would close it.
+  useEffect(() => {
+    onBusyChange?.(loading);
+    return () => onBusyChange?.(false);
+  }, [loading, onBusyChange]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target;
@@ -115,6 +127,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
     // Reset so picking the same file again fires `change` again.
     input.value = "";
     if (!file) return;
+    const isLatest = picks.start();
     setFileName(file.name);
     setContents(null);
     setParseError(null);
@@ -125,8 +138,11 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       checkBackupFileSize(file.size);
       const zip = await JSZip.loadAsync(file);
       checkBackupZipSize(zip);
-      setContents(await readBackupZip(zip));
+      const read = await readBackupZip(zip);
+      // A later pick (or a close) replaced this one while it was reading.
+      if (isLatest()) setContents(read);
     } catch (err) {
+      if (!isLatest()) return;
       setParseError(
         err instanceof BackupTooLargeError || (err instanceof Error && err.message.startsWith("No recognizable"))
           ? err.message
@@ -302,8 +318,9 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
       if (anyAdded && reloads.some((r) => r.status === "rejected")) showError(IMPORT_REFRESH_ERROR);
     } catch (err) {
       // Signed out mid-restore: drop it silently. What already went out
-      // landed in the account that sent it; nothing more is written.
-      if (!(err instanceof SessionEndedError)) throw err;
+      // landed in the account that sent it; nothing more is written. Any
+      // other failure (outside the per-section runs) is reported, never thrown.
+      if (!(err instanceof SessionEndedError)) showError(getApiError(err, "Import failed. Please try again."));
     } finally {
       if (guard.isCurrent()) {
         setProgress(null);
@@ -313,6 +330,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
   };
 
   const handleClose = () => {
+    picks.cancel();
     setContents(null);
     setParseError(null);
     setFileName(null);
@@ -349,6 +367,7 @@ const CSVImportAllModal = ({ open, onClose }: Props) => {
         accept=".zip"
         aria-label="Backup ZIP file to import"
         onChange={handleFileChange}
+        disabled={loading}
         style={{ marginBottom: fileName ? 8 : 16 }}
       />
       {fileName && (

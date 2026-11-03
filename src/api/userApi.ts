@@ -340,7 +340,8 @@ export type PersonalizedRecSection = {
 };
 
 export type RecommendationsResponse = {
-  status: "ready" | "pending";
+  /** "unavailable": no stored result and nothing computing (backing off after a TMDB failure). */
+  status: "ready" | "pending" | "unavailable";
   sections: PersonalizedRecSection[];
 };
 

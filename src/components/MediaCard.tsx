@@ -34,6 +34,9 @@ const MediaCard = ({ id, type, title, posterPath, voteAverage, onKnowMore }: Pro
   const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
   const { showSuccess, showError } = useToast();
   const [showMarkWatchedModal, setShowMarkWatchedModal] = useState(false);
+  // Mounted from the first open on (kept after, for its close animation): a
+  // grid of hundreds of cards needn't carry hundreds of idle dialogs.
+  const [markWatchedMounted, setMarkWatchedMounted] = useState(false);
   const watched = isWatched(id, type);
   const inWatchlist = isInWatchlist(id, type);
   const watchedLabel = watched ? "Unmark watched" : "Mark as watched";
@@ -97,6 +100,7 @@ const MediaCard = ({ id, type, title, posterPath, voteAverage, onKnowMore }: Pro
                           showError(getApiError(err, "Failed to update watched status."));
                         }
                       } else {
+                        setMarkWatchedMounted(true);
                         setShowMarkWatchedModal(true);
                       }
                     }}
@@ -143,6 +147,7 @@ const MediaCard = ({ id, type, title, posterPath, voteAverage, onKnowMore }: Pro
       </Card>
     </motion.div>
 
+    {markWatchedMounted && (
     <MarkWatchedModal
       open={showMarkWatchedModal}
       mediaId={id}
@@ -159,6 +164,7 @@ const MediaCard = ({ id, type, title, posterPath, voteAverage, onKnowMore }: Pro
         setShowMarkWatchedModal(false);
       }}
     />
+    )}
     </>
   );
 };

@@ -5,8 +5,8 @@ import { FilterPanel } from "../FilterPanel";
 
 const mockSetIncludeAdult = jest.fn();
 let appliedGenres: number[] = [];
-jest.mock("../../../context/useAppContext", () => ({
-  useAppContext: () => ({
+jest.mock("../../../context/UIContext", () => ({
+  useUIContext: () => ({
     includeAdult: false,
     setIncludeAdult: mockSetIncludeAdult,
   }),

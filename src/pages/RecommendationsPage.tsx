@@ -15,6 +15,7 @@ import {
   saveSessionCache,
   type PersonalizedRecSection,
   type PersonalizedRecItem,
+  type RecommendationsResponse,
 } from "../api/userApi";
 import { POSTER_URL, pageVariants, RATING_GOLD, WATCHED_GREEN, IN_WATCHLIST_BLUE } from "../constants/ui";
 import { useActionIconColor } from "../hooks/useActionIconColor";
@@ -304,7 +305,7 @@ function RecommendationsPage() {
     // for-you and personalized are cache-backed and computed in a bg thread on
     // first request — poll until the backend flips status from "pending" to "ready".
     function pollRecommendation(
-      fetchFn: () => Promise<{ data: { status: string; sections: PersonalizedRecSection[] } }>,
+      fetchFn: () => Promise<{ data: RecommendationsResponse }>,
       setter: (s: PersonalizedRecSection[]) => void,
       setGroupState: (v: GroupState) => void,
       group: RecGroup,
@@ -314,7 +315,11 @@ function RecommendationsPage() {
         .then(res => {
           if (cancelled) return;
           setter(res.data.sections);
-          if (res.data.status !== "pending") {
+          if (res.data.status === "unavailable") {
+            // No result and nothing computing (the backend is backing off
+            // after a TMDB failure): a failed group, not "still computing".
+            fail(group);
+          } else if (res.data.status !== "pending") {
             setGroupState("ready");
           } else if (attempt < MAX_POLLS) {
             setGroupState("pending");

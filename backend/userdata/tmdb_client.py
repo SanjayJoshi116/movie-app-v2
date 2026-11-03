@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 
@@ -129,8 +130,17 @@ def discover(media_type, with_genres, page=1):
         "vote_count.gte": 100 if media_type == "movie" else 50,
         "page": page,
     }
-    data = _get(f"/discover/{media_type}", params)
-    return data.get("results") or []
+    return result_list(_get(f"/discover/{media_type}", params), "results")
+
+
+def result_list(data, key):
+    """`data[key]` as a list of TMDB records: only dict entries with an int
+    `id`. A missing, null or non-list value gives `[]`, so one malformed answer
+    empties its own caller's list instead of raising mid-compute."""
+    items = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return []
+    return [r for r in items if isinstance(r, dict) and isinstance(r.get("id"), int)]
 
 
 def get_details_with_cast(media_id, media_type):
@@ -173,6 +183,63 @@ def get_genre_names(media_type, timeout=TMDB_TIMEOUT, *, fallback=True):
         if not fallback:
             raise
         return dict(STATIC_GENRE_NAMES)
+
+
+# Genre names cached per process for Stats and recommendations. (connect,
+# read) per attempt and a wall-clock deadline per call: per-attempt timeouts
+# alone don't bound a call, because the connect is tried once per address DNS
+# returns. A cold cache makes two calls back to back, so 2 *
+# GENRE_LOOKUP_DEADLINE must stay well under gunicorn's --timeout
+# (docker-entrypoint.sh); test_stats_genres pins the margin.
+GENRE_LOOKUP_TIMEOUT = (3.05, 5)
+GENRE_LOOKUP_DEADLINE = 8
+GENRE_CACHE_TTL = 86400  # 24 hours
+# After a failed lookup the built-in names are used, and TMDB is tried again
+# after this long instead of after a full day.
+GENRE_FALLBACK_TTL = 300
+_genre_cache = {"names": {}, "ts": 0.0, "ttl": 0.0}
+_genre_cache_lock = threading.Lock()
+
+
+def _genre_cache_fresh():
+    return bool(_genre_cache["names"]) and time.time() - _genre_cache["ts"] <= _genre_cache["ttl"]
+
+
+def cached_genre_names():
+    """{genre_id: name} for movie and TV together, looked up at most once per
+    TTL per process. A failed lookup gives the built-in names, cached briefly."""
+    if _genre_cache_fresh():
+        return _genre_cache["names"]
+    # One thread refreshes; while it waits on TMDB the others serve the stale
+    # names instead of holding a request thread behind it. Only a cold cache
+    # (no names at all) waits.
+    if not _genre_cache_lock.acquire(blocking=not _genre_cache["names"]):
+        return _genre_cache["names"]
+    try:
+        # Another thread may have filled it while this one waited.
+        if _genre_cache_fresh():
+            return _genre_cache["names"]
+
+        def lookup(media_type):
+            return call_with_deadline(
+                get_genre_names, GENRE_LOOKUP_DEADLINE, media_type, GENRE_LOOKUP_TIMEOUT, fallback=False,
+            )
+
+        try:
+            names, ttl = {**lookup("movie"), **lookup("tv")}, GENRE_CACHE_TTL
+        except (requests.RequestException, ValueError, KeyError, TypeError) as e:
+            logger.warning("Genre names lookup failed, using built-in names: %s", type(e).__name__)
+            names, ttl = dict(STATIC_GENRE_NAMES), GENRE_FALLBACK_TTL
+        _genre_cache.update(names=names, ts=time.time(), ttl=ttl)
+        return names
+    finally:
+        _genre_cache_lock.release()
+
+
+def clear_genre_cache():
+    """Forget the cached genre names (tests)."""
+    with _genre_cache_lock:
+        _genre_cache.update(names={}, ts=0.0, ttl=0.0)
 
 
 def _post(path, body=None, params=None):

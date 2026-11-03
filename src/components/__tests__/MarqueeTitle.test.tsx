@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useReducedMotion } from "framer-motion";
 import MarqueeTitle from "../MarqueeTitle";
 
@@ -47,4 +47,27 @@ it("doesn't scroll under reduced motion", () => {
   fireEvent.mouseEnter(screen.getByTitle(TITLE));
   expect(screen.getByTestId("marquee-text")).toHaveStyle({ transform: "translateX(0)" });
   restore();
+});
+
+// fix-components-sweep-f4: Poppins can swap in after the first measure without
+// resizing the box, so the overflow is measured again once fonts are ready.
+it("measures again once the web font has loaded", async () => {
+  let fontsLoaded: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => { fontsLoaded = resolve; });
+  const saved = Object.getOwnPropertyDescriptor(document, "fonts");
+  Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+  (useReducedMotion as jest.Mock).mockReturnValue(false);
+  let restore = stubWidths(100, 200); // fits in the fallback font
+  try {
+    render(<MarqueeTitle>{TITLE}</MarqueeTitle>);
+    expect(screen.queryByTitle(TITLE)).not.toBeInTheDocument();
+    restore();
+    restore = stubWidths(300, 200); // overflows in Poppins
+    await act(async () => { fontsLoaded(); await ready; });
+    expect(screen.getByTitle(TITLE)).toBeInTheDocument();
+  } finally {
+    restore();
+    if (saved) Object.defineProperty(document, "fonts", saved);
+    else delete (document as unknown as { fonts?: unknown }).fonts;
+  }
 });

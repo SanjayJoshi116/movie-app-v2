@@ -12,7 +12,7 @@ import { useAuth } from "./context/AuthContext";
 import { darkThemeConfig, lightThemeConfig } from "./theme/antdTheme";
 import type { FilterValues, SortOption } from "./types";
 import { animeModeOf, browseScope, DEFAULT_SORT, type BrowseScope } from "./utils/browseFilters";
-import { AUTH_ONLY_PATHS, postLoginPath, loginRedirectState } from "./utils/postLoginPath";
+import { isAuthOnlyPath, isResetPasswordPath, postLoginPath, loginRedirectState } from "./utils/postLoginPath";
 import "./App.css";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -43,7 +43,9 @@ function AppInner() {
   // ratings contexts, which re-rendered the whole route tree on every change.
   const { theme } = useUIContext();
   const { isAuthenticated, isLoading, signedOutInThisTab } = useAuth();
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  // The browse scope the filter drawer was opened on: it shows only there, so
+  // leaving the browse pages (or switching scope) closes it without a reset.
+  const [filterPanelScope, setFilterPanelScope] = useState<BrowseScope | null>(null);
   const [activeFilters, setActiveFilters] = useState<FilterValues | null>(null);
   const [activeSortBy, setActiveSortBy] = useState<SortOption>(DEFAULT_SORT);
   const [activeGenres, setActiveGenres] = useState<number[]>([]);
@@ -55,7 +57,12 @@ function AppInner() {
   // AnimePage's mount effect correcting it after a request in the other mode.
   const restore = location.state as { isReturn?: boolean; activeCategory?: string } | null;
   const [animeSyncedKey, setAnimeSyncedKey] = useState<string | null>(null);
-  if (location.pathname === "/anime" && restore?.isReturn && restore.activeCategory && location.key !== animeSyncedKey) {
+  // History state is untyped data: a non-string category is ignored, never
+  // passed on to a string method in the shell's render.
+  if (
+    location.pathname === "/anime" && restore?.isReturn && typeof restore.activeCategory === "string"
+    && location.key !== animeSyncedKey
+  ) {
     setAnimeSyncedKey(location.key);
     const restoredMode = animeModeOf(restore.activeCategory);
     if (restoredMode !== animeMediaType) setAnimeMediaType(restoredMode);
@@ -74,6 +81,14 @@ function AppInner() {
     setActiveSortBy(DEFAULT_SORT);
     setActiveGenres([]);
   }
+  // Leaving or switching the scope closes the drawer for good, so coming back
+  // (Back/Forward) doesn't reopen it unasked.
+  if (filterPanelScope !== null && filterPanelScope !== filterScope) {
+    setFilterPanelScope(null);
+  }
+  const showFilterPanel = filterScope !== null && filterPanelScope === filterScope;
+  const setShowFilterPanel = (open: boolean) => setFilterPanelScope(open ? filterScope : null);
+  const toggleFilterPanel = () => setShowFilterPanel(!showFilterPanel);
 
   // Applied filters, sort and the Anime mode end with the session, like UIContext's settings.
   const [filtersForSignedIn, setFiltersForSignedIn] = useState(isAuthenticated);
@@ -84,16 +99,17 @@ function AppInner() {
       setActiveSortBy(DEFAULT_SORT);
       setActiveGenres([]);
       setAnimeMediaType("tv");
+      setFilterPanelScope(null);
     }
   }
 
-  const isAuthOnlyPath = AUTH_ONLY_PATHS.includes(location.pathname);
+  const onAuthOnlyPage = isAuthOnlyPath(location.pathname);
   // Reset links stay public and reachable when signed in (an emailed link must work).
-  const isPublicPath = isAuthOnlyPath || location.pathname.startsWith("/reset-password/");
+  const isPublicPath = onAuthOnlyPage || isResetPasswordPath(location.pathname);
   if (!isLoading && !isAuthenticated && !isPublicPath) {
     return <Navigate to="/login" state={loginRedirectState(location, signedOutInThisTab)} replace />;
   }
-  if (isAuthOnlyPath) {
+  if (onAuthOnlyPage) {
     // Blank while the session restores, so a signed-in user never sees the form flash.
     if (isLoading) return null;
     // Same target LoginPage navigates to after signing in.
@@ -125,7 +141,7 @@ function AppInner() {
           <Sidebar
             isBrowsePage={isBrowsePage}
             showFilterPanel={showFilterPanel}
-            onToggleFilterPanel={() => setShowFilterPanel((v) => !v)}
+            onToggleFilterPanel={toggleFilterPanel}
           />
         )}
 
@@ -187,11 +203,11 @@ function AppInner() {
               <Route path="/lists/:id" element={<ErrorBoundary><ListDetailPage /></ErrorBoundary>} />
               <Route path="/people" element={<ErrorBoundary><PeoplePage /></ErrorBoundary>} />
               <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
-              <Route path="/tmdb-callback" element={<TMDBCallbackPage />} />
+              <Route path="/login" element={<ErrorBoundary><LoginPage /></ErrorBoundary>} />
+              <Route path="/register" element={<ErrorBoundary><RegisterPage /></ErrorBoundary>} />
+              <Route path="/forgot-password" element={<ErrorBoundary><ForgotPasswordPage /></ErrorBoundary>} />
+              <Route path="/reset-password/:uid/:token" element={<ErrorBoundary><ResetPasswordPage /></ErrorBoundary>} />
+              <Route path="/tmdb-callback" element={<ErrorBoundary><TMDBCallbackPage /></ErrorBoundary>} />
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />
               <Route path="/watched" element={<ErrorBoundary><WatchedPage /></ErrorBoundary>} />
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
@@ -199,7 +215,7 @@ function AppInner() {
               <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />
               <Route path="/stats" element={<ErrorBoundary><StatsPage /></ErrorBoundary>} />
               <Route path="/following" element={<ErrorBoundary><FollowingPage /></ErrorBoundary>} />
-              <Route path="*" element={<NotFoundPage />} />
+              <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
             </Routes>
           </AnimatePresence>
           </Suspense>
@@ -209,7 +225,7 @@ function AppInner() {
           <BottomNav
             isBrowsePage={isBrowsePage}
             showFilterPanel={showFilterPanel}
-            onToggleFilterPanel={() => setShowFilterPanel((v) => !v)}
+            onToggleFilterPanel={toggleFilterPanel}
           />
         )}
       </div>

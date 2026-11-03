@@ -100,7 +100,7 @@ test.describe("Browse cards are links", () => {
   test("the poster is a link named after the title", async ({ page }) => {
     await mockBrowseMovies(page);
     await page.goto("/movies");
-    const grid = page.getByRole("main", { name: "Movie results" });
+    const grid = page.getByRole("region", { name: "Movie results" });
     const link = grid.getByRole("link", { name: "Movie 1" });
     await expect(link).toHaveAttribute("href", "/movie/100");
   });
@@ -110,7 +110,7 @@ test.describe("Browse cards are links", () => {
     await page.goto("/movies");
     await page.getByRole("button", { name: "Top Rated" }).click();
     await expect(page.getByRole("button", { name: "Top Rated" })).toHaveClass(/ant-btn-primary/);
-    await page.getByRole("main", { name: "Movie results" }).getByRole("link", { name: "Movie 1" }).focus();
+    await page.getByRole("region", { name: "Movie results" }).getByRole("link", { name: "Movie 1" }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL("/movie/100");
     await page.goBack();
@@ -121,7 +121,7 @@ test.describe("Browse cards are links", () => {
   test("a modifier click leaves the grid in place", async ({ page }) => {
     await mockBrowseMovies(page);
     await page.goto("/movies");
-    const link = page.getByRole("main", { name: "Movie results" }).getByRole("link", { name: "Movie 1" });
+    const link = page.getByRole("region", { name: "Movie results" }).getByRole("link", { name: "Movie 1" });
     const popupPromise = page.context().waitForEvent("page");
     await link.click({ modifiers: ["ControlOrMeta"] });
     const popup = await popupPromise;
@@ -345,7 +345,7 @@ test.describe("Browse grids hide watched titles", () => {
     await mockBrowseMovies(page);
     await page.route("**/api/watched/**", (route) => route.fulfill({ json: paginated([watchedMovie1]) }));
     await page.goto("/movies");
-    const grid = page.getByRole("main", { name: "Movie results" });
+    const grid = page.getByRole("region", { name: "Movie results" });
     await expect(grid.getByRole("link", { name: "Movie 2" })).toBeVisible();
     await expect(grid.getByRole("link", { name: "Movie 1" })).toHaveCount(0);
   });

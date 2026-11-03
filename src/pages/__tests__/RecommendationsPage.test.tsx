@@ -17,7 +17,7 @@ jest.mock("../../api/userApi", () => ({
   saveSessionCache: jest.fn(),
 }));
 jest.mock("../../context/useAppContext", () => ({ useAppContext: jest.fn() }));
-const mockWatchlist = { isIn: jest.fn(() => false), add: jest.fn(), remove: jest.fn(), toggle: jest.fn() };
+const mockWatchlist = { isIn: jest.fn(() => false), add: jest.fn(), remove: jest.fn() };
 const mockWatched = { isWatched: jest.fn(() => false), add: jest.fn(), remove: jest.fn(), toggle: jest.fn() };
 jest.mock("../../context/WatchlistContext", () => ({ useWatchlistContext: () => mockWatchlist }));
 jest.mock("../../context/WatchedContext", () => ({ useWatchedContext: () => mockWatched }));
@@ -84,6 +84,19 @@ it("still shows the computing state when a group fails while another is pending"
   expect(screen.getByText(/Crunching your watch history/)).toBeInTheDocument();
 });
 
+it("shows the load error, not the computing state, when no result is available", async () => {
+  mockApp.mockReturnValue(appState());
+  mockForYou.mockResolvedValue({ data: { status: "unavailable", sections: [] } });
+  mockPersonalized.mockResolvedValue({ data: { status: "unavailable", sections: [] } });
+  mockFollowed.mockResolvedValue({ data: [] });
+  renderPage();
+  expect(await screen.findByText("Couldn't load recommendations")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  expect(screen.queryByText(/Crunching your watch history/)).toBeNull();
+  expect(screen.queryByText("Recommendations are taking longer than usual.")).toBeNull();
+  expect(mockForYou).toHaveBeenCalledTimes(1); // no polling
+});
+
 it("Retry refetches every group", async () => {
   mockApp.mockReturnValue(appState());
   mockForYou.mockResolvedValue({ data: { status: "ready", sections: [section("a", "Se7en")] } });
@@ -121,7 +134,6 @@ describe("card writes", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add to watchlist: Se7en" }));
     await waitFor(() => expect(mockWatchlist.add).toHaveBeenCalledTimes(1));
     expect(mockWatchlist.remove).not.toHaveBeenCalled();
-    expect(mockWatchlist.toggle).not.toHaveBeenCalled();
   });
 
   it("confirming Mark as watched adds, never unmarks", async () => {

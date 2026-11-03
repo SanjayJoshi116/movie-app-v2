@@ -12,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import { useAppContext } from "../context/useAppContext";
 import { useWatchedContext } from "../context/WatchedContext";
+import { useWatchlistContext } from "../context/WatchlistContext";
 import { useToast } from "../hooks/useToast";
 import { useEpisodeProgress } from "../hooks/useEpisodeProgress";
 import { RatingModal } from "./watchlist/RatingModal";
@@ -53,7 +54,8 @@ const TVShowDetails = ({ tvShow }: Props) => {
   const location = useLocation();
   const locationState = location.state as { from?: string; [key: string]: unknown } | null;
   const from = locationState?.from;
-  const { isInWatchlist, toggleWatchlist, getRating, setRating, removeRating } = useAppContext();
+  const { isInWatchlist, getRating, setRating, removeRating } = useAppContext();
+  const { add: addToWatchlist, remove: removeFromWatchlist } = useWatchlistContext();
   // Explicit add/remove, never toggle: a stale render can't run the opposite
   // of what the button showed (or of the dialog's "Mark as watched").
   const { isWatched, add: addWatched, remove: removeWatched } = useWatchedContext();
@@ -92,10 +94,17 @@ const TVShowDetails = ({ tvShow }: Props) => {
     .map((c) => c.name)
     .join(", ");
 
-  const getMaxEpisodes = (season: number): number => {
-    const s = tvShow.seasons?.find((s) => s.season_number === season);
-    return s?.episode_count ?? 99;
+  // TMDB's episode count for a season (undefined when the season or count isn't listed).
+  const episodeCount = (season: number): number | undefined =>
+    tvShow.seasons?.find((s) => s.season_number === season)?.episode_count;
+  // The editor's cap, or null when unknown: no listed count, or 0 (an announced
+  // season TMDB has no episodes for yet). A 0 cap let "+" reach episode 0,
+  // which the server refuses.
+  const getMaxEpisodes = (season: number): number | null => {
+    const count = episodeCount(season);
+    return typeof count === "number" && count > 0 ? count : null;
   };
+  const editorMax = getMaxEpisodes(epSeason);
 
   return (
     <div>
@@ -143,7 +152,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
                 <motion.button
                   onClick={async () => {
                     try {
-                      await toggleWatchlist({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
+                      // What the button showed decides the action, never the state at run time.
+                      if (inWatchlist) await removeFromWatchlist(id, "tv");
+                      else await addToWatchlist({ id, type: "tv", title: name, posterPath: poster_path, voteAverage: vote_average });
                       showSuccess(inWatchlist ? "Removed from watchlist" : "Added to watchlist");
                     } catch (err) {
                       showError(getApiError(err, "Failed to update watchlist."));
@@ -262,8 +273,9 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     </Typography.Text>
                     {(() => {
                       const maxEpisodesThisSeason = getMaxEpisodes(epProgress.season);
-                      const hasNextInSeason = epProgress.episode < maxEpisodesThisSeason;
-                      const hasNextSeason = epProgress.season < (number_of_seasons ?? 0);
+                      const hasNextInSeason = maxEpisodesThisSeason !== null && epProgress.episode < maxEpisodesThisSeason;
+                      const hasNextSeason =
+                        epProgress.season < (number_of_seasons ?? 0) && episodeCount(epProgress.season + 1) !== 0;
                       if (!hasNextInSeason && !hasNextSeason) return null;
                       const nextSeason = hasNextInSeason ? epProgress.season : epProgress.season + 1;
                       const nextEpisode = hasNextInSeason ? epProgress.episode + 1 : 1;
@@ -320,8 +332,10 @@ const TVShowDetails = ({ tvShow }: Props) => {
                     <Typography.Text style={{ fontSize: FONT_SIZE.caption, marginLeft: 4 }}>E</Typography.Text>
                     <Button size="small" icon={<MinusOutlined />} aria-label="Previous episode" onClick={() => setEpEpisode((e) => Math.max(1, e - 1))} />
                     <Typography.Text style={{ minWidth: 20, textAlign: "center" }}>{epEpisode}</Typography.Text>
-                    <Button size="small" icon={<PlusOutlined />} aria-label="Next episode" onClick={() => setEpEpisode((e) => Math.min(e + 1, getMaxEpisodes(epSeason)))} />
-                    <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{getMaxEpisodes(epSeason)}</Typography.Text>
+                    <Button size="small" icon={<PlusOutlined />} aria-label="Next episode" onClick={() => setEpEpisode((e) => Math.min(e + 1, editorMax ?? Infinity))} />
+                    {editorMax !== null && (
+                      <Typography.Text type="secondary" style={{ fontSize: FONT_SIZE.caption }}>/{editorMax}</Typography.Text>
+                    )}
                     <Button
                       size="small"
                       type="primary"

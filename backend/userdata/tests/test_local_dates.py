@@ -122,7 +122,7 @@ class WatchedZoneStorageTests(APITestCase):
 
 
 @patch("userdata.stats_views.request_backfill")
-@patch("userdata.stats_views._get_cached_genre_names", return_value={})
+@patch("userdata.tmdb_client.cached_genre_names", return_value={})
 class StatsLocalDayTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="st", password="Xk9#mQ2vTz8p")
@@ -201,7 +201,7 @@ DIRECTORY_ZONES = ("America", "Etc", "America/Argentina")
 
 
 @patch("userdata.stats_views.request_backfill")
-@patch("userdata.stats_views._get_cached_genre_names", return_value={})
+@patch("userdata.tmdb_client.cached_genre_names", return_value={})
 class DirectoryZoneNameTests(APITestCase):
     """tzdata directory names raise OSError from ZoneInfo, not ZoneInfoNotFoundError."""
 

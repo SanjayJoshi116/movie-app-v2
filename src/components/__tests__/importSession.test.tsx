@@ -10,6 +10,7 @@ import { personLabel } from "../../utils/personLabel";
 import { parseBackupCSV } from "../../utils/csvParse";
 import { fetchMoviePoster } from "../../api/tmdb";
 import { resetPacer } from "../../utils/pacedLookup";
+import * as exportUtils from "../../utils/export";
 
 // data-backup: an import ends with the session that started it, and its
 // dialog can't be closed while it runs.
@@ -58,8 +59,10 @@ jest.mock("../../utils/backup", () => ({
   ...jest.requireActual("../../utils/backup"),
   checkBackupFileSize: () => undefined,
   checkBackupZipSize: () => undefined,
-  readBackupZip: async () => mockBackup,
+  readBackupZip: () => mockReadZip(),
 }));
+// Swapped by the latest-pick test; every other test reads mockBackup.
+let mockReadZip: () => Promise<BackupContents> = async () => mockBackup;
 
 const CSV = "id,title\n550,Fight Club\n13,Forrest Gump\n";
 
@@ -302,6 +305,57 @@ describe("backup restore", () => {
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
   });
 
+  // fix-components-sweep-f4
+  it("reports itself busy to the dialog that opened it, and disables the file picker", async () => {
+    const finish = pendingLookups();
+    const onBusyChange = jest.fn();
+    render(<CSVImportAllModal open onClose={jest.fn()} onBusyChange={onBusyChange} />);
+    await pickFile("backup.zip", "zip");
+    fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true), SLOW);
+    expect(screen.getByLabelText(/file to import/i)).toBeDisabled();
+
+    await act(async () => finish());
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false), SLOW);
+    expect(screen.getByLabelText(/file to import/i)).not.toBeDisabled();
+  });
+
+  it("reports an unexpected failure instead of throwing it", async () => {
+    lookup.mockRejectedValue(new TypeError("boom"));
+    render(<CSVImportAllModal open onClose={jest.fn()} />);
+    await pickFile("backup.zip", "zip");
+    fireEvent.click(await screen.findByRole("button", { name: "Import All" }, SLOW));
+    await waitFor(() => expect(mockToast.showError).toHaveBeenCalledWith("Import failed. Please try again."), SLOW);
+    expect(screen.getByRole("button", { name: "Import All" })).not.toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("restores the file picked last when an earlier pick finishes reading after it", async () => {
+    lookup.mockImplementation(async (rows) => ({ found: rows.map(() => ({ posterPath: "/p.jpg", voteAverage: 7 })), missing: 0 }));
+    const later = { ...mockBackup, watchlist: [{ mediaId: 99, type: "movie", title: "Latest", posterPath: "/x.jpg", voteAverage: 7 }],
+      watched: [], lists: [], followed: [] } as unknown as BackupContents;
+    let finishFirst: (c: BackupContents) => void = () => undefined;
+    const reads = [
+      () => new Promise<BackupContents>((resolve) => { finishFirst = resolve; }),
+      async () => later,
+    ];
+    mockReadZip = () => reads.shift()!();
+    try {
+      render(<CSVImportAllModal open onClose={jest.fn()} />);
+      await pickFile("first.zip", "zip");
+      await pickFile("second.zip", "zip");
+      await screen.findByRole("button", { name: "Import All" }, SLOW);
+      await act(async () => finishFirst(mockBackup)); // the earlier pick lands last
+      fireEvent.click(screen.getByRole("button", { name: "Import All" }));
+      await waitFor(() => expect(post).toHaveBeenCalled(), SLOW);
+      const urls = post.mock.calls.map(([url]) => url);
+      expect(urls).toEqual(["/watchlist/bulk/"]);
+      expect((post.mock.calls[0]![1] as { entries: { mediaId: number }[] }).entries.map((e) => e.mediaId)).toEqual([99]);
+    } finally {
+      mockReadZip = async () => mockBackup;
+    }
+  });
+
   /** Restore `sections` through the real lookup over a mocked TMDB. */
   async function restoreWithRealLookup(sections: Partial<BackupContents>) {
     const saved = { ...mockBackup };
@@ -371,6 +425,23 @@ describe("backup dialog and followed people", () => {
     await screen.findByText(/Upload a CINE DB backup/, {}, SLOW);
     expect(fetchFollowed).not.toHaveBeenCalled();
     fetchFollowed.mockRestore();
+  });
+});
+
+// fix-components-sweep-f4: written through the shared CSV writer, not a hand-built join.
+describe("list CSV template", () => {
+  it("downloads id and title through downloadCSV", () => {
+    const download = jest.spyOn(exportUtils, "downloadCSV").mockImplementation(() => undefined);
+    try {
+      render(<CSVListImportModal open onClose={jest.fn()} lockedListId={7} />);
+      fireEvent.click(screen.getByRole("button", { name: /Movie Template/ }));
+      expect(download).toHaveBeenCalledWith(
+        [{ id: 550, title: "Fight Club" }, { id: 13, title: "Forrest Gump" }],
+        "list_movies_template.csv",
+      );
+    } finally {
+      download.mockRestore();
+    }
   });
 });
 

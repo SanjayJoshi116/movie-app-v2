@@ -109,7 +109,7 @@ class E2EMockShapeTests(APITestCase):
                 )
 
     @patch("userdata.stats_views.request_backfill")
-    @patch("userdata.stats_views._get_cached_genre_names", return_value={18: "Drama"})
+    @patch("userdata.tmdb_client.cached_genre_names", return_value={18: "Drama"})
     def test_stats_mock_matches_a_real_stats_response(self, _names, _backfill):
         user = User.objects.create_user(username="shape", password="x")
         common = {"user": user, "media_id": 550, "media_type": "movie", "title": "Fight Club"}

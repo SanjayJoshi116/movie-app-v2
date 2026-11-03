@@ -27,6 +27,19 @@ export function buildCSVString(rows: Record<string, unknown>[]): string {
   return CSV_BOM + [headers.join(","), ...rows.map((row) => headers.map((h) => escape(row[h])).join(","))].join("\n");
 }
 
+/** Import template rows: only the columns parseCSVForImport reads (id, title and the optional type). */
+export function templateRows(type: "movie" | "tv") {
+  return type === "movie"
+    ? [
+        { id: 550, title: "Fight Club", type: "movie" },
+        { id: 13, title: "Forrest Gump", type: "movie" },
+      ]
+    : [
+        { id: 1396, title: "Breaking Bad", type: "tv" },
+        { id: 66732, title: "Stranger Things", type: "tv" },
+      ];
+}
+
 export function downloadCSV(rows: Record<string, unknown>[], filename: string): void {
   if (rows.length === 0) return;
   triggerDownload(buildCSVString(rows), filename, "text/csv");

@@ -3,6 +3,77 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.31.13] - 2026-11-03
+
+Fixes from the thirteenth and last module of the review sweep (F5, shell & theme: `fix-shell-sweep-f5`, backlog item 62; archived, specs synced into `routing`, `theme-readability`, `load-states`, `browse-filters` and `title-details`), plus the `/simplify` pass and the step 7 code review over 0.31.11 to 0.31.13 together, fixed directly. `/security-review` of the module: no findings. No migration, API or dependency change. The module sweep is complete.
+
+### Fixed
+- **Signed-in users are sent on from the sign-in pages however the address is written.** `/login/` or `/LOGIN` used to show the sign-in form to a signed-in user, who could sign in again in place with a stale library. The guard and the post-login target now match routes through the router's own `matchPath` (`isAuthOnlyPath`, `isResetPasswordPath`).
+- **No light flash on load.** The saved theme is applied before React renders, and `index.html`'s body starts dark (the CSP forbids an inline script).
+- **The browser follows the theme**: the address-bar color (`theme-color`), `color-scheme` (form controls) and Firefox scrollbars.
+- **The sign-in, password, TMDB callback and not-found pages have their own error boundary**, inside the theme, like every other route; a crash there no longer falls to the bare root fallback.
+- **A malformed restored Anime category can't crash the shell**: it's used only when it's text.
+- **The filter drawer closes when you leave the browse pages or sign out**, and Back or Forward to the page it was open on doesn't reopen it (step 7 review).
+- **Prime Video links open Prime Video's own search**, which works in every region, not the amazon.com US store.
+
+### Internal
+- `applyDocumentTheme()` (`src/utils/documentTheme.ts`) is the only place that sets the body class, `color-scheme` and `theme-color`.
+- `TMDBMovieDetail.certifications` typed as the release-date array it holds; appended parts of the raw movie response optional; `AppContextType` picks its UI fields from `UIContextType`, and UI-only callers read `useUIContext()`.
+- Dead dark-only `Layout` override removed.
+- `/simplify` over the B5 + F4 + F5 diff: shared `useLatestOnly()` replaces three pick counters, one busy effect per import dialog, dead `useWatchlist.toggle` removed, one season lookup in `TVShowDetails`.
+- `templateRows()` moved from `CSVUploadModal` to `src/utils/export.ts` (step 7 review).
+
+### Docs
+- `CLAUDE.md` (route guard and boundaries, theme on the document, drawer scope, genre-lookup lock, `_number()`), README tree, BUG_BACKLOG items 60–62 and the status table, `ideas.md` (sweep done), `docs/ARCHITECTURE.md` (genre lookup), `features.txt`.
+
+### Tests
+- `AppShell.test.tsx` (guard however the path is written, per-route boundary, drawer closed after leaving, on Back and after sign-out), `documentTheme.test.ts`, `providers.test.ts`.
+- Step 7 regression tests for all nine review fixes; the drawer and announcer ones fail on the old code.
+- Totals: Jest 690 pass (88 suites); backend pytest 741 pass + 25 skip; typecheck, lint, ruff clean. Touched e2e (auth, route-ids, session-expiry, theme-readability, browse-restore, responsive) passed at implementation.
+
+## [0.31.12] - 2026-11-02
+
+Fixes from the twelfth module of the review sweep (F4, components: `fix-components-sweep-f4`, backlog item 61; archived, specs synced into `data-backup`, `accessibility`, `title-details` and `write-feedback`). `/security-review` of the module: no findings. No migration, API or dependency change.
+
+### Fixed
+- **An import keeps Edit Profile open until it finishes.** Escape in a held import dialog reached Edit Profile and closed it mid-import; the import dialogs now report busy to it (`onBusyChange`).
+- **Imports read only the latest file picked**, and the file input is disabled while an import runs. An unexpected Import All failure shows an error instead of failing silently.
+- **The detail pages' watchlist button runs the action it shows** (explicit add/remove). `toggleWatchlist` is removed from the app context.
+- **A season TMDB lists with 0 episodes, or without a count, puts no cap on the episode editor**, and Next Episode doesn't move into a season with no episodes.
+- **A navigation to a page with the same title is still announced** (Dune 2021 → Dune 1984): the live region is cleared and refilled. A title event during that gap no longer cancels the refill (step 7 review).
+- **Long titles re-check their overflow once the web font loads**, so a cut title always has its full-name tooltip.
+- **One `<main>` per page**: the Movies and TV grids are a labelled section.
+
+### Changed
+- The list-import template CSV goes through the shared CSV writer.
+- Each browse card mounts its Mark as Watched dialog only once opened.
+
+### Tests
+- `detailActions.test.tsx`, `resultsLandmark.test.tsx`, plus announcer, marquee, Edit Profile busy and import tests.
+- Totals at implementation: Jest 662 pass (85 suites); touched TS e2e pass; Python `test_detail.py` 26 pass.
+
+## [0.31.11] - 2026-11-02
+
+Fixes from the eleventh module of the review sweep (B5, recommendations & stats: `fix-recs-sweep-b5`, backlog item 60; archived, specs synced into `recommendation-sections`, `recommendation-refresh`, `title-metadata` and `watch-stats`). `/security-review` of the module: no findings. No migration or dependency change. API: the recommendation endpoints can answer status `"unavailable"`.
+
+### Fixed
+- **Recommendation sections reserve only the titles they show.** Marking every scanned candidate as seen starved later sections. A merged taste row also reserves only what the merge keeps (step 7 review).
+- **Malformed TMDB answers empty one thing, never the whole compute.** `genres: null` in the metadata backfill, a non-list or non-object result, a non-string release date, or a null or string `vote_average`/`popularity` used to abort every refresh for that user (the last two found in the step 7 review). Result lists go through `tmdb_client.result_list()`, scores through `_number()`.
+- **A title in failure backoff no longer marks a refresh as failed**; only a fetch that failed in that run does.
+- **No stored result and nothing computing answers `"unavailable"`, not `"pending"`.** The Recommendations page shows that group's error with Retry instead of polling a minute.
+- **A failed backfill thread start releases the user.**
+- **"Because you watched" names a blank title "Untitled (#id)".**
+- **Stats' monthly activity ignores legacy watches dated before 1900 or after next month**, so one bad row can't produce tens of thousands of empty months (the future bound from the step 7 review).
+- **Genre family registration is lock-guarded.**
+- **Genre names are looked up once a day per process for recommendations too**, through Stats' cache, now `tmdb_client.cached_genre_names()`. Once names are cached, a caller that finds another thread refreshing serves the stale names instead of waiting up to 16 s (step 7 review).
+
+### Security
+- Two TMDB warning logs record only the exception type, not its text (which carries the request URL).
+
+### Tests
+- `test_rec_sections_b5.py`, plus refresh, backfill, Stats and genre tests.
+- Totals at implementation: backend pytest 736 pass + 25 skip, live TMDB 24 pass, Jest 645.
+
 ## [0.31.10] - 2026-11-02
 
 Fixes from the tenth module of the review sweep (B6, data layer: `fix-data-sweep-b6`, backlog item 59; archived, specs synced into `account-security`, `api-hardening` and `recommendation-refresh`), plus the `/simplify` pass and the step 7 code review over 0.31.9 and 0.31.10 together, fixed directly. `/security-review` of the module: no findings. **Migration 0033** (index changes only, no data change). No API or dependency change.

@@ -16,7 +16,10 @@ jest.mock("../../hooks/useActionIconColor", () => ({ useActionIconColor: () => "
 jest.mock("../../hooks/useToast", () => ({ useToast: () => ({ showSuccess: () => undefined, showError: () => undefined }) }));
 jest.mock("../MarkWatchedModal", () => ({
   MarkWatchedModal: ({ open, mediaId, mediaType }: { open: boolean; mediaId: number; mediaType: string }) =>
-    open ? <div data-testid="mark-watched">{`${mediaType}:${mediaId}`}</div> : null,
+    <>
+      <span data-testid="mark-watched-mounted" />
+      {open ? <div data-testid="mark-watched">{`${mediaType}:${mediaId}`}</div> : null}
+    </>,
 }));
 
 afterEach(() => {
@@ -106,4 +109,12 @@ it.each([
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`watchlist: Breaking Bad$`) }));
   await waitFor(() => expect(mockWatchlist[call]).toHaveBeenCalledTimes(1));
   expect(mockWatchlist[call === "add" ? "remove" : "add"]).not.toHaveBeenCalled();
+});
+
+// fix-components-sweep-f4: a grid of hundreds of cards carried hundreds of idle dialogs.
+it("mounts its Mark as Watched dialog only once it is opened", () => {
+  renderCard(MOVIE);
+  expect(screen.queryByTestId("mark-watched-mounted")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: `Mark as watched: ${MOVIE.title}` }));
+  expect(screen.getByTestId("mark-watched")).toHaveTextContent("movie:550");
 });

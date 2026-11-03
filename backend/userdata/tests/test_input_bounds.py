@@ -61,7 +61,7 @@ class VoteAverageBoundsTests(APITestCase):
 
 
 @patch("userdata.stats_views.request_backfill")
-@patch("userdata.stats_views._get_cached_genre_names", return_value={})
+@patch("userdata.tmdb_client.cached_genre_names", return_value={})
 class StoredOutOfRangeVoteTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="vic", password=PASSWORD)
