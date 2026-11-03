@@ -231,7 +231,7 @@ it("keeps a save that finishes during an undo on the stack", async () => {
   await screen.findByText("2 rated · 1 left");
   await act(async () => { finishRemove(); });
   // Dune's entry went, Heat's stayed.
-  await waitFor(() => expect(screen.getByText(/1 rated · /)).toBeInTheDocument());
+  await screen.findByText(/1 rated · /);
   fireEvent.click(screen.getByRole("button", { name: /Undo last rating/ }));
   await waitFor(() => expect(remove).toHaveBeenLastCalledWith(3, "movie"));
 });
