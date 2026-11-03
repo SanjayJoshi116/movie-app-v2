@@ -24,6 +24,7 @@ const PeoplePage = lazy(() => import("./pages/PeoplePage"));
 const WatchlistPage = lazy(() => import("./pages/WatchlistPage"));
 const RecommendationsPage = lazy(() => import("./pages/RecommendationsPage"));
 const WatchedPage = lazy(() => import("./pages/WatchedPage"));
+const RateQueuePage = lazy(() => import("./pages/RateQueuePage"));
 const AnimePage = lazy(() => import("./pages/AnimePage"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage"));
 const ListsPage = lazy(() => import("./pages/ListsPage"));
@@ -210,6 +211,7 @@ function AppInner() {
               <Route path="/tmdb-callback" element={<ErrorBoundary><TMDBCallbackPage /></ErrorBoundary>} />
               <Route path="/watchlist" element={<ErrorBoundary><WatchlistPage /></ErrorBoundary>} />
               <Route path="/watched" element={<ErrorBoundary><WatchedPage /></ErrorBoundary>} />
+              <Route path="/watched/rate" element={<ErrorBoundary><RateQueuePage /></ErrorBoundary>} />
               <Route path="/recommendations" element={<ErrorBoundary><RecommendationsPage /></ErrorBoundary>} />
               <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
               <Route path="/lists" element={<ErrorBoundary><ListsPage /></ErrorBoundary>} />

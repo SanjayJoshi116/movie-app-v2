@@ -5,6 +5,7 @@ import { fetchAllPages } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import { guardedReload } from "../utils/guardedReload";
 import type { UserList, UserListDTO, UserListItemDTO, WatchlistInput } from "../types";
+import { titleKey } from "../utils/titleKey";
 
 function mapListData(data: UserListDTO[]): UserList[] {
   return data.map((l) => ({
@@ -120,7 +121,7 @@ export function useLists() {
     }, `update:${JSON.stringify(patch)}`), [isAuthenticated, setLists]);
 
   const addToList = useCallback((listId: number, entry: WatchlistInput) =>
-    inflight.current.group(listId).run(`${entry.type}-${entry.id}`, async () => {
+    inflight.current.group(listId).run(titleKey(entry.id, entry.type), async () => {
     if (!isAuthenticated) return;
     const list = listsRef.current.find((l) => l.id === listId);
     if (list?.items.some((i) => i.id === entry.id && i.type === entry.type)) return;
@@ -158,7 +159,7 @@ export function useLists() {
   }, "add"), [isAuthenticated, setLists]);
 
   const removeFromList = useCallback((listId: number, itemId: number, type: string) =>
-    inflight.current.group(listId).run(`${type}-${itemId}`, async () => {
+    inflight.current.group(listId).run(titleKey(itemId, type), async () => {
     if (!isAuthenticated) return;
     const list = listsRef.current.find((l) => l.id === listId);
     const item = list?.items.find((i) => i.id === itemId && i.type === type) as { _itemId?: number } | undefined;

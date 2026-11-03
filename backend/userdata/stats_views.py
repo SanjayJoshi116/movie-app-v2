@@ -29,6 +29,75 @@ def rating_bucket(rating: float) -> int:
     return min(10, max(1, int(Decimal(str(rating)).quantize(Decimal(1), rounding=ROUND_HALF_UP))))
 
 
+# Hot takes (rating-hot-takes): a user's ratings against TMDB's stored score.
+HOT_TAKES_MIN = 5
+HOT_TAKE_GAP = 1.5
+HOT_TAKES_LIMIT = 5
+
+
+def _known_tmdb_score(score) -> bool:
+    """A stored TMDB score that means something: 0 is "unknown", and anything
+    above 10 came from a bad import."""
+    return bool(score) and 0 < score <= 10
+
+
+def _hot_take_item(entry, user_rating: float, gap: float) -> dict:
+    # The title as stored: the page labels a blank one ("Untitled (#id)"), as
+    # it does for every other Stats list.
+    return {
+        "mediaId": entry.media_id,
+        "mediaType": entry.media_type,
+        "title": entry.title,
+        "posterPath": entry.poster_path,
+        "userRating": user_rating,
+        "tmdbRating": round_half_up(entry.vote_average),
+        "gap": gap,
+    }
+
+
+def rating_habits(watched_list, rating_map) -> dict:
+    """How the user's ratings compare with TMDB's, over titles they watched
+    and rated whose stored TMDB score is known (0 < score <= 10).
+
+    Always the same keys: below HOT_TAKES_MIN qualifying titles the figures
+    are None and the lists empty, `count` says how far off the minimum is, and
+    `unratedCount` (watched titles with no rating) whether rating more helps.
+    """
+    pairs = []
+    unrated = 0
+    for entry in watched_list:
+        user_rating = rating_map.get((entry.media_id, entry.media_type))
+        if user_rating is None:
+            unrated += 1
+            continue
+        if not _known_tmdb_score(entry.vote_average):
+            continue
+        # The gap the page shows: against TMDB's score at one decimal, so a
+        # listed title and the "1.5 or more" rule agree with what's on screen.
+        shown_gap = round_half_up(user_rating - round_half_up(entry.vote_average))
+        pairs.append((entry, user_rating, user_rating - entry.vote_average, shown_gap))
+
+    result = {
+        "count": len(pairs), "minCount": HOT_TAKES_MIN, "unratedCount": unrated,
+        "avgOffset": None, "contrarianScore": None, "guiltyPleasures": [], "notForYou": [],
+    }
+    if len(pairs) < HOT_TAKES_MIN:
+        return result
+
+    # Biggest shown gap either way first, then title, then id; each list keeps
+    # its side of that one order.
+    by_gap = sorted(pairs, key=lambda p: (-abs(p[3]), p[0].title.strip().casefold(), p[0].media_id))
+    above = [p for p in by_gap if p[3] >= HOT_TAKE_GAP]
+    below = [p for p in by_gap if p[3] <= -HOT_TAKE_GAP]
+    result.update(
+        avgOffset=round_half_up(sum(p[2] for p in pairs) / len(pairs)),
+        contrarianScore=round_half_up(sum(abs(p[2]) for p in pairs) / len(pairs)),
+        guiltyPleasures=[_hot_take_item(e, r, shown) for e, r, _, shown in above[:HOT_TAKES_LIMIT]],
+        notForYou=[_hot_take_item(e, r, shown) for e, r, _, shown in below[:HOT_TAKES_LIMIT]],
+    )
+    return result
+
+
 def _month_range(first: tuple[int, int], last: tuple[int, int]) -> list[tuple[int, int]]:
     year, month = first
     months = []
@@ -101,7 +170,7 @@ def stats(request):
     # 0 is what's stored for "no score" (unreleased titles, CSV rows without
     # one), so it would only drag the average down. Values over 10 predate the
     # input bounds (crafted imports); one huge one made round_half_up raise.
-    scored = [w.vote_average for w in watched_list if w.vote_average and 0 < w.vote_average <= 10]
+    scored = [w.vote_average for w in watched_list if _known_tmdb_score(w.vote_average)]
     avg_tmdb_rating = round_half_up(sum(scored) / len(scored)) if scored else None
 
     total_runtime_minutes = sum(w.runtime_minutes or 0 for w in watched_list)
@@ -226,4 +295,5 @@ def stats(request):
         "listsItemsCount": lists_items_count,
         "watchlistTotal": watchlist_total,
         "watchlistUnwatched": watchlist_unwatched,
+        "ratingHabits": rating_habits(watched_list, rating_map),
     })

@@ -806,6 +806,17 @@ body:not(.dark-theme) .sidebar-logo-compact.ant-typography {
   color: #7d5f00;
 }
 
+/* Gold accents on a page (Hot takes' contrarian score, the rate page's done
+   star): gold measures 1.5:1 on the light background, so light uses brass,
+   like the wordmark. */
+body.dark-theme .accent-figure {
+  color: #f5c518;
+}
+
+body:not(.dark-theme) .accent-figure {
+  color: #7d5f00;
+}
+
 /* A lit marquee on the account pages only, not a glowing logo on every page. */
 body.dark-theme .auth-stage .wordmark.ant-typography {
   text-shadow: 0 0 24px rgba(245, 197, 24, 0.35);
@@ -834,6 +845,58 @@ body:not(.dark-theme) .auth-screen.ant-card {
 
 .star-rating.ant-rate .ant-rate-star:not(:last-child) {
   margin-inline-end: clamp(3px, 1vw, 8px);
+}
+
+/* Stats' Hot takes (rating-hot-takes): a poster thumbnail and two lines. */
+.hot-take-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  color: inherit;
+}
+.hot-take-poster {
+  width: 40px;
+  flex-shrink: 0;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+/* Rate page (rating-queue): one title, ten score buttons on one row,
+   two rows of five on narrow phones. */
+.rate-queue-card {
+  max-width: 640px;
+}
+.rate-queue-title {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.rate-queue-poster {
+  width: 120px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+.rate-queue-scores {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 8px;
+}
+.rate-queue-scores .ant-btn {
+  min-height: 44px;
+  padding-inline: 0;
+}
+@media (max-width: 479px) {
+  .rate-queue-scores {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .rate-queue-poster {
+    width: 88px;
+  }
 }
 
 /* Reduced motion (accessibility spec): CSS transitions and animations,

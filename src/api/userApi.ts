@@ -549,7 +549,32 @@ export interface StatsData {
   listsItemsCount: number;
   watchlistTotal: number;
   watchlistUnwatched: number;
+  ratingHabits: RatingHabits;
 }
+
+/** One title in Hot takes: the user's rating against TMDB's stored score. */
+export interface RatingHabitItem {
+  mediaId: number;
+  mediaType: string;
+  title: string;
+  posterPath: string | null;
+  userRating: number;
+  tmdbRating: number;
+  /** userRating − tmdbRating, one decimal. */
+  gap: number;
+}
+
+/** Hot takes: below `minCount` qualifying titles the figures are null and the
+ *  lists empty, else the figures are set. */
+export type RatingHabits = {
+  count: number;
+  minCount: number;
+  /** Watched titles with no rating: whether rating more can fill Hot takes. */
+  unratedCount: number;
+} & (
+  | { avgOffset: null; contrarianScore: null; guiltyPleasures: []; notForYou: [] }
+  | { avgOffset: number; contrarianScore: number; guiltyPleasures: RatingHabitItem[]; notForYou: RatingHabitItem[] }
+);
 
 export const fetchStats = () => userApi.get<StatsData>("/stats/");
 

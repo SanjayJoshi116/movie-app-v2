@@ -186,6 +186,18 @@ MOCK_STATS = {
     "listsItemsCount": 9,
     "watchlistTotal": 6,
     "watchlistUnwatched": 3,
+    "ratingHabits": {
+        "count": 12,
+        "minCount": 5,
+        "unratedCount": 4,
+        "avgOffset": 0.4,
+        "contrarianScore": 1.1,
+        "guiltyPleasures": [
+            {"mediaId": 17473, "mediaType": "movie", "title": "The Room", "posterPath": None,
+             "userRating": 9, "tmdbRating": 4.5, "gap": 4.5},
+        ],
+        "notForYou": [],
+    },
 }
 
 MOCK_MOVIE_DETAIL = {

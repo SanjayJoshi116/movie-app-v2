@@ -135,3 +135,26 @@ describe("useRatings", () => {
     expect(result.current.ratings).toEqual({});
   });
 });
+
+// load-states (rating-queue): a page can tell "never loaded" apart from "the last reload failed".
+describe("useRatings hasLoaded", () => {
+  it("is false until the first load succeeds, and false after a failed first load", async () => {
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useRatings(), { wrapper });
+    expect(result.current.hasLoaded).toBe(false);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasLoaded).toBe(false);
+  });
+
+  it("stays true, with the ratings kept, when a later reload fails", async () => {
+    mockGet.mockResolvedValueOnce({ data: [{ id: 5, mediaId: 1, mediaType: "movie", title: "Kept", userRating: 8, review: "", ratedAt: "2024-01-01T00:00:00Z" }] });
+    const { result } = renderHook(() => useRatings(), { wrapper });
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+
+    mockGet.mockRejectedValueOnce(new Error("network"));
+    await act(async () => { await result.current.reload().catch(() => {}); });
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.hasLoaded).toBe(true);
+    expect(result.current.get(1, "movie")?.title).toBe("Kept");
+  });
+});

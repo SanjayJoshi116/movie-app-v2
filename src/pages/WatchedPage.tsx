@@ -16,6 +16,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import LibraryItemCard from "../components/LibraryItemCard";
 import SkeletonCard from "../components/SkeletonCard";
 import { LoadError } from "../components/LoadError";
+import { RateQueuePrompt } from "../components/RateQueuePrompt";
 import MediaGrid from "../components/MediaGrid";
 import { ConfirmIconButton } from "../components/ConfirmIconButton";
 import FilterBar from "../components/FilterBar";
@@ -163,6 +164,8 @@ function WatchedPage() {
           <Tag color="purple">{tvShows.length} TV show{tvShows.length !== 1 ? "s" : ""}</Tag>
         </Space>
       )}
+
+      <RateQueuePrompt minCount={1} variant="watched" />
 
       {watchedList.length > 0 && (
         <FilterBar

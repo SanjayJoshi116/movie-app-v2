@@ -3,6 +3,57 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.33.0] - 2026-11-03
+
+A second feature after the sweep: Hot takes on Stats (`ideas.md` item 3), plus `/simplify` and a code review over 0.32.0 and 0.33.0 together (backlog item 64), fixed directly. No migration or dependency change; one additive API field.
+
+### Added
+- **Hot takes on Stats** (`rating-hot-takes`, `ideas.md` item 3; archived, specs synced into `watch-stats`). From titles you watched and rated whose TMDB score is known (at least 5): your average offset from TMDB ("You rate 1.4 above TMDB on average", or in line within ±0.2), a contrarian score (average distance), and up to 5 guilty pleasures and 5 not-for-you titles with a gap of 1.5 or more, each linking to its page. Fewer than 5 says how many more ratings it needs and links to rating your watched titles. No migration, no TMDB call.
+
+### Fixed (code review of 0.32.0 + 0.33.0, backlog item 64)
+- **Rate page:** a held number key rated one title after another (repeats now ignored); keys pressed in a dialog, popover, menu or drawer over the page acted on the queue behind it; Undo removed whatever was last on its stack when it finished (so a save landing meanwhile lost its undo) and stepped back in the order saves finished, not the order you tapped.
+- **Hot takes:** "Rate N more" linked to an empty rate page when every watched title was rated but some lacked a TMDB score (it now says so, with no link); the 1.5 cutoff used the exact TMDB score while the row showed it rounded (now the shown gap); the contrarian score was gold on the light theme, 1.6:1 (now brass there, like the wordmark; the rate page's done star too).
+- `toWatchedEntry` is checked with `satisfies Required<WatchedEntry>`, so a left-out field is a type error; `useLists` keys its writes with `titleKey()`, and the import's own lookup key is renamed `lookupKey`; the page builds its queue through the tested `buildRatingQueue`.
+
+### API
+- `GET /api/stats/` adds `ratingHabits` (additive): `{count, minCount, unratedCount, avgOffset, contrarianScore, guiltyPleasures[], notForYou[]}`, the figures `null` and the lists empty below the minimum.
+
+### Internal
+- `/simplify` over 0.32.0 + 0.33.0 (4 agents, one diff):
+  - `titleKey()` (`src/utils/titleKey.ts`) replaces three private key helpers in the library hooks.
+  - The rate page sorts the history once per change to it (each time parsed once), not on every save, and counts rated titles from its undo stack.
+  - `useWatched` maps rows through one `toWatchedEntry()`.
+  - `RatingHabits` is a union of its two states; Stats renders Hot takes without a dead guard.
+  - `rating_habits` shares the TMDB-score check with the TMDB average, sorts once, and sends titles as stored (the page labels blank ones, as for other Stats lists).
+- Skipped: one shared `matchMedia` test stub (about 15 files outside the diff).
+
+### Tests
+- Backend `test_stats_hot_takes.py` (9); `MOCK_STATS` gains `ratingHabits` (mock shape test passes). Jest `HotTakes.test.tsx` (7), 727 pass (92 suites) after the review fixes. TS e2e `stats.spec.ts` + `theme-readability.spec.ts` 58 pass + 2 skip (readability now measures Hot takes text); Python `test_stats.py` 22 pass.
+
+### Docs
+- README (features, tree, tests), `CLAUDE.md` (`titleKey()`, `.accent-figure`), `features.txt`, `ideas.md`, BUG_BACKLOG item 64; `rating-queue` and `watch-stats` specs updated for the review fixes.
+
+## [0.32.0] - 2026-11-03
+
+A new feature after the review sweep: rating watched titles in one sitting (`ideas.md` item 2). No migration, API or dependency change.
+
+### Added
+- **Rate your watched titles** (`/watched/rate`, `rating-queue`, `ideas.md` item 2; archived, specs synced into a new `rating-queue` spec and `routing`). Every watched title without a rating, newest watched first, one at a time: ten 1–10 buttons (keys `1`–`9`, `0` for 10), Skip (to the end, this visit only) and Undo (removes the last rating made there). A tap saves through the normal rating write (TMDB sync, rating lock, recommendation refresh) and shows the next title at once; a failed save shows the error and puts the title back first, and only saved ratings are counted. Watched shows "N watched titles aren't rated · Rate them", and Recommendations suggests it from 3 unrated titles. Frontend only: no API, migration or dependency change.
+
+### Fixed
+- **A watched title's release year and language reach the app after a reload** (backlog item 63). The watched history load dropped `releaseYear` and `originalLanguage`, which only a fresh Mark as Watched filled in (found while building the rate page, which shows the year).
+
+### Internal
+- `useRatings` exposes `hasLoaded`, like `useWatched` and `useWatchlist`.
+- `src/utils/ratingQueue.ts` (`buildRatingQueue`, `countUnrated`) decides "watched and unrated" for the page and its prompts.
+- `navSection` treats `/watched` as a section with sub-pages.
+
+### Docs
+- README (features, tree, tests), `CLAUDE.md` (`useRatings.hasLoaded`, `ratingQueue` rule), `features.txt`, `ideas.md`, BUG_BACKLOG item 63.
+
+### Tests
+- Jest: queue util, `useRatings.hasLoaded`, rate page (11), prompt (5), nav section, watched load mapping; 716 pass (91 suites). TS e2e `rating-queue.spec.ts` (both projects) plus touched specs 59 pass + 5 skip; Python e2e watched/recommendations/ratings/a11y routing 40 pass.
+
 ## [0.31.13] - 2026-11-03
 
 Fixes from the thirteenth and last module of the review sweep (F5, shell & theme: `fix-shell-sweep-f5`, backlog item 62; archived, specs synced into `routing`, `theme-readability`, `load-states`, `browse-filters` and `title-details`), plus the `/simplify` pass and the step 7 code review over 0.31.11 to 0.31.13 together, fixed directly. `/security-review` of the module: no findings. No migration, API or dependency change. The module sweep is complete.

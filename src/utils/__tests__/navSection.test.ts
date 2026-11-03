@@ -9,6 +9,7 @@ describe("navSection", () => {
 
   it("maps a sub-page to its section", () => {
     expect(navSection("/lists/3", PATHS)).toBe("/lists");
+    expect(navSection("/watched/rate", PATHS)).toBe("/watched");
   });
 
   it("leaves detail pages under no entry", () => {
@@ -19,5 +20,6 @@ describe("navSection", () => {
 
   it("never matches a longer sibling path", () => {
     expect(navSection("/listsx", PATHS)).toBeNull();
+    expect(navSection("/watchedx", PATHS)).toBeNull();
   });
 });

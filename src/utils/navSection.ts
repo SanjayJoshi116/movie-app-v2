@@ -1,6 +1,7 @@
-/** Entries whose own sub-pages belong to them (`/lists/3` is a list). Not
- *  `/tv`: `/tv/1396` is a TV detail page, like `/movie/550`, under no entry. */
-const SECTIONS_WITH_SUBPAGES = ["/lists"];
+/** Entries whose own sub-pages belong to them (`/lists/3` is a list,
+ *  `/watched/rate` rates watched titles). Not `/tv`: `/tv/1396` is a TV detail
+ *  page, like `/movie/550`, under no entry. */
+const SECTIONS_WITH_SUBPAGES = ["/lists", "/watched"];
 
 /**
  * Which navigation entry a page belongs to: the entry whose path equals the

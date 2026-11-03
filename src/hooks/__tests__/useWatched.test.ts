@@ -259,3 +259,13 @@ describe("overlapping reloads (fix-hooks-sweep-f2)", () => {
     expect(result.current.isLoading).toBe(false);
   });
 });
+
+// rating-queue: the load keeps the metadata fields the DTO carries.
+describe("useWatched load mapping", () => {
+  it("keeps release year and original language", async () => {
+    mockGet.mockResolvedValueOnce({ data: [{ id: 5, mediaId: 1, mediaType: "movie", title: "Dune", posterPath: null, voteAverage: 7, watchedAt: "2024-01-01T00:00:00Z", watchedTz: "", runtimeMinutes: null, platform: null, originalLanguage: "en", releaseYear: 2021 }] });
+    const { result } = renderHook(() => useWatched(), { wrapper });
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    expect(result.current.watchedList[0]).toMatchObject({ releaseYear: 2021, originalLanguage: "en" });
+  });
+});

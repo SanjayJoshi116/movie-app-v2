@@ -21,6 +21,7 @@ function stats(overrides: Partial<StatsData> = {}): StatsData {
     topRatedItems: [], recentItems: [], totalRuntimeMinutes: 0, platformBreakdown: [],
     ratingByGenre: [{ genre: "Drama", avgRating: 7.3 }],
     reviewsWritten: 0, listsCount: 0, listsItemsCount: 0, watchlistTotal: 0, watchlistUnwatched: 0,
+    ratingHabits: { count: 3, minCount: 5, unratedCount: 2, avgOffset: null, contrarianScore: null, guiltyPleasures: [], notForYou: [] },
     ...overrides,
   };
 }
@@ -83,4 +84,27 @@ test("a month with no watches is plotted, not skipped", async ({ page }) => {
   await openStats(page, stats());
   const chart = card(page, "Watch Activity by Month");
   await expect(chart.locator(".recharts-cartesian-axis-tick-value").filter({ hasText: "Feb 2026" })).toBeVisible();
+});
+
+// watch-stats (rating-hot-takes): Hot takes from the stats response.
+test("Hot takes show the habit, contrarian score and linked titles", async ({ page }) => {
+  await openStats(page, stats({
+    ratingHabits: {
+      count: 7, minCount: 5, unratedCount: 2, avgOffset: -0.6, contrarianScore: 1.9,
+      guiltyPleasures: [{ mediaId: 550, mediaType: "movie", title: "Fight Club", posterPath: null, userRating: 10, tmdbRating: 8.4, gap: 1.6 }],
+      notForYou: [{ mediaId: 1396, mediaType: "tv", title: "Breaking Bad", posterPath: null, userRating: 6, tmdbRating: 8.9, gap: -2.9 }],
+    },
+  }));
+  const hot = card(page, "Hot Takes");
+  await expect(hot.getByText("You rate 0.6 below TMDB on average.")).toBeVisible();
+  await expect(hot.getByText("1.9", { exact: true })).toBeVisible();
+  await expect(hot.getByRole("link", { name: "Fight Club: You 10 · TMDB 8.4" })).toHaveAttribute("href", "/movie/550");
+  await expect(hot.getByRole("link", { name: "Breaking Bad: You 6 · TMDB 8.9" })).toHaveAttribute("href", "/tv/1396");
+});
+
+test("Hot takes below the minimum point to the rate page", async ({ page }) => {
+  await openStats(page, stats());
+  const hot = card(page, "Hot Takes");
+  await expect(hot.getByText(/Rate 2 more watched titles/)).toBeVisible();
+  await expect(hot.getByRole("link", { name: "Rate your watched titles" })).toHaveAttribute("href", "/watched/rate");
 });

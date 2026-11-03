@@ -8,6 +8,7 @@ import { useWatchlistContext } from "../context/WatchlistContext";
 import { useWatchedContext } from "../context/WatchedContext";
 import { useToast } from "../hooks/useToast";
 import { getApiError } from "../utils/apiError";
+import { RateQueuePrompt } from "../components/RateQueuePrompt";
 import {
   fetchForYouRecommendations,
   fetchPersonalizedRecommendations,
@@ -396,6 +397,8 @@ function RecommendationsPage() {
       <Typography.Text type="secondary" style={{ display: "block", marginBottom: 24 }}>
         Recommendations based on {watchedList.length} watched title{watchedList.length !== 1 ? "s" : ""}
       </Typography.Text>
+
+      <RateQueuePrompt minCount={3} variant="recommendations" />
 
       {totalItems > 0 && (
         <FilterBar

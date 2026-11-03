@@ -16,6 +16,7 @@ import {
   BookOutlined,
 } from "@ant-design/icons";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { HotTakes } from "../components/HotTakes";
 import { FONT_SIZE } from "../constants/typography";
 import {
   BarChart,
@@ -628,6 +629,12 @@ function StatsPage() {
             ) : (
               <Empty description="Rate 3+ titles in the same genre to see this chart." style={{ padding: "24px 0" }} />
             )}
+          </Card>
+        </Col>
+
+        <Col xs={24}>
+          <Card className="glass-card" title={<>Hot Takes<InfoTooltip title="Your ratings next to TMDB's community score, for titles you watched and rated." /></>}>
+            <HotTakes habits={data.ratingHabits} />
           </Card>
         </Col>
 

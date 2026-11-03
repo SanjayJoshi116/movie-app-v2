@@ -27,6 +27,8 @@ jest.mock("../../components/MarkWatchedModal", () => ({
     open ? <button onClick={() => { onConfirm({ runtimeMinutes: 120 }).catch(() => {}); }}>Confirm watched</button> : null,
 }));
 jest.mock("../../hooks/useActionIconColor", () => ({ useActionIconColor: () => "black" }));
+// The rate prompt has its own tests (RateQueuePrompt.test.tsx).
+jest.mock("../../components/RateQueuePrompt", () => ({ RateQueuePrompt: () => null }));
 jest.mock("../../hooks/useToast", () => {
   const toast = { showSuccess: jest.fn(), showError: jest.fn() };
   return { useToast: () => toast };

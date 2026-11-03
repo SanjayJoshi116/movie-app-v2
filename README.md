@@ -105,12 +105,12 @@ Phone widths (`<768px`) swap the sidebar for a bottom tab bar (`BottomNav`).
 - **Watchlist & Watched** — Save and track movies/TV shows; tied to your account. Both paginate (12–96 per page, page and size in the URL), and removing the last items on the last page moves back a page instead of leaving it blank
 - **Watchlist & Watched Filters** — Watchlist filters by media type (Movie/TV) and watched status; Watched filters by media type. Both persist search/sort/filter state in `sessionStorage` across navigation and offer a one-click "Clear filters" reset once any filter is active
 - **Search, Sort & Export** — Both Watchlist and Watched pages support title search, multiple sort options (newest, title, rating), and one-click CSV export. Every exported CSV is spreadsheet-safe: a cell starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` so Excel/Sheets show it as text, and the app's own importers remove it again, so backups round-trip exactly
-- **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB
+- **Ratings & Reviews** — Rate anything 1–10 and write personal notes; remove a rating from the same dialog. A failed save keeps the dialog open with what you typed, and the dialog can't be closed while a save is in flight. Editing only the review doesn't re-send the score to TMDB. **Rate your watched titles** (`/watched/rate`, linked from Watched and Recommendations when titles are unrated) goes through every watched title without a rating, newest first, one tap (or key) per score; skip, undo, and a failed save puts the title back
 - **User Lists** — Create, rename, and delete named lists; add or remove any movie or show; create and edit dialogs submit once even on a double-click; list cards open from the keyboard; each list has its own page (`/lists/:id`) with a search/sort/type-filter bar for its items, scoped CSV import, and export as CSV. The lists grid itself has a search/sort bar and each card shows a poster "theme image" (its first item's poster)
 - **Library Limits** — Up to 20,000 watched titles, 20,000 watchlist titles, 20,000 ratings, 200 lists, 2,000 titles per list, 1,000 followed people and 20,000 shows with episode progress. Adding past a limit says so; an import fills up to it and reports the rest; anything stored before the limits stays. A title imported without a name shows as "Untitled (#id)"
 - **CSV Import** — Bulk-import a watched history from any CSV with a TMDB ID column (optional `type`/`media_type` column); the Watched page's own export (watched time and zone, runtime, platform, poster) imports back without losing any of them, and makes no TMDB lookups for rows that already carry a poster and a score; an oversized poster value is dropped for that row only; a title over 500 characters is shortened without splitting an emoji, and length limits count characters as the server does; a file that can't be read says so; watched list refreshes immediately after import
 - **Full Backup & Restore** — "Export All Data (ZIP)" in the profile modal writes watchlist, watched (with runtime/platform), ratings with reviews, every list (names, descriptions, empty lists), followed people and episode progress, plus a `manifest.json` (format v3). Importing it restores original timestamps, skips anything you already have, and reports added/skipped/failed per section, plus rows without a TMDB id and rows not added because a collection is full (a list it couldn't create counts as failed, even an empty one). Lists that share a name stay separate. Older v1/v2 backups still import. A bad value in one backup row (poster, runtime, platform, zone, rating, time, oversized review) is dropped for that row only instead of failing its batch. Poster lookups during any import are paced under the TMDB proxy's rate limit, made once per title, skipped for rows the file already covers, and shown with progress; the result says how many titles ended up without a poster
-- **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure")
+- **Stats Dashboard** — Visual overview of your watch history at `/stats`: total counts, movie vs TV split (pie chart), personal rating distribution (bar chart), monthly activity + activity heatmap (side by side), top genres, rating-by-genre, language, and decade breakdowns (bar charts), platform breakdown (bar chart, from what you picked when marking things watched), hours watched, reviews written, lists count, and watchlist backlog size. Genre charts merge TMDB's movie and TV genres into one family (Action and Adventure count with TV's "Action & Adventure"). **Hot takes** compares your ratings with TMDB's score (from 5 watched and rated titles): your average offset ("you rate 1.4 above TMDB"), a contrarian score, and your biggest guilty pleasures and not-for-you titles
 - **Recommendations** — Personalized suggestions based on your watch history, plus "Because you watched X" sections and recommendations from people you follow (`/recommendations`); search and media-type filter narrow the sections, and each card has inline mark-watched / add-to-watchlist icons so you don't have to open the detail page first. Results are pre-computed at backend startup and served instantly from DB cache. On a cold cache (first-ever request, large watch history) the page polls the API every few seconds and shows a "crunching your watch history" state until results land. The "updating" state is right whichever server process answers, and a refresh during a TMDB outage keeps your previous recommendations instead of emptying them. Genres are matched per media type (a movie genre is never sent to TV discover), a rating change refreshes recommendations, titles you rated 4 or below never seed "Because you watched", and a group still computing after polling shows Retry
 - **Release Calendar** — The most popular releases of the next 7 days (every day of the window, not only the first), grouped by date under sticky headers, title search, "Jump to Today", one-click iCal export of what's shown (`.ics`, standards-compliant: `DTSTAMP`, escaped titles, folded long lines) for Google Calendar / Apple Calendar (`/calendar`); a failed load shows an error with Retry, and changing the filter mid-request never shows the old results
 
@@ -289,6 +289,8 @@ src/
 │   │                            #   and Person pages; optional section title and per-item subtitle, limit=20 default
 │   ├── ReviewsSection.tsx       # 2-column review cards, shared by Movie/TV detail pages
 │   ├── ConfirmIconButton.tsx    # Icon button + Popconfirm; its Tooltip hides while the confirm is open
+│   ├── RateQueuePrompt.tsx      # "N watched titles aren't rated · Rate them" (Watched, Recommendations)
+│   ├── HotTakes.tsx             # Stats' Hot takes: rating habit, contrarian score, guilty pleasures / not for you
 │   ├── ImportProgress.tsx       # "Looking up posters: n / total" status line for imports
 │   ├── LibraryItemCard.tsx      # Poster + Card.Meta + icon-action card, shared by Watchlist/Watched/List-detail pages
 │   │                            #   (poster is a CardLink to the `to` path; action buttons stay outside it)
@@ -356,6 +358,7 @@ src/
 │   ├── PeoplePage.tsx           # /people — popular people browse with infinite scroll + own search box
 │   ├── WatchlistPage.tsx        # /watchlist — search, sort, type/watched filters, export CSV (protected)
 │   ├── WatchedPage.tsx          # /watched — search, sort, type filter, export CSV (protected)
+│   ├── RateQueuePage.tsx        # /watched/rate — rate unrated watched titles one tap at a time (protected)
 │   ├── ListsPage.tsx            # /lists — create/delete lists, search/sort, poster theme image per card (protected)
 │   ├── ListDetailPage.tsx       # /lists/:id — rename, item search/sort/type filter, scoped CSV import,
 │   │                            #   export CSV, clear, delete (protected)
@@ -411,6 +414,8 @@ src/
 │   ├── spoilerShield.ts         # isEpisodeHidden(): which episodes the Episode Guide hides
 │   ├── personCredits.ts         # Person credits newest first; mergeCrew() = one card per title, jobs joined
 │   ├── listImport.ts            # orderForImport(): undated rows reversed so a list keeps file order
+│   ├── ratingQueue.ts           # buildRatingQueue()/countUnrated(): watched titles without a rating, newest first
+│   ├── titleKey.ts              # titleKey(id, type): "movie-550"-style key, shared by the library hooks and pages
 │   └── passwordStrength.ts      # getPasswordStrength() — dependency-free heuristic (length/case/digit/symbol),
 │                                #   used by PasswordStrengthMeter.tsx
 ├── constants/
@@ -746,6 +751,7 @@ src/utils/__tests__/
 ├── spoilerShield.test.ts         # Episodes after the tracked one hidden; specials and no progress never
 ├── watchRuntime.test.ts          # Runtime prefill for movies and whole TV series
 ├── importTemplates.test.ts       # Import templates list only the columns the import reads
+├── ratingQueue.test.ts           # Unrated watched titles, newest first; movie/TV ids apart; unknown year
 └── documentTheme.test.ts         # Body class, color-scheme and theme-color follow the theme
 
 src/components/__tests__/
@@ -754,6 +760,9 @@ src/components/__tests__/
 ├── EpisodeGuide.test.tsx         # Spoiler shield: hidden content absent, reveal, switch, waits for progress (first season prefetched), Retry keeps the list, opens on tracked season
 ├── CardLink.test.tsx             # Real href, onNavigate on plain click, modifier clicks left to the browser
 ├── detailActions.test.tsx        # Detail pages' watchlist button calls explicit add/remove
+├── RateQueuePrompt.test.tsx      # Unrated count and link, singular, hidden when all rated or not loaded
+├── HotTakes.test.tsx             # Habit wording and ±0.2 band, score, linked rows, empty lists, below-minimum prompt
+│                                 #   (rate-page link only while titles are unrated)
 ├── resultsLandmark.test.tsx      # Movies/TV grids are a labelled section, not a second <main>
 ├── CSVUploadModalLookups.test.tsx# Rows with a poster and a score skip the TMDB lookup; the file's values win
 ├── LoadMoreError.test.tsx        # Inline load-more failure + Retry
@@ -792,6 +801,8 @@ src/pages/__tests__/
 ├── detailTitles.test.tsx         # Movie/TV/person tab titles: not found, failed, empty body, invalid id, nameless record
 ├── ListsPage.test.tsx            # Delete confirm never opens the list; grid kept during a reload
 ├── RecommendationsPage.test.tsx  # Partial group failure → inline Retry; failed watched load → error
+├── RateQueuePage.test.tsx        # Queue order, tap saves and moves on, failed save back first, skip, undo (tap order, a save
+│                                 #   during an undo kept), keys (held key once, ignored in fields and dialogs), load states
 ├── PersonPage.test.tsx           # Failed credits → error with Retry (credits only), partial tabs kept
 ├── PeoplePage.test.tsx           # A search with no matches says so
 ├── authPageErrors.test.tsx       # Register/forgot/reset errors only through getApiError
@@ -846,6 +857,8 @@ backend/userdata/tests/
 │                                   #   response cache (TTL tiers, credential bypass, errors never cached, order-free key),
 │                                   #   plain-path allowlist, 401/403 → 502, 429 Retry-After, own pool
 ├── test_pagination.py              # Library lists accept page_size up to 500
+├── test_stats_hot_takes.py         # Hot takes: minimum, unrated count, offset/contrarian rounding, 1.5 shown gap, limit,
+│                                   #   ties, skipped titles
 ├── test_stats_genres.py            # Stats' cold genre lookup time-boxed under gunicorn's timeout; stale names
 │                                   #   served while another thread refreshes
 ├── test_stats_math.py              # Half-up rounding and buckets, gap-free monthly activity, unscored titles
@@ -938,8 +951,9 @@ e2e/
 ├── watchlist.spec.ts      # Empty state, add/remove, export CSV, watched list (incl. a two-page history)
 ├── detail-and-nav.spec.ts # No stray 0, Where to Watch, grid posters as links, Back targets, crew tab,
 │                           #   Mark as Watched runtime, Add to List states, region change in Edit Profile
-├── stats.spec.ts          # Genre tooltip label, keyboard heatmap, empty genres, gap months plotted
+├── stats.spec.ts          # Genre tooltip label, keyboard heatmap, empty genres, gap months plotted, hot takes
 ├── notifications.spec.ts  # Both bells share one poll; unread shown until close marks seen
+├── rating-queue.spec.ts   # Rate page from Watched's prompt: tap, key, skip, undo, done; failed save; nav highlight
 ├── write-feedback.spec.ts # Failed clear/follow/rating save leave the UI as it was; unfollow
 │                           #   from Following
 ├── accessibility.spec.ts  # Ctrl/Cmd-click opens a new tab; light-theme focus outline

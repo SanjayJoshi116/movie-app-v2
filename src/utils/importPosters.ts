@@ -24,7 +24,8 @@ export interface ImportPoster {
   voteAverage?: number;
 }
 
-const titleKey = (row: ImportRow) => `${row.type}:${row.mediaId}`;
+/** One lookup per title (type + id) in this import. */
+const lookupKey = (row: ImportRow) => `${row.type}:${row.mediaId}`;
 
 /**
  * Poster and score for each imported row. Only rows whose file lacks a
@@ -41,8 +42,8 @@ export async function lookupImportPosters(
 ): Promise<{ found: ImportPoster[]; missing: number }> {
   const toLookUp = new Map<string, ImportRow>();
   for (const row of rows) {
-    if ((!row.posterPath || row.voteAverage === undefined) && !toLookUp.has(titleKey(row))) {
-      toLookUp.set(titleKey(row), row);
+    if ((!row.posterPath || row.voteAverage === undefined) && !toLookUp.has(lookupKey(row))) {
+      toLookUp.set(lookupKey(row), row);
     }
   }
   const looked = new Map<string, PosterInfo | undefined>();
@@ -59,13 +60,13 @@ export async function lookupImportPosters(
     keys.forEach((key, j) => { looked.set(key, results[j]); });
   }
   const found = rows.map((row) => {
-    const lookup = looked.get(titleKey(row));
+    const lookup = looked.get(lookupKey(row));
     return {
       posterPath: row.posterPath || lookup?.posterPath || null,
       voteAverage: row.voteAverage ?? lookup?.voteAverage,
     };
   });
-  const missing = new Set(rows.filter((_, i) => !found[i]!.posterPath).map(titleKey)).size;
+  const missing = new Set(rows.filter((_, i) => !found[i]!.posterPath).map(lookupKey)).size;
   return { found, missing };
 }
 

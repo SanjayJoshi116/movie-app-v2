@@ -5,8 +5,27 @@ import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import { guardedReload } from "../utils/guardedReload";
 import type { WatchedEntry, WatchedEntryDTO, WatchedInput } from "../types";
+import { titleKey } from "../utils/titleKey";
 
-function mkKey(id: number, type: string) { return `${type}-${id}`; }
+/** The app's entry for one API row. `satisfies Required<WatchedEntry>`
+ *  makes leaving out any WatchedEntry field a type error: one was dropped
+ *  silently before (backlog item 63). */
+function toWatchedEntry(item: WatchedEntryDTO): WatchedEntry {
+  return {
+    id: item.mediaId,
+    type: item.mediaType,
+    title: item.title,
+    posterPath: item.posterPath,
+    voteAverage: item.voteAverage,
+    watchedAt: item.watchedAt,
+    watchedTz: item.watchedTz ?? "",
+    runtimeMinutes: item.runtimeMinutes ?? null,
+    platform: item.platform ?? null,
+    originalLanguage: item.originalLanguage,
+    releaseYear: item.releaseYear,
+  } satisfies Required<WatchedEntry>;
+}
+
 
 export function useWatched() {
   const { isAuthenticated } = useAuth();
@@ -49,19 +68,9 @@ export function useWatched() {
         (data) => {
           if (!isCurrentSession(gen)) return;
           const map: Record<string, number> = {};
-          const entries: WatchedEntry[] = data.map((item) => {
-            map[mkKey(item.mediaId, item.mediaType)] = item.id;
-            return {
-              id: item.mediaId,
-              type: item.mediaType,
-              title: item.title,
-              posterPath: item.posterPath,
-              voteAverage: item.voteAverage,
-              watchedAt: item.watchedAt,
-              watchedTz: item.watchedTz ?? "",
-              runtimeMinutes: item.runtimeMinutes,
-              platform: item.platform,
-            };
+          const entries = data.map((item) => {
+            map[titleKey(item.mediaId, item.mediaType)] = item.id;
+            return toWatchedEntry(item);
           });
           dbIdMap.current = map;
           setWatchedList(entries);
@@ -111,7 +120,7 @@ export function useWatched() {
       releaseYear: entry.releaseYear,
     });
     if (!isCurrentSession(gen)) return;
-    dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
+    dbIdMap.current[titleKey(entry.id, entry.type)] = data.id;
     setWatchedList((prev) => {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
       // Newest first, matching the API order (-watched_at) — Home's Recently
@@ -122,12 +131,12 @@ export function useWatched() {
 
   const removeRaw = useCallback(async (id: number, type: string) => {
     if (!isAuthenticated) return;
-    const dbId = dbIdMap.current[mkKey(id, type)];
+    const dbId = dbIdMap.current[titleKey(id, type)];
     if (dbId == null) return;
     const gen = currentSessionGeneration();
     await userApi.delete(`/watched/${dbId}/`);
     if (!isCurrentSession(gen)) return;
-    delete dbIdMap.current[mkKey(id, type)];
+    delete dbIdMap.current[titleKey(id, type)];
     setWatchedList((prev) => prev.filter((i) => !(i.id === id && i.type === type)));
   }, [isAuthenticated, setWatchedList]);
 
@@ -139,15 +148,15 @@ export function useWatched() {
   // with the first request, and a different action (unmark while the mark is
   // pending) runs after it with its own outcome.
   const add = useCallback((entry: WatchedInput) =>
-    inflight.current.run(mkKey(entry.id, entry.type), () => addRaw(entry), "add"),
+    inflight.current.run(titleKey(entry.id, entry.type), () => addRaw(entry), "add"),
   [addRaw]);
 
   const remove = useCallback((id: number, type: string) =>
-    inflight.current.run(mkKey(id, type), () => removeRaw(id, type), "remove"),
+    inflight.current.run(titleKey(id, type), () => removeRaw(id, type), "remove"),
   [removeRaw]);
 
   const toggle = useCallback((entry: WatchedInput) =>
-    inflight.current.run(mkKey(entry.id, entry.type), () =>
+    inflight.current.run(titleKey(entry.id, entry.type), () =>
       watchedRef.current.some((i) => i.id === entry.id && i.type === entry.type)
         ? removeRaw(entry.id, entry.type)
         : addRaw(entry), "toggle"),

@@ -17,6 +17,7 @@ Priority weighs value against effort and fit with the current architecture, and 
 - Movies and TV share one poster card, `MediaCard.tsx` (0.31.0), so a card change lands once (browse grids, Anime, Search).
 - A user's TMDB `session_id` is encrypted at rest (0.31.0, `EncryptedSessionField`); read it through the model, never filter on it.
 - No service worker, no scheduler in the Docker stack, no LLM, no live deployment yet.
+- The module review sweep is done (0.31.1–0.31.13): every backend, frontend and deploy module was reviewed and its high and medium findings fixed.
 
 ---
 
@@ -27,6 +28,11 @@ Added 2026-10-30, ahead of every feature below. Run `/code-review high <paths>` 
 Step-by-step workflow (review → security → verify → propose → apply → simplify → review → archive): BUG_BACKLOG "Module sweep". Per module: paste BUG_BACKLOG's "Verified fine (don't re-audit)" entries into the prompt; log the findings as one backlog item per module (50, 51, …), marked unverified; verify each against the code before proposing; fix high and medium only. `/security-review` is built for pending changes, so either run it on a clean tree (a whole-tree pass, like 2026-10-26) or name the module's paths in its argument and check the report covers them.
 
 Order: B1 → F1 → B3 → B2 → I1 → B7 → B4 → F2 → F3 → B6 → B5 → F4 → F5 (highest risk first; B6 late, reviewed 2026-10-28).
+
+Left over after the sweep (none is a known open bug; BUG_BACKLOG "Open: none"):
+- **B4 step 7 review** (optional). Social & notifications never got its own post-fix `/code-review`: it was started and stopped, and F2's review only covered part of it.
+- **Deploy checks.** I1's Docker parts and gunicorn `gthread` were only checked statically. CI's `docker` job and the first real deploy confirm them (resolver after a backend recreate, healthcheck, background startup steps).
+- **One TMDB fetch per watched title per refresh** (M, BUG_BACKLOG "Deferred"). `_fill_media_cache` and `backfill_entries` each fetch the title and take a budget unit; one appended details call could fill both stores.
 
 | # | Module | Paths | Lines | Security |
 |---|---|---|---|---|
@@ -44,7 +50,7 @@ Order: B1 → F1 → B3 → B2 → I1 → B7 → B4 → F2 → F3 → B6 → B5 
 | F5 ✅ | Shell & theme | `src/App.tsx src/index.tsx src/*.css src/constants src/theme src/types` | ~1,900 | low |
 | I1 ✅ | Deploy & CI | `nginx.conf Dockerfile.frontend backend/Dockerfile docker-compose.yml .github/workflows scripts` | ~550 | **high** |
 
-Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4), I1 (item 54, `fix-deploy-sweep-i1`, 0.31.5), B7 (item 55, `fix-config-sweep-b7`, 0.31.6), B4 (item 56, `fix-social-sweep-b4`, 0.31.7), F2 (item 57, `fix-hooks-sweep-f2`, 0.31.8), F3 (item 58, `fix-pages-sweep-f3`, 0.31.9), B6 (item 59, `fix-data-sweep-b6`, 0.31.10), B5 (item 60, `fix-recs-sweep-b5`, 0.31.11), F4 (item 61, `fix-components-sweep-f4`, 0.31.12), F5 (item 62, `fix-shell-sweep-f5`, 0.31.13). The sweep is complete (all 13 modules). Next feature: item 2, rating queue.
+Line counts exclude tests (2026-10-30). Done: B1 (item 50, `fix-auth-sweep-b1`, 0.31.1), B2 (item 51, `fix-tmdb-sweep-b2`, 0.31.2), F1 (item 52, `fix-session-sweep-f1`, 0.31.3), B3 (item 53, `fix-library-sweep-b3`, 0.31.4), I1 (item 54, `fix-deploy-sweep-i1`, 0.31.5), B7 (item 55, `fix-config-sweep-b7`, 0.31.6), B4 (item 56, `fix-social-sweep-b4`, 0.31.7), F2 (item 57, `fix-hooks-sweep-f2`, 0.31.8), F3 (item 58, `fix-pages-sweep-f3`, 0.31.9), B6 (item 59, `fix-data-sweep-b6`, 0.31.10), B5 (item 60, `fix-recs-sweep-b5`, 0.31.11), F4 (item 61, `fix-components-sweep-f4`, 0.31.12), F5 (item 62, `fix-shell-sweep-f5`, 0.31.13). The sweep is complete (all 13 modules). Item 2, rating queue, followed in 0.32.0 and item 3, hot takes, in 0.33.0 (both reviewed and fixed before release, BUG_BACKLOG item 64).
 
 ## Tier 1: quick wins
 
@@ -54,8 +60,8 @@ Small, self-contained, and they fit the existing patterns.
    - **Follow-ups (S, from the 0.30.0 review, BUG_BACKLOG item 47).** Both change the `spoiler-shield` spec, so each needs its own change:
      - Hide the score on a hidden row. A standout rating (9.9 among 8.x) can mark the big episode. Runtime and air date are weaker hints; keep them.
      - Shield specials. A post-finale special's title and overview can spoil the ending, but specials have no place in the progress order. Options: hide all specials while the shield is on, or hide those that aired after the tracked episode.
-2. **Rating queue** (S). "11 watched, unrated": batch quick-rate with a 1–10 tap. Rated titles weigh more in recommendations.
-3. **Hot takes and rating habits** (S). Biggest gaps between your rating and `vote_average` (stored on `WatchedEntry`): contrarian score, "guilty pleasures" (you 9, TMDB 5.2), and "you rate 1.4 above TMDB on average".
+2. **Rating queue** (S). *Done 2026-11-03 (`rating-queue`, archived, `/watched/rate`).* "11 watched, unrated": batch quick-rate with a 1–10 tap. Rated titles weigh more in recommendations.
+3. **Hot takes and rating habits** (S). *Done 2026-11-03 (`rating-hot-takes`, archived, on Stats).* Biggest gaps between your rating and `vote_average` (stored on `WatchedEntry`): contrarian score, "guilty pleasures" (you 9, TMDB 5.2), and "you rate 1.4 above TMDB on average".
 4. **On this day** (S). "One year ago today you watched Dune, rated 9." Home strip; day from `entry_day`, so zone-correct.
 5. **Paste a link** (S). An IMDb / Letterboxd / JustWatch URL pasted into search resolves through TMDB `/find/{imdb_id}?external_source=imdb_id` and opens the detail page.
 6. **Watchlist provenance and notes** (S). Record where an add came from (rec section, person page, search) plus an optional one-line note. Answers "why is this on my list?" two years later.

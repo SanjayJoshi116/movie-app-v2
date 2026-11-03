@@ -43,6 +43,7 @@ const stats = {
   platformBreakdown: [{ platform: "Netflix", count: 12 }],
   ratingByGenre: [{ genre: "Drama", avgRating: 8.1 }],
   reviewsWritten: 4, listsCount: 2, listsItemsCount: 9, watchlistTotal: 6, watchlistUnwatched: 3,
+  ratingHabits: { count: 0, minCount: 5, unratedCount: 2, avgOffset: null, contrarianScore: null, guiltyPleasures: [], notForYou: [] },
 };
 
 beforeAll(() => {

@@ -5,8 +5,8 @@ import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import { guardedReload } from "../utils/guardedReload";
 import type { WatchlistEntry, WatchlistEntryDTO, WatchlistInput } from "../types";
+import { titleKey } from "../utils/titleKey";
 
-function mkKey(id: number, type: string) { return `${type}-${id}`; }
 
 export function useWatchlist() {
   const { isAuthenticated } = useAuth();
@@ -49,7 +49,7 @@ export function useWatchlist() {
           if (!isCurrentSession(gen)) return;
           const map: Record<string, number> = {};
           const entries: WatchlistEntry[] = data.map((item) => {
-            map[mkKey(item.mediaId, item.mediaType)] = item.id;
+            map[titleKey(item.mediaId, item.mediaType)] = item.id;
             return {
               id: item.mediaId,
               type: item.mediaType,
@@ -103,7 +103,7 @@ export function useWatchlist() {
       voteAverage: entry.voteAverage,
     });
     if (!isCurrentSession(gen)) return;
-    dbIdMap.current[mkKey(entry.id, entry.type)] = data.id;
+    dbIdMap.current[titleKey(entry.id, entry.type)] = data.id;
     setWatchlist((prev) => {
       if (prev.some((i) => i.id === entry.id && i.type === entry.type)) return prev;
       return [...prev, { ...entry, addedAt: data.addedAt }];
@@ -112,12 +112,12 @@ export function useWatchlist() {
 
   const removeRaw = useCallback(async (id: number, type: string) => {
     if (!isAuthenticated) return;
-    const dbId = dbIdMap.current[mkKey(id, type)];
+    const dbId = dbIdMap.current[titleKey(id, type)];
     if (dbId == null) return;
     const gen = currentSessionGeneration();
     await userApi.delete(`/watchlist/${dbId}/`);
     if (!isCurrentSession(gen)) return;
-    delete dbIdMap.current[mkKey(id, type)];
+    delete dbIdMap.current[titleKey(id, type)];
     setWatchlist((prev) => prev.filter((i) => !(i.id === id && i.type === type)));
   }, [isAuthenticated, setWatchlist]);
 
@@ -140,11 +140,11 @@ export function useWatchlist() {
   // with the first request, and a different action (unmark while the mark is
   // pending) runs after it with its own outcome.
   const add = useCallback((entry: WatchlistInput) =>
-    inflight.current.run(mkKey(entry.id, entry.type), () => addRaw(entry), "add"),
+    inflight.current.run(titleKey(entry.id, entry.type), () => addRaw(entry), "add"),
   [addRaw]);
 
   const remove = useCallback((id: number, type: string) =>
-    inflight.current.run(mkKey(id, type), () => removeRaw(id, type), "remove"),
+    inflight.current.run(titleKey(id, type), () => removeRaw(id, type), "remove"),
   [removeRaw]);
 
   // No toggle: every button runs the add or remove it showed (write-feedback).

@@ -100,6 +100,11 @@ const STATS: StatsData = {
   topRatedItems: [], recentItems: [], totalRuntimeMinutes: 0, platformBreakdown: [],
   ratingByGenre: [{ genre: "Drama", avgRating: 7.3 }],
   reviewsWritten: 0, listsCount: 0, listsItemsCount: 0, watchlistTotal: 0, watchlistUnwatched: 0,
+  // Filled in, so Hot takes' secondary text is measured too.
+  ratingHabits: {
+    count: 6, minCount: 5, unratedCount: 0, avgOffset: 0.6, contrarianScore: 1.2, notForYou: [],
+    guiltyPleasures: [{ mediaId: 1, mediaType: "movie", title: "Dune", posterPath: null, userRating: 9, tmdbRating: 7.2, gap: 1.8 }],
+  },
 };
 
 async function openStats(page: Page, theme: Theme) {

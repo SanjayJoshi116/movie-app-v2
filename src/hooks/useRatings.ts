@@ -5,8 +5,8 @@ import { fetchAllPages, LIBRARY_PAGE_SIZE } from "../utils/fetchAllPages";
 import { createInflight } from "../utils/inflight";
 import { guardedReload } from "../utils/guardedReload";
 import type { RatingEntry, RatingEntryDTO, RatingsMap } from "../types";
+import { titleKey } from "../utils/titleKey";
 
-function ratingKey(id: number, type: string) { return `${type}-${id}`; }
 
 export function useRatings() {
   const { isAuthenticated } = useAuth();
@@ -17,6 +17,10 @@ export function useRatings() {
   const [loadedGen, setLoadedGen] = useState<number | null>(null);
   const [reloading, setReloading] = useState(false);
   const isLoading = isAuthenticated && (reloading || loadedGen !== currentSessionGeneration());
+  // The session generation of the last successful load, kept across a failed
+  // reload, so a page can tell "never loaded" apart from "the last reload failed".
+  const [loadedOkGen, setLoadedOkGen] = useState<number | null>(null);
+  const hasLoaded = isAuthenticated && loadedOkGen === currentSessionGeneration();
   const [error, setError] = useState<unknown>(null);
   // Bumped as each write settles: a reload that started earlier is rerun.
   const writeSeq = useRef(0);
@@ -41,7 +45,7 @@ export function useRatings() {
           const map: Record<string, number> = {};
           const ratingsMap: RatingsMap = {};
           data.forEach((item) => {
-            const k = ratingKey(item.mediaId, item.mediaType);
+            const k = titleKey(item.mediaId, item.mediaType);
             map[k] = item.id;
             ratingsMap[k] = {
               id: item.mediaId,
@@ -55,6 +59,7 @@ export function useRatings() {
           dbIdMap.current = map;
           setRatings(ratingsMap);
           setError(null);
+          setLoadedOkGen(gen);
         },
         {
           reloadSeq,
@@ -100,7 +105,7 @@ export function useRatings() {
       review,
     });
     if (!isCurrentSession(gen)) return;
-    const k = ratingKey(id, type);
+    const k = titleKey(id, type);
     dbIdMap.current[k] = data.id;
     setRatings((prev) => ({
       ...prev,
@@ -116,12 +121,12 @@ export function useRatings() {
   }, [isAuthenticated]);
 
   const get = useCallback((id: number, type: string): RatingEntry | null =>
-    ratingsRef.current[ratingKey(id, type)] ?? null,
+    ratingsRef.current[titleKey(id, type)] ?? null,
   []);
 
   const removeRaw = useCallback(async (id: number, type: string) => {
     if (!isAuthenticated) return;
-    const k = ratingKey(id, type);
+    const k = titleKey(id, type);
     const dbId = dbIdMap.current[k];
     if (dbId == null) return;
     const gen = currentSessionGeneration();
@@ -140,15 +145,15 @@ export function useRatings() {
   // runs after the pending one with its own outcome.
   const set = useCallback(
     (id: number, type: string, title: string, userRating: number, review = "") =>
-      inflight.current.run(ratingKey(id, type), () => setRaw(id, type, title, userRating, review),
+      inflight.current.run(titleKey(id, type), () => setRaw(id, type, title, userRating, review),
         `set:${userRating}:${review}`),
     [setRaw],
   );
 
   const remove = useCallback(
-    (id: number, type: string) => inflight.current.run(ratingKey(id, type), () => removeRaw(id, type), "remove"),
+    (id: number, type: string) => inflight.current.run(titleKey(id, type), () => removeRaw(id, type), "remove"),
     [removeRaw],
   );
 
-  return { ratings, isLoading, error, set, get, remove, reload };
+  return { ratings, isLoading, hasLoaded, error, set, get, remove, reload };
 }
